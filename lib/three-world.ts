@@ -191,6 +191,344 @@ export function creature(seed: number, opts?: Partial<Recipe>) {
   }
   return group;
 }
+function part(m: T.Mesh, name: string) {
+  m.userData.rigPart = name;
+  return m;
+}
+export function person(seed: number, opts?: Partial<Recipe>) {
+  const r = random(seed),
+    g = new T.Group();
+  const cloth = new T.Color(opts?.color ?? '#8ca6a0');
+  const dark = cloth.clone().multiplyScalar(0.55),
+    light = cloth.clone().lerp(new T.Color('#eee3c6'), 0.38);
+  const skin = ['#d9ad86', '#a97858', '#edc6a1', '#80543e'][
+    Math.floor(r() * 4)
+  ];
+  const w = opts?.width ?? 1,
+    h = opts?.height ?? 1;
+  part(
+    mesh(g, new T.BoxGeometry(0.42 * w, 0.48 * h, 0.25), cloth, 0, 0.98, 0),
+    'spine',
+  );
+  part(
+    mesh(g, new T.BoxGeometry(0.34 * w, 0.2, 0.23), dark, 0, 0.68, 0),
+    'hips',
+  );
+  part(ball(g, skin, 0, 1.48 * h, 0, 0.25 * w, 0.29, 0.23), 'head');
+  part(
+    mesh(
+      g,
+      new T.CylinderGeometry(0.27 * w, 0.31 * w, 0.18, 6),
+      dark,
+      0,
+      1.67 * h,
+      0,
+    ),
+    'head',
+  );
+  for (const side of [-1, 1]) {
+    const arm = side < 0 ? 'arm_l' : 'arm_r',
+      fore = side < 0 ? 'forearm_l' : 'forearm_r';
+    part(
+      limb(
+        g,
+        new T.Vector3(side * 0.25 * w, 1.16, 0),
+        new T.Vector3(side * 0.39 * w, 0.91, 0.02),
+        0.07,
+        cloth,
+      ),
+      arm,
+    );
+    part(
+      limb(
+        g,
+        new T.Vector3(side * 0.39 * w, 0.91, 0.02),
+        new T.Vector3(side * 0.42 * w, 0.68, 0.08),
+        0.06,
+        skin,
+      ),
+      fore,
+    );
+    part(ball(g, skin, side * 0.42 * w, 0.65, 0.09, 0.08, 0.09, 0.07), fore);
+    const thigh = side < 0 ? 'thigh_l' : 'thigh_r',
+      shin = side < 0 ? 'shin_l' : 'shin_r',
+      foot = side < 0 ? 'foot_l' : 'foot_r';
+    part(
+      limb(
+        g,
+        new T.Vector3(side * 0.13, 0.65, 0),
+        new T.Vector3(side * 0.14, 0.35, 0.015),
+        0.09,
+        dark,
+      ),
+      thigh,
+    );
+    part(
+      limb(
+        g,
+        new T.Vector3(side * 0.14, 0.35, 0.015),
+        new T.Vector3(side * 0.14, 0.08, 0.03),
+        0.075,
+        cloth,
+      ),
+      shin,
+    );
+    part(
+      mesh(
+        g,
+        new T.BoxGeometry(0.17, 0.09, 0.29),
+        dark,
+        side * 0.14,
+        0.06,
+        0.1,
+      ),
+      foot,
+    );
+  }
+  for (const side of [-1, 1])
+    part(
+      ball(g, '#f0e4c8', side * 0.09 * w, 1.5 * h, 0.21, 0.055, 0.07, 0.035),
+      'head',
+    );
+  part(
+    mesh(
+      g,
+      new T.BoxGeometry(0.12, 0.025, 0.025),
+      '#5b3c31',
+      0,
+      1.38 * h,
+      0.235,
+    ),
+    'head',
+  );
+  const hair = Math.max(1, opts?.horns ?? 3);
+  for (let i = 0; i < hair; i++) {
+    const a = (i / (Math.max(2, hair) - 1) - 0.5) * 1.6;
+    part(
+      mesh(
+        g,
+        new T.ConeGeometry(0.045, 0.18 + r() * 0.09, 5),
+        dark,
+        Math.sin(a) * 0.2 * w,
+        1.74 * h,
+        Math.cos(a) * 0.1 - 0.02,
+      ),
+      'head',
+    ).rotation.z = -a * 0.18;
+  }
+  if ((opts?.ears ?? 0) > 0.65)
+    part(
+      mesh(g, new T.BoxGeometry(0.32, 0.35, 0.12), light, 0, 1.02, -0.2),
+      'spine',
+    );
+  return g;
+}
+function standaloneTree(seed: number, opts?: Partial<Recipe>) {
+  const r = random(seed),
+    g = new T.Group(),
+    h = 2.3 * (opts?.height ?? 1),
+    w = opts?.width ?? 1;
+  limb(
+    g,
+    new T.Vector3(0, 0, 0),
+    new T.Vector3((r() - 0.5) * 0.18, h, 0),
+    0.2 * w,
+    '#796b53',
+  );
+  const branches = Math.max(2, opts?.horns ?? 5);
+  for (let i = 0; i < branches; i++) {
+    const a = (i / branches) * Math.PI * 2 + r() * 0.4,
+      y = h * (0.45 + r() * 0.38),
+      end = new T.Vector3(
+        Math.cos(a) * (0.55 + r() * 0.55) * w,
+        y + 0.25 + r() * 0.35,
+        Math.sin(a) * (0.55 + r() * 0.55) * w,
+      );
+    limb(g, new T.Vector3(0, y, 0), end, 0.09 * w, '#796b53');
+    ball(
+      g,
+      i % 2 ? '#78906d' : (opts?.color ?? '#596c50'),
+      end.x,
+      end.y,
+      end.z,
+      0.48 * w,
+      0.55,
+      0.48 * w,
+    );
+  }
+  ball(g, opts?.color ?? '#596c50', 0, h, 0, 0.85 * w, 0.75, 0.75 * w);
+  return g;
+}
+function standaloneRock(seed: number, opts?: Partial<Recipe>) {
+  const r = random(seed),
+    g = new T.Group(),
+    geo = new T.IcosahedronGeometry(1, 1),
+    p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const n = 0.78 + r() * 0.3 + (opts?.roughness ?? 0.2) * Math.sin(i * 4.7);
+    p.setXYZ(i, p.getX(i) * n, p.getY(i) * n, p.getZ(i) * n);
+  }
+  geo.computeVertexNormals();
+  mesh(
+    g,
+    geo,
+    opts?.color ?? '#68706b',
+    0,
+    0.65,
+    0,
+    opts?.width ?? 1,
+    (opts?.height ?? 1) * 0.72,
+    opts?.ears ?? 1,
+  );
+  return g;
+}
+function standaloneMushroom(seed: number, opts?: Partial<Recipe>) {
+  const r = random(seed),
+    g = new T.Group(),
+    h = 1.25 * (opts?.height ?? 1),
+    w = opts?.width ?? 1;
+  mesh(
+    g,
+    new T.CylinderGeometry(0.17 * w, 0.28 * w, h, 7),
+    '#d8d1ae',
+    0,
+    h / 2,
+    0,
+  );
+  const cap = mesh(
+    g,
+    new T.SphereGeometry(0.75 * w, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    opts?.color ?? '#9d7d7d',
+    0,
+    h,
+    0,
+    1,
+    0.55,
+    1,
+  );
+  cap.rotation.y = r();
+  for (let i = 0; i < (opts?.teeth ?? 6); i++) {
+    const a = r() * Math.PI * 2,
+      rad = 0.2 + r() * 0.42;
+    ball(
+      g,
+      '#e6dabd',
+      Math.cos(a) * rad * w,
+      h + 0.28 + r() * 0.2,
+      Math.sin(a) * rad * w,
+      0.06,
+      0.025,
+      0.06,
+    );
+  }
+  return g;
+}
+function standaloneHut(seed: number, opts?: Partial<Recipe>) {
+  const r = random(seed),
+    g = new T.Group(),
+    w = opts?.width ?? 1,
+    h = opts?.height ?? 1;
+  mesh(
+    g,
+    new T.CylinderGeometry(0.72 * w, 0.86 * w, 1.1 * h, 7),
+    '#b4ae8e',
+    0,
+    0.55 * h,
+    0,
+  );
+  const roof = mesh(
+    g,
+    new T.ConeGeometry(1.18 * w, 0.9 * h, 7),
+    opts?.color ?? '#7c9c94',
+    0,
+    1.48 * h,
+    0,
+  );
+  roof.rotation.y = r();
+  mesh(
+    g,
+    new T.BoxGeometry(0.32 * w, 0.7 * h, 0.06),
+    '#373b30',
+    0,
+    0.37 * h,
+    0.78 * w,
+  );
+  mesh(
+    g,
+    new T.BoxGeometry(0.18, 0.2, 0.04),
+    '#e2cc86',
+    0.4 * w,
+    0.72 * h,
+    0.7 * w,
+  );
+  return g;
+}
+function kitbash(seed: number, opts?: Partial<Recipe>) {
+  const r = random(seed),
+    g = new T.Group(),
+    w = opts?.width ?? 1,
+    h = opts?.height ?? 1,
+    d = opts?.ears ?? 1,
+    color = opts?.color ?? '#68798b',
+    accent = new T.Color(color).lerp(new T.Color('#e1d39e'), 0.35);
+  const core =
+    r() > 0.5 ? new T.BoxGeometry(1, 1, 1) : new T.IcosahedronGeometry(0.7, 1);
+  mesh(g, core, color, 0, 0.8 * h, 0, w, 0.65 * h, 0.7 * d);
+  const modules = Math.max(1, opts?.horns ?? 4);
+  for (let i = 0; i < modules; i++) {
+    const side = i % 2 ? -1 : 1,
+      row = Math.floor(i / 2),
+      y = 0.35 + (row % 3) * 0.45 * h,
+      x = side * (0.65 + 0.12 * (row % 2)) * w;
+    mesh(
+      g,
+      row % 2
+        ? new T.CylinderGeometry(0.16, 0.22, 0.48, 6)
+        : new T.BoxGeometry(0.32, 0.38, 0.42),
+      i % 3 ? accent : color,
+      x,
+      y,
+      0,
+      0.8,
+      0.8,
+      0.8,
+    );
+  }
+  for (const side of [-1, 1])
+    limb(
+      g,
+      new T.Vector3(side * 0.45 * w, 0.35, 0),
+      new T.Vector3(side * 0.7 * w, 0.02, side * 0.12),
+      0.07,
+      accent,
+    );
+  for (let i = 0; i < (opts?.teeth ?? 5); i++) {
+    const a = (i / Math.max(1, opts?.teeth ?? 5)) * Math.PI * 2;
+    mesh(
+      g,
+      new T.ConeGeometry(0.06, 0.2 + r() * 0.2, 5),
+      accent,
+      Math.cos(a) * 0.42 * w,
+      1.25 * h,
+      Math.sin(a) * 0.38 * d,
+    ).rotation.z = (r() - 0.5) * 0.5;
+  }
+  return g;
+}
+export function prop(seed: number, opts: Partial<Recipe>) {
+  switch (opts.archetype) {
+    case 'kitbash':
+      return kitbash(seed, opts);
+    case 'rock':
+      return standaloneRock(seed, opts);
+    case 'mushroom':
+      return standaloneMushroom(seed, opts);
+    case 'hut':
+      return standaloneHut(seed, opts);
+    default:
+      return standaloneTree(seed, opts);
+  }
+}
 export function habitat(seed: number, opts?: Partial<Recipe>) {
   const r = random(seed),
     g = new T.Group();

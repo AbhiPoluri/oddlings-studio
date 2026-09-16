@@ -74,7 +74,26 @@ export function rigCreature(
       let a = 1,
         b = 1,
         t = 0;
-      if (partCenter.y > 0.82) {
+      const named: Record<string, number> = {
+        head: 3,
+        spine: 2,
+        hips: 1,
+        arm_l: 4,
+        forearm_l: 5,
+        arm_r: 6,
+        forearm_r: 7,
+        thigh_l: 8,
+        shin_l: 9,
+        foot_l: 10,
+        thigh_r: 11,
+        shin_r: 12,
+        foot_r: 13,
+      };
+      const explicit = named[String(object.userData.rigPart)];
+      if (explicit !== undefined) {
+        a = explicit;
+        b = explicit;
+      } else if (partCenter.y > 0.82) {
         a = 3;
         b = 3;
       } else if (partCenter.y < 0.36) {

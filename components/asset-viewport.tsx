@@ -232,7 +232,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         v.helper = null;
       }
       v.mixer = null;
-      if (props.recipe.kind === 'creature' && props.recipe.rigged) {
+      if (
+        (props.recipe.kind === 'creature' || props.recipe.kind === 'person') &&
+        props.recipe.rigged
+      ) {
         v.mixer = new T.AnimationMixer(model);
         const clip = rigClips().find((c) => c.name === live.current.animation);
         if (clip) v.mixer.clipAction(clip).play();

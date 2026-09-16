@@ -1,7 +1,17 @@
-export type Kind = 'creature' | 'environment';
+export type Kind = 'creature' | 'person' | 'prop' | 'environment';
+export type Archetype =
+  | 'oddling'
+  | 'person'
+  | 'kitbash'
+  | 'tree'
+  | 'rock'
+  | 'mushroom'
+  | 'hut'
+  | 'island';
 export type Recipe = {
   version: 1;
   kind: Kind;
+  archetype: Archetype;
   name: string;
   seed: number;
   color: string;
@@ -26,6 +36,7 @@ export type Recipe = {
 export const initialRecipe: Recipe = {
   version: 1,
   kind: 'creature',
+  archetype: 'oddling',
   name: 'Mossling',
   seed: 13921440,
   color: '#93cec8',
@@ -60,14 +71,27 @@ export const limits = {
   rocks: [0, 40],
   plants: [0, 100],
   scale: [0.1, 5],
-  hipHeight: [0.35, 0.65],
-  headPivot: [0.7, 1.3],
-  shoulderWidth: [0.2, 0.4],
+  hipHeight: [0.35, 0.85],
+  headPivot: [0.7, 1.65],
+  shoulderWidth: [0.2, 0.55],
 } as const;
+const kinds: Kind[] = ['creature', 'person', 'prop', 'environment'];
+const archetypes: Archetype[] = [
+  'oddling',
+  'person',
+  'kitbash',
+  'tree',
+  'rock',
+  'mushroom',
+  'hut',
+  'island',
+];
 export function parseRecipe(input: unknown): Recipe {
   if (!input || typeof input !== 'object')
     throw Error('Choose an Oddlings recipe JSON file.');
   const p = { ...input } as Record<string, unknown>;
+  if (p.archetype === undefined)
+    p.archetype = p.kind === 'environment' ? 'island' : 'oddling';
   for (const k of [
     'rigged',
     'hipHeight',
@@ -78,7 +102,8 @@ export function parseRecipe(input: unknown): Recipe {
   if (typeof p.rigged !== 'boolean') throw Error('Invalid rig setting.');
   if (
     p.version !== 1 ||
-    !['creature', 'environment'].includes(String(p.kind)) ||
+    !kinds.includes(p.kind as Kind) ||
+    !archetypes.includes(p.archetype as Archetype) ||
     typeof p.name !== 'string' ||
     p.name.length > 60 ||
     !Number.isInteger(p.seed) ||
@@ -89,6 +114,14 @@ export function parseRecipe(input: unknown): Recipe {
     typeof p.pond !== 'boolean'
   )
     throw Error('This file is not a supported asset recipe.');
+  const allowed: Record<Kind, Archetype[]> = {
+    creature: ['oddling'],
+    person: ['person'],
+    prop: ['kitbash', 'tree', 'rock', 'mushroom', 'hut'],
+    environment: ['island'],
+  };
+  if (!allowed[p.kind as Kind].includes(p.archetype as Archetype))
+    throw Error('Invalid asset archetype.');
   for (const [k, [min, max]] of Object.entries(limits)) {
     const v = p[k];
     if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max)

@@ -20,6 +20,8 @@ import {
   Braces,
   Dices,
   GitBranch,
+  UserRound,
+  TreePine,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -49,6 +51,7 @@ import {
   blueprints,
   generateBlueprint,
   mutateRecipe,
+  defaultBlueprint,
   type Blueprint,
 } from '@/lib/procedural-director';
 type Saved = { id: string; recipe: Recipe; thumbnail: string };
@@ -151,9 +154,7 @@ export default function Studio() {
   const activeBlueprint: Blueprint =
     blueprints[blueprint].kind === recipe.kind
       ? blueprint
-      : recipe.kind === 'creature'
-        ? 'scout'
-        : 'grove';
+      : defaultBlueprint[recipe.kind];
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE);
@@ -217,13 +218,24 @@ export default function Studio() {
             'Mumble',
             'Sprig',
           ]
-        : [
-            'Fern Hollow',
-            'Quiet Clearing',
-            'Moon Garden',
-            'Mossy Outpost',
-            'Pebble Grove',
-          ];
+        : recipe.kind === 'person'
+          ? ['Mira', 'Rowan', 'Tavi', 'Ash', 'Fern']
+          : recipe.kind === 'prop'
+            ? [
+                'Module',
+                'Construct',
+                'Old Oak',
+                'Moss Rock',
+                'Glowcap',
+                'Acorn Hut',
+              ]
+            : [
+                'Fern Hollow',
+                'Quiet Clearing',
+                'Moon Garden',
+                'Mossy Outpost',
+                'Pebble Grove',
+              ];
     change({
       seed,
       name: `${names[seed % names.length]} ${String(seed).slice(-3)}`,
@@ -231,17 +243,12 @@ export default function Studio() {
     setStatus('New seed. Your shape and palette settings are preserved.');
   }
   function switchKind(kind: Kind) {
-    setBlueprint(kind === 'creature' ? 'scout' : 'grove');
-    change({
-      kind,
-      name: kind === 'creature' ? 'Mossling' : 'Fern Hollow',
-      color: kind === 'creature' ? '#93cec8' : '#596c50',
-    });
-    setStatus(
-      kind === 'creature'
-        ? 'Creature generator selected.'
-        : 'Environment generator selected.',
-    );
+    const selected = defaultBlueprint[kind];
+    setBlueprint(selected);
+    const next = generateBlueprint(selected, current.current.seed);
+    current.current = next;
+    commit(next);
+    setStatus(`${kind[0].toUpperCase()}${kind.slice(1)} generator selected.`);
   }
   function persist(next: Saved[]) {
     try {
@@ -338,7 +345,8 @@ export default function Studio() {
     const next = generateBlueprint(selected, freshSeed());
     current.current = next;
     commit(next);
-    if (next.kind === 'creature') setAnimation('Idle');
+    if (next.kind === 'creature' || next.kind === 'person')
+      setAnimation('Idle');
     setStatus(
       `${blueprints[selected].label} generated locally from procedural TypeScript. Every value remains editable.`,
     );
@@ -525,9 +533,7 @@ export default function Studio() {
           <div className="asset-title">
             <div>
               <span className="eyebrow">
-                {recipe.kind === 'creature'
-                  ? 'CREATURE / GENERATOR 01'
-                  : 'ENVIRONMENT / GENERATOR 02'}
+                {`${recipe.kind.toUpperCase()} / ${recipe.archetype.toUpperCase()}`}
               </span>
               <h2>{recipe.name || 'Untitled asset'}</h2>
             </div>
@@ -651,22 +657,23 @@ export default function Studio() {
               speed={speed}
               onStats={setMetric}
             />
-            {recipe.kind === 'creature' && recipe.rigged && (
-              <div className="clip-tests" aria-label="Animation test clips">
-                <span>TEST</span>
-                {['Bind pose', 'Idle', 'Walk', 'Jump', 'Wave', 'Attack'].map(
-                  (clip) => (
-                    <button
-                      key={clip}
-                      aria-pressed={animation === clip}
-                      onClick={() => setAnimation(clip)}
-                    >
-                      {clip}
-                    </button>
-                  ),
-                )}
-              </div>
-            )}
+            {(recipe.kind === 'creature' || recipe.kind === 'person') &&
+              recipe.rigged && (
+                <div className="clip-tests" aria-label="Animation test clips">
+                  <span>TEST</span>
+                  {['Bind pose', 'Idle', 'Walk', 'Jump', 'Wave', 'Attack'].map(
+                    (clip) => (
+                      <button
+                        key={clip}
+                        aria-pressed={animation === clip}
+                        onClick={() => setAnimation(clip)}
+                      >
+                        {clip}
+                      </button>
+                    ),
+                  )}
+                </div>
+              )}
             <div className="view-options">
               <Toggle label="Pixel preview" value={pixel} onChange={setPixel} />
               <Toggle label="Wireframe" value={wire} onChange={setWire} />
@@ -699,7 +706,8 @@ export default function Studio() {
             <div>
               <h3>From odd little idea to game asset.</h3>
               <p>
-                {recipe.kind === 'creature' && recipe.rigged
+                {(recipe.kind === 'creature' || recipe.kind === 'person') &&
+                recipe.rigged
                   ? '14-bone rig · 5 test clips · Skinned meshes'
                   : 'Static meshes · Flat normals · Solid-color materials'}
               </p>
@@ -721,13 +729,8 @@ export default function Studio() {
               title="Reset generator settings"
               onClick={() =>
                 change({
-                  ...initialRecipe,
-                  kind: recipe.kind,
+                  ...generateBlueprint(activeBlueprint, recipe.seed),
                   name: recipe.name,
-                  color:
-                    recipe.kind === 'creature'
-                      ? initialRecipe.color
-                      : '#596c50',
                 })
               }
             >
@@ -742,6 +745,14 @@ export default function Studio() {
               <TabsTrigger value="creature">
                 <Shapes size={15} />
                 Creature
+              </TabsTrigger>
+              <TabsTrigger value="person">
+                <UserRound size={15} />
+                Person
+              </TabsTrigger>
+              <TabsTrigger value="prop">
+                <TreePine size={15} />
+                Prop
               </TabsTrigger>
               <TabsTrigger value="environment">
                 <Mountain size={15} />
@@ -796,6 +807,39 @@ export default function Studio() {
                 {range('teeth', 'Teeth', 0, 10)}
               </div>
             </TabsContent>
+            <TabsContent value="person">
+              <div className="property-section">
+                <h3>Body & silhouette</h3>
+                {range('width', 'Build', 0.6, 1.5, 0.01)}
+                {range('height', 'Stature', 0.65, 1.5, 0.01)}
+                {range('roughness', 'Variation', 0, 0.3, 0.01)}
+                {range('horns', 'Hair tufts', 0, 8)}
+                {range('ears', 'Gear size', 0, 1.8, 0.05)}
+              </div>
+            </TabsContent>
+            <TabsContent value="prop">
+              <div className="property-section">
+                <h3>Procedural form</h3>
+                {range('width', 'Width', 0.6, 1.5, 0.01)}
+                {range('height', 'Height', 0.65, 1.5, 0.01)}
+                {range('roughness', 'Irregularity', 0, 0.3, 0.01)}
+                {range(
+                  'horns',
+                  recipe.archetype === 'tree' ? 'Branches' : 'Primary details',
+                  0,
+                  8,
+                )}
+                {range(
+                  'teeth',
+                  recipe.archetype === 'mushroom'
+                    ? 'Cap spots'
+                    : 'Small details',
+                  0,
+                  10,
+                )}
+                {range('ears', 'Depth / spread', 0, 1.8, 0.05)}
+              </div>
+            </TabsContent>
             <TabsContent value="environment">
               <div className="property-section">
                 <h3>Populate the clearing</h3>
@@ -813,21 +857,24 @@ export default function Studio() {
           </Tabs>
           <div className="property-section">
             <h3>
-              {recipe.kind === 'creature' ? 'Skin palette' : 'Ground palette'}
+              {recipe.kind === 'creature' || recipe.kind === 'person'
+                ? 'Character palette'
+                : 'Material palette'}
             </h3>
             <div className="swatches">
-              {(recipe.kind === 'creature' ? colors : worldColors).map(
-                (color) => (
-                  <button
-                    key={color}
-                    style={{ background: color }}
-                    className={recipe.color === color ? 'chosen' : ''}
-                    aria-label={`Use color ${color}`}
-                    aria-pressed={recipe.color === color}
-                    onClick={() => change({ color })}
-                  />
-                ),
-              )}
+              {(recipe.kind === 'creature' || recipe.kind === 'person'
+                ? colors
+                : worldColors
+              ).map((color) => (
+                <button
+                  key={color}
+                  style={{ background: color }}
+                  className={recipe.color === color ? 'chosen' : ''}
+                  aria-label={`Use color ${color}`}
+                  aria-pressed={recipe.color === color}
+                  onClick={() => change({ color })}
+                />
+              ))}
               <label title="Custom color">
                 <input
                   type="color"
@@ -841,7 +888,7 @@ export default function Studio() {
             </div>
             <span className="hex-value">{recipe.color.toUpperCase()}</span>
           </div>
-          {recipe.kind === 'creature' && (
+          {(recipe.kind === 'creature' || recipe.kind === 'person') && (
             <div className="property-section rigging">
               <h3>Rig & animate</h3>
               <Toggle
@@ -888,9 +935,9 @@ export default function Studio() {
                     onChange={setSpeed}
                     onCommit={() => {}}
                   />
-                  {range('hipHeight', 'Hip joint height', 0.35, 0.65, 0.01)}
-                  {range('headPivot', 'Head pivot', 0.7, 1.3, 0.01)}
-                  {range('shoulderWidth', 'Shoulder width', 0.2, 0.4, 0.01)}
+                  {range('hipHeight', 'Hip joint height', 0.35, 0.85, 0.01)}
+                  {range('headPivot', 'Head pivot', 0.7, 1.65, 0.01)}
+                  {range('shoulderWidth', 'Shoulder width', 0.2, 0.55, 0.01)}
                 </>
               )}
             </div>
@@ -907,7 +954,7 @@ export default function Studio() {
             <Box size={16} />
             <p>
               Unity pack includes OBJ + MTL. GLB needs a glTF importer. Rigged
-              creatures include Idle, Walk, Jump, Wave, and Attack clips. Use
+              characters include Idle, Walk, Jump, Wave, and Attack clips. Use
               the GLB for animation; OBJ is static. Add collision in Unity.
             </p>
           </div>

@@ -2,14 +2,18 @@ import * as T from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { zipSync, strToU8 } from 'fflate';
-import { creature, habitat, disposeScene } from './three-world';
+import { creature, person, prop, habitat, disposeScene } from './three-world';
 import { rigCreature, rigClips } from './asset-rig';
 import { type Recipe, fileName } from './asset-recipe';
 export function buildAsset(recipe: Recipe) {
   let model =
     recipe.kind === 'creature'
       ? creature(recipe.seed, recipe)
-      : habitat(recipe.seed, recipe);
+      : recipe.kind === 'person'
+        ? person(recipe.seed, recipe)
+        : recipe.kind === 'prop'
+          ? prop(recipe.seed, recipe)
+          : habitat(recipe.seed, recipe);
   model.name = fileName(recipe.name);
   model.userData = { generator: 'Oddlings Studio', recipe };
   let index = 0;
@@ -17,7 +21,7 @@ export function buildAsset(recipe: Recipe) {
   model.traverse((o) => {
     if (o instanceof T.Mesh) {
       o.name = `${recipe.kind}_part_${String(++index).padStart(3, '0')}`;
-      o.userData = {};
+      o.userData = { ...o.userData };
       let geometry = o.geometry;
       if (geometry.index) {
         const nonIndexed = geometry.toNonIndexed();
@@ -37,7 +41,7 @@ export function buildAsset(recipe: Recipe) {
       o.material = shared;
     }
   });
-  if (recipe.kind === 'creature' && recipe.rigged)
+  if ((recipe.kind === 'creature' || recipe.kind === 'person') && recipe.rigged)
     model = rigCreature(model, recipe);
   model.scale.setScalar(recipe.scale);
   model.updateMatrixWorld(true);
@@ -101,7 +105,10 @@ export async function exportAsset(recipe: Recipe, format: 'glb' | 'unity') {
         binary: true,
         trs: true,
         animations:
-          recipe.kind === 'creature' && recipe.rigged ? rigClips() : [],
+          (recipe.kind === 'creature' || recipe.kind === 'person') &&
+          recipe.rigged
+            ? rigClips()
+            : [],
       });
       if (!(output instanceof ArrayBuffer)) throw Error('GLB export failed.');
       download(
@@ -118,7 +125,10 @@ export async function exportAsset(recipe: Recipe, format: 'glb' | 'unity') {
         binary: true,
         trs: true,
         animations:
-          recipe.kind === 'creature' && recipe.rigged ? rigClips() : [],
+          (recipe.kind === 'creature' || recipe.kind === 'person') &&
+          recipe.rigged
+            ? rigClips()
+            : [],
       });
       if (!(glb instanceof ArrayBuffer)) throw Error('GLB export failed.');
       const readme = `${recipe.name} — Oddlings Studio\n\nUNITY IMPORT\n1. Unzip this folder.\n2. Copy the .obj and .mtl files together into a folder under your Unity project's Assets directory.\n3. Select the model and review its Materials import settings. Extract or remap materials if needed. In URP/HDRP use the pipeline's material conversion tools or remap the palette to compatible Lit materials.\n4. Drag the imported model into your scene. Save as a prefab if desired.\n\nScale: numeric coordinates are meters; Y is up. The model faces +Z before any importer axis conversion.\nThe OBJ is a static mesh with flat normals and solid-color materials. The GLB includes a 14-bone skinned Generic rig and Idle, Walk, Jump, Wave, and Attack clips when the creature rig is enabled. Environments are static. No collision shapes, LODs, texture maps or lightmap UVs are included. Generate colliders and lightmap UVs in Unity as needed.\nThe pixelated viewport is a preview effect, not baked into the model.\n\nEDIT AGAIN\nImport recipe.json into Oddlings Studio to recover exactly these generator settings.\n\nGLB ALTERNATIVE\nThe included GLB preserves the scene hierarchy, skin weights, bones and animation clips when enabled. Unity needs a glTF importer, such as Unity glTFast. Install com.unity.cloud.gltfast with Package Manager, then place the GLB in Assets. Treat this non-humanoid rig as Generic, not Humanoid. Use imported clips with an Animator or the importer animation component according to importer settings. Walk is in-place (no forward root motion). The rig is a starter body rig, not a facial rig.\nhttps://github.com/Unity-Technologies/com.unity.cloud.gltfast\n`;
