@@ -50,6 +50,62 @@ export function registerStudioTools(
         return read();
       },
     },
+    {
+      name: 'direct_asset_with_ai',
+      description:
+        'Create a new procedural game asset or refine the current one from a natural-language instruction using Jev. Updates the visible editable recipe as one undoable step; does not save or export.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          mode: { type: 'string', enum: ['create', 'refine'] },
+          instruction: { type: 'string', minLength: 3, maxLength: 600 },
+        },
+        required: ['mode', 'instruction'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input: unknown) {
+        if (
+          !input ||
+          typeof input !== 'object' ||
+          Object.keys(input).length !== 2 ||
+          !('mode' in input) ||
+          !('instruction' in input) ||
+          !['create', 'refine'].includes(String(input.mode)) ||
+          typeof input.instruction !== 'string' ||
+          input.instruction.trim().length < 3 ||
+          input.instruction.length > 600
+        )
+          throw Error('Expected a create or refine mode and a 3–600 character instruction.');
+        const response = await fetch('/api/assist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: input.mode,
+            prompt: input.instruction.trim(),
+            recipe: read(),
+          }),
+        });
+        const data = (await response.json()) as {
+          recipe?: unknown;
+          confidence?: number;
+          model?: string;
+          error?: string;
+        };
+        if (!response.ok || !data.recipe)
+          throw Error(data.error || 'The AI asset director could not finish.');
+        const recipe = parseRecipe(data.recipe);
+        update(recipe);
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        return {
+          recipe: read(),
+          model: data.model ?? 'jev',
+          confidence: data.confidence ?? 0,
+        };
+      },
+    },
   ];
   for (const tool of tools)
     try {

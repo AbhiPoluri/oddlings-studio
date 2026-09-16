@@ -17,6 +17,9 @@ import {
   RotateCcw,
   Mountain,
   Shapes,
+  Sparkles,
+  WandSparkles,
+  LoaderCircle,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -137,6 +140,12 @@ export default function Studio() {
   const [speed, setSpeed] = useState(1);
   const removed = useRef<Saved | null>(null);
   const [canRestore, setCanRestore] = useState(false);
+  const [aiMode, setAiMode] = useState<'create' | 'refine'>('create');
+  const [prompt, setPrompt] = useState(
+    'A tiny moss guardian with a wide head, three eyes, little horns, and a friendly grin',
+  );
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiResult, setAiResult] = useState('');
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE);
@@ -144,17 +153,15 @@ export default function Studio() {
         const saved = JSON.parse(raw);
         if (!Array.isArray(saved)) throw Error();
         setLibrary(
-          saved
-            .slice(0, 40)
-            .map((s: Saved) => ({
-              id: String(s.id),
-              recipe: parseRecipe(s.recipe),
-              thumbnail:
-                typeof s.thumbnail === 'string' &&
-                s.thumbnail.startsWith('data:image/png;base64,')
-                  ? s.thumbnail
-                  : '',
-            })),
+          saved.slice(0, 40).map((s: Saved) => ({
+            id: String(s.id),
+            recipe: parseRecipe(s.recipe),
+            thumbnail:
+              typeof s.thumbnail === 'string' &&
+              s.thumbnail.startsWith('data:image/png;base64,')
+                ? s.thumbnail
+                : '',
+          })),
         );
       }
     } catch {
@@ -313,6 +320,60 @@ export default function Studio() {
       setStatus(
         'The viewport could not be captured. Try again after the model loads.',
       );
+    }
+  }
+  async function assist() {
+    const instruction = prompt.trim();
+    if (instruction.length < 3) {
+      setStatus('Describe what you want the assistant to make or change.');
+      return;
+    }
+    setAiBusy(true);
+    setAiResult('');
+    setStatus(
+      aiMode === 'create'
+        ? 'Jev is shaping a new editable draft…'
+        : 'Jev is translating your note into precise edits…',
+    );
+    try {
+      const response = await fetch('/api/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: aiMode,
+          prompt: instruction,
+          recipe: current.current,
+        }),
+      });
+      const data = (await response.json()) as {
+        recipe?: unknown;
+        confidence?: number;
+        model?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.recipe)
+        throw Error(data.error || 'The assistant could not finish this draft.');
+      const next = parseRecipe(data.recipe);
+      current.current = next;
+      commit(next);
+      if (next.kind === 'creature' && next.rigged) setAnimation('Idle');
+      const confidence = Math.round((data.confidence ?? 0) * 100);
+      setAiResult(
+        `${data.model ?? 'Jev'} · ${confidence}% decision confidence`,
+      );
+      setStatus(
+        aiMode === 'create'
+          ? 'AI draft applied as one undoable step. Test it, then refine or tune the controls.'
+          : 'AI refinement applied as one undoable step. Keep refining or use the controls for exact values.',
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : 'The assistant could not finish this draft.',
+      );
+    } finally {
+      setAiBusy(false);
     }
   }
   useEffect(
@@ -514,6 +575,100 @@ export default function Studio() {
               </button>
             </div>
           </div>
+          <section className="ai-workshop" aria-labelledby="ai-workshop-title">
+            <div className="ai-workshop-head">
+              <div className="ai-mark">
+                <Sparkles size={17} />
+              </div>
+              <div>
+                <h3 id="ai-workshop-title">AI asset director</h3>
+                <p>
+                  Describe a game-ready draft or a change. Every result stays
+                  procedural and editable.
+                </p>
+              </div>
+              <span className="jev-badge">
+                <i /> JEV
+              </span>
+            </div>
+            <fieldset className="ai-mode" aria-label="Assistant mode">
+              <button
+                aria-pressed={aiMode === 'create'}
+                onClick={() => setAiMode('create')}
+              >
+                Create new
+              </button>
+              <button
+                aria-pressed={aiMode === 'refine'}
+                onClick={() => setAiMode('refine')}
+              >
+                Refine current
+              </button>
+            </fieldset>
+            <div className="ai-compose">
+              <textarea
+                aria-label={
+                  aiMode === 'create'
+                    ? 'Describe a new asset'
+                    : 'Describe changes to the current asset'
+                }
+                value={prompt}
+                maxLength={600}
+                rows={2}
+                placeholder={
+                  aiMode === 'create'
+                    ? 'Example: a shy moon creature with four eyes and long ears'
+                    : 'Example: make it taller, less toothy, and give it wider shoulders'
+                }
+                onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    (event.metaKey || event.ctrlKey) &&
+                    event.key === 'Enter'
+                  ) {
+                    event.preventDefault();
+                    void assist();
+                  }
+                }}
+              />
+              <button
+                className="accent ai-run"
+                onClick={() => void assist()}
+                disabled={aiBusy}
+              >
+                {aiBusy ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <WandSparkles size={16} />
+                )}
+                {aiBusy
+                  ? 'Thinking…'
+                  : aiMode === 'create'
+                    ? 'Make draft'
+                    : 'Apply changes'}
+              </button>
+            </div>
+            <div className="prompt-examples">
+              <span>Try</span>
+              {(aiMode === 'create'
+                ? [
+                    'tiny forest trickster',
+                    'moonlit mushroom clearing',
+                    'chunky one-eyed guardian',
+                  ]
+                : [
+                    'make it lankier',
+                    'add more horns and a new variation',
+                    'make it friendlier and smaller',
+                  ]
+              ).map((example) => (
+                <button key={example} onClick={() => setPrompt(example)}>
+                  {example}
+                </button>
+              ))}
+              {aiResult && <output>{aiResult}</output>}
+            </div>
+          </section>
           <div className="viewport-shell">
             <div className="view-toolbar">
               <span>
@@ -549,6 +704,22 @@ export default function Studio() {
               speed={speed}
               onStats={setMetric}
             />
+            {recipe.kind === 'creature' && recipe.rigged && (
+              <div className="clip-tests" aria-label="Animation test clips">
+                <span>TEST</span>
+                {['Bind pose', 'Idle', 'Walk', 'Jump', 'Wave', 'Attack'].map(
+                  (clip) => (
+                    <button
+                      key={clip}
+                      aria-pressed={animation === clip}
+                      onClick={() => setAnimation(clip)}
+                    >
+                      {clip}
+                    </button>
+                  ),
+                )}
+              </div>
+            )}
             <div className="view-options">
               <Toggle label="Pixel preview" value={pixel} onChange={setPixel} />
               <Toggle label="Wireframe" value={wire} onChange={setWire} />
@@ -582,7 +753,7 @@ export default function Studio() {
               <h3>From odd little idea to game asset.</h3>
               <p>
                 {recipe.kind === 'creature' && recipe.rigged
-                  ? '14-bone rig · Idle & walk clips · Skinned meshes'
+                  ? '14-bone rig · 5 test clips · Skinned meshes'
                   : 'Static meshes · Flat normals · Solid-color materials'}
               </p>
             </div>
@@ -736,7 +907,7 @@ export default function Studio() {
                   <p className="help">
                     14 joints · automatic skin weights · Generic rig
                   </p>
-                  <label className="animation-label">Preview clip</label>
+                  <span className="animation-label">Preview clip</span>
                   <Select
                     value={animation}
                     onValueChange={(v) => setAnimation(String(v))}
@@ -751,6 +922,9 @@ export default function Studio() {
                       <SelectItem value="Bind pose">Bind pose</SelectItem>
                       <SelectItem value="Idle">Idle</SelectItem>
                       <SelectItem value="Walk">Walk</SelectItem>
+                      <SelectItem value="Jump">Jump</SelectItem>
+                      <SelectItem value="Wave">Wave</SelectItem>
+                      <SelectItem value="Attack">Attack</SelectItem>
                     </SelectContent>
                   </Select>
                   <Toggle
@@ -786,18 +960,25 @@ export default function Studio() {
             <Box size={16} />
             <p>
               Unity pack includes OBJ + MTL. GLB needs a glTF importer. Rigged
-              creatures include Idle and Walk clips. Use the GLB for animation;
-              OBJ is static. Add collision in Unity.
+              creatures include Idle, Walk, Jump, Wave, and Attack clips. Use
+              the GLB for animation; OBJ is static. Add collision in Unity.
             </p>
           </div>
         </aside>
       </div>
       <footer className="status-bar">
-        <span role="status">{status}</span>
+        <output>{status}</output>
         {canRestore && (
           <button
             onClick={() => {
-              if (removed.current && library.length < 40 && persist([removed.current, ...library.filter(s=>s.id!==removed.current?.id)])) {
+              if (
+                removed.current &&
+                library.length < 40 &&
+                persist([
+                  removed.current,
+                  ...library.filter((s) => s.id !== removed.current?.id),
+                ])
+              ) {
                 setCanRestore(false);
                 setStatus('Removed variation restored.');
               }

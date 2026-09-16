@@ -44,7 +44,8 @@ body {
   font-size: 16px;
 }
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 button {
@@ -55,7 +56,8 @@ button:disabled {
   cursor: not-allowed;
 }
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 3px;
 }
@@ -276,6 +278,137 @@ button.quiet:not([data-slot]) {
   margin-top: 9px;
   word-break: break-word;
 }
+.ai-workshop {
+  border: 1px solid #46523e;
+  border-radius: 9px;
+  padding: 15px;
+  margin-bottom: 16px;
+  background: linear-gradient(110deg, #293126 0%, #222925 62%, #202624 100%);
+  box-shadow: inset 0 1px #ffffff08;
+}
+.ai-workshop-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.ai-workshop-head > div:nth-child(2) {
+  min-width: 0;
+}
+.ai-workshop-head h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e4ebdc;
+}
+.ai-workshop-head p {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9eaa98;
+}
+.ai-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  color: #d7ec9e;
+  border: 1px solid #566a43;
+  border-radius: 7px;
+  background: #34412c;
+}
+.jev-badge {
+  margin-left: auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 1.2px;
+  color: #b7c7a7;
+}
+.jev-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b9d77f;
+  box-shadow: 0 0 8px #b9d77f88;
+}
+.ai-mode {
+  display: flex;
+  gap: 4px;
+  margin: 13px 0 8px;
+  padding: 0;
+  border: 0;
+}
+.ai-mode button:not([data-slot]) {
+  padding: 5px 9px;
+  border-color: transparent;
+  font-size: 11px;
+  color: #9eaa98;
+}
+.ai-mode button[aria-pressed='true'] {
+  border-color: #4a5941;
+  background: #35412f;
+  color: #d9e8c3;
+}
+.ai-compose {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.ai-compose textarea {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+  min-height: 54px;
+  max-height: 140px;
+  border: 1px solid #44503f;
+  border-radius: 6px;
+  padding: 9px 11px;
+  background: #151b17;
+  color: #e0e7da;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.ai-compose textarea::placeholder {
+  color: #758171;
+}
+.ai-run {
+  min-width: 126px;
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.prompt-examples {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: #899684;
+  font-size: 10px;
+}
+.prompt-examples button:not([data-slot]) {
+  padding: 3px 6px;
+  border-color: #3b4638;
+  border-radius: 12px;
+  color: #9faa9b;
+  font-size: 10px;
+}
+.prompt-examples output {
+  margin-left: auto;
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  color: #a9bc93;
+}
 .history {
   display: flex;
   gap: 6px;
@@ -389,6 +522,36 @@ button.quiet:not([data-slot]) {
   padding: 15px 16px;
   border-top: 1px solid #303a35;
   background: #1e2522;
+}
+.clip-tests {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 12px;
+  border-top: 1px solid #303a35;
+  background: #19201d;
+  overflow-x: auto;
+}
+.clip-tests > span {
+  margin-right: 4px;
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 1px;
+  color: #82907e;
+}
+.clip-tests button:not([data-slot]) {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-color: #354038;
+  font-size: 11px;
+  color: #aab5a5;
+}
+.clip-tests button[aria-pressed='true'] {
+  background: #3a4832;
+  border-color: #5b6d4c;
+  color: #dceabf;
 }
 .toggle {
   display: flex;
@@ -859,6 +1022,19 @@ button.quiet:not([data-slot]) {
   .properties .toggle {
     font-size: 14px;
   }
+  .ai-workshop-head p {
+    display: none;
+  }
+  .ai-compose {
+    flex-direction: column;
+  }
+  .ai-run {
+    width: 100%;
+  }
+  .prompt-examples output {
+    width: 100%;
+    margin: 3px 0 0;
+  }
 }
 .rigging > .toggle {
   margin-bottom: 14px;
@@ -867,7 +1043,11 @@ button.quiet:not([data-slot]) {
   margin: 10px 0 18px;
 }
 .rigging .animation-label {
+  display: block;
   margin-top: 16px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #aebba6;
 }
 .animation-select[data-slot] {
   width: 100%;

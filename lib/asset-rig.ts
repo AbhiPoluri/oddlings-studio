@@ -70,8 +70,7 @@ export function rigCreature(
       .setFromBufferAttribute(position as T.BufferAttribute)
       .getCenter(new T.Vector3());
     for (let i = 0; i < position.count; i++) {
-      const x = position.getX(i),
-        y = position.getY(i);
+      const y = position.getY(i);
       let a = 1,
         b = 1,
         t = 0;
@@ -121,10 +120,14 @@ function rotations(
   name: string,
   times: number[],
   angles: number[],
-  axis: 'x' | 'z' = 'x',
+  axis: 'x' | 'y' | 'z' = 'x',
 ) {
   const q = new T.Quaternion(),
-    a = new T.Vector3(axis === 'x' ? 1 : 0, 0, axis === 'z' ? 1 : 0);
+    a = new T.Vector3(
+      axis === 'x' ? 1 : 0,
+      axis === 'y' ? 1 : 0,
+      axis === 'z' ? 1 : 0,
+    );
   return new T.QuaternionKeyframeTrack(
     `${name}.quaternion`,
     times,
@@ -160,7 +163,40 @@ export function rigClips(): T.AnimationClip[] {
       [1, 1, 1, 1.025, 1.035, 1.025, 1, 1, 1],
     ),
   ]);
-  return [idle, walk];
+  const jumpTimes = [0, 0.18, 0.42, 0.68, 1];
+  const jump = new T.AnimationClip('Jump', 1, [
+    rotations('Thigh_L', jumpTimes, [0, 0.48, -0.22, -0.05, 0]),
+    rotations('Thigh_R', jumpTimes, [0, 0.48, -0.22, -0.05, 0]),
+    rotations('Shin_L', jumpTimes, [0, -0.62, 0.18, 0.08, 0]),
+    rotations('Shin_R', jumpTimes, [0, -0.62, 0.18, 0.08, 0]),
+    rotations('Arm_L', jumpTimes, [0, 0.25, -0.85, -0.22, 0]),
+    rotations('Arm_R', jumpTimes, [0, 0.25, -0.85, -0.22, 0]),
+    new T.VectorKeyframeTrack(
+      'Root.position',
+      jumpTimes,
+      [0, 0, 0, 0, -0.04, 0, 0, 0.34, 0, 0, 0.08, 0, 0, 0, 0],
+    ),
+  ]);
+  const waveTimes = [0, 0.2, 0.42, 0.64, 0.86, 1.1];
+  const wave = new T.AnimationClip('Wave', 1.1, [
+    rotations('Arm_R', waveTimes, [0, -1.45, -1.45, -1.45, -1.45, 0], 'z'),
+    rotations('Forearm_R', waveTimes, [0, -0.28, 0.5, -0.45, 0.42, 0], 'x'),
+    rotations('Head', waveTimes, [0, -0.08, 0.06, -0.06, 0.04, 0], 'z'),
+  ]);
+  const attackTimes = [0, 0.22, 0.42, 0.66, 1];
+  const attack = new T.AnimationClip('Attack', 1, [
+    rotations('Spine', attackTimes, [0, -0.32, 0.48, 0.12, 0], 'y'),
+    rotations('Arm_L', attackTimes, [0, 0.68, -0.85, -0.18, 0], 'x'),
+    rotations('Arm_R', attackTimes, [0, 0.68, -0.85, -0.18, 0], 'x'),
+    rotations('Forearm_L', attackTimes, [0, -0.5, 0.25, 0.08, 0], 'x'),
+    rotations('Forearm_R', attackTimes, [0, -0.5, 0.25, 0.08, 0], 'x'),
+    new T.VectorKeyframeTrack(
+      'Root.position',
+      attackTimes,
+      [0, 0, 0, 0, 0, -0.06, 0, 0.02, 0.14, 0, 0, 0.04, 0, 0, 0],
+    ),
+  ]);
+  return [idle, walk, jump, wave, attack];
 }
 export function skeletonOf(model: T.Object3D) {
   let result: T.Skeleton | undefined;
