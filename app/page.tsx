@@ -17,9 +17,9 @@ import {
   RotateCcw,
   Mountain,
   Shapes,
-  Sparkles,
-  WandSparkles,
-  LoaderCircle,
+  Braces,
+  Dices,
+  GitBranch,
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -45,6 +45,12 @@ import {
 } from '@/lib/asset-recipe';
 import { registerStudioTools } from '@/lib/studio-tools';
 import { download, exportAsset } from '@/lib/asset-export';
+import {
+  blueprints,
+  generateBlueprint,
+  mutateRecipe,
+  type Blueprint,
+} from '@/lib/procedural-director';
 type Saved = { id: string; recipe: Recipe; thumbnail: string };
 const colors = [
   '#93cec8',
@@ -140,12 +146,14 @@ export default function Studio() {
   const [speed, setSpeed] = useState(1);
   const removed = useRef<Saved | null>(null);
   const [canRestore, setCanRestore] = useState(false);
-  const [aiMode, setAiMode] = useState<'create' | 'refine'>('create');
-  const [prompt, setPrompt] = useState(
-    'A tiny moss guardian with a wide head, three eyes, little horns, and a friendly grin',
-  );
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiResult, setAiResult] = useState('');
+  const [blueprint, setBlueprint] = useState<Blueprint>('scout');
+  const [mutation, setMutation] = useState(0.45);
+  const activeBlueprint: Blueprint =
+    blueprints[blueprint].kind === recipe.kind
+      ? blueprint
+      : recipe.kind === 'creature'
+        ? 'scout'
+        : 'grove';
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE);
@@ -223,6 +231,7 @@ export default function Studio() {
     setStatus('New seed. Your shape and palette settings are preserved.');
   }
   function switchKind(kind: Kind) {
+    setBlueprint(kind === 'creature' ? 'scout' : 'grove');
     change({
       kind,
       name: kind === 'creature' ? 'Mossling' : 'Fern Hollow',
@@ -322,59 +331,25 @@ export default function Studio() {
       );
     }
   }
-  async function assist() {
-    const instruction = prompt.trim();
-    if (instruction.length < 3) {
-      setStatus('Describe what you want the assistant to make or change.');
-      return;
-    }
-    setAiBusy(true);
-    setAiResult('');
+  function freshSeed() {
+    return crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647;
+  }
+  function generateFromCode(selected: Blueprint) {
+    const next = generateBlueprint(selected, freshSeed());
+    current.current = next;
+    commit(next);
+    if (next.kind === 'creature') setAnimation('Idle');
     setStatus(
-      aiMode === 'create'
-        ? 'Jev is shaping a new editable draft…'
-        : 'Jev is translating your note into precise edits…',
+      `${blueprints[selected].label} generated locally from procedural TypeScript. Every value remains editable.`,
     );
-    try {
-      const response = await fetch('/api/assist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: aiMode,
-          prompt: instruction,
-          recipe: current.current,
-        }),
-      });
-      const data = (await response.json()) as {
-        recipe?: unknown;
-        confidence?: number;
-        model?: string;
-        error?: string;
-      };
-      if (!response.ok || !data.recipe)
-        throw Error(data.error || 'The assistant could not finish this draft.');
-      const next = parseRecipe(data.recipe);
-      current.current = next;
-      commit(next);
-      if (next.kind === 'creature' && next.rigged) setAnimation('Idle');
-      const confidence = Math.round((data.confidence ?? 0) * 100);
-      setAiResult(
-        `${data.model ?? 'Jev'} · ${confidence}% decision confidence`,
-      );
-      setStatus(
-        aiMode === 'create'
-          ? 'AI draft applied as one undoable step. Test it, then refine or tune the controls.'
-          : 'AI refinement applied as one undoable step. Keep refining or use the controls for exact values.',
-      );
-    } catch (error) {
-      setStatus(
-        error instanceof Error
-          ? error.message
-          : 'The assistant could not finish this draft.',
-      );
-    } finally {
-      setAiBusy(false);
-    }
+  }
+  function mutateFromCode() {
+    const next = mutateRecipe(current.current, freshSeed(), mutation);
+    current.current = next;
+    commit(next);
+    setStatus(
+      `Code-generated mutation applied at ${Math.round(mutation * 100)}% strength as one undoable step.`,
+    );
   }
   useEffect(
     () =>
@@ -575,99 +550,71 @@ export default function Studio() {
               </button>
             </div>
           </div>
-          <section className="ai-workshop" aria-labelledby="ai-workshop-title">
-            <div className="ai-workshop-head">
-              <div className="ai-mark">
-                <Sparkles size={17} />
+          <section
+            className="generator-workshop"
+            aria-labelledby="generator-workshop-title"
+          >
+            <div className="generator-workshop-head">
+              <div className="code-mark">
+                <Braces size={17} />
               </div>
               <div>
-                <h3 id="ai-workshop-title">AI asset director</h3>
+                <h3 id="generator-workshop-title">Procedural code generator</h3>
                 <p>
-                  Describe a game-ready draft or a change. Every result stays
-                  procedural and editable.
+                  Meshes, rigs, skin weights, and worlds are built locally from
+                  TypeScript, math, and a seed.
                 </p>
               </div>
-              <span className="jev-badge">
-                <i /> JEV
+              <span className="code-badge">
+                <i /> LOCAL CODE
               </span>
             </div>
-            <fieldset className="ai-mode" aria-label="Assistant mode">
+            <div className="blueprint-grid">
+              {(Object.keys(blueprints) as Blueprint[])
+                .filter((key) => blueprints[key].kind === recipe.kind)
+                .map((key) => (
+                  <button
+                    key={key}
+                    aria-pressed={activeBlueprint === key}
+                    onClick={() => setBlueprint(key)}
+                  >
+                    <strong>{blueprints[key].label}</strong>
+                    <span>{blueprints[key].description}</span>
+                  </button>
+                ))}
+            </div>
+            <div className="generator-actions">
               <button
-                aria-pressed={aiMode === 'create'}
-                onClick={() => setAiMode('create')}
-              >
-                Create new
-              </button>
-              <button
-                aria-pressed={aiMode === 'refine'}
-                onClick={() => setAiMode('refine')}
-              >
-                Refine current
-              </button>
-            </fieldset>
-            <div className="ai-compose">
-              <textarea
-                aria-label={
-                  aiMode === 'create'
-                    ? 'Describe a new asset'
-                    : 'Describe changes to the current asset'
-                }
-                value={prompt}
-                maxLength={600}
-                rows={2}
-                placeholder={
-                  aiMode === 'create'
-                    ? 'Example: a shy moon creature with four eyes and long ears'
-                    : 'Example: make it taller, less toothy, and give it wider shoulders'
-                }
-                onChange={(event) => setPrompt(event.target.value)}
-                onKeyDown={(event) => {
-                  if (
-                    (event.metaKey || event.ctrlKey) &&
-                    event.key === 'Enter'
-                  ) {
-                    event.preventDefault();
-                    void assist();
-                  }
+                className="accent"
+                onClick={() => {
+                  setBlueprint(activeBlueprint);
+                  generateFromCode(activeBlueprint);
                 }}
-              />
-              <button
-                className="accent ai-run"
-                onClick={() => void assist()}
-                disabled={aiBusy}
               >
-                {aiBusy ? (
-                  <LoaderCircle className="spin" size={16} />
-                ) : (
-                  <WandSparkles size={16} />
-                )}
-                {aiBusy
-                  ? 'Thinking…'
-                  : aiMode === 'create'
-                    ? 'Make draft'
-                    : 'Apply changes'}
+                <Dices size={16} /> Generate blueprint
               </button>
+              <button onClick={mutateFromCode}>
+                <GitBranch size={16} /> Mutate current
+              </button>
+              <label>
+                Mutation
+                <Slider
+                  aria-label="Mutation strength"
+                  value={[mutation]}
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  onValueChange={(value) =>
+                    setMutation(Array.isArray(value) ? value[0] : value)
+                  }
+                />
+                <output>{Math.round(mutation * 100)}%</output>
+              </label>
             </div>
-            <div className="prompt-examples">
-              <span>Try</span>
-              {(aiMode === 'create'
-                ? [
-                    'tiny forest trickster',
-                    'moonlit mushroom clearing',
-                    'chunky one-eyed guardian',
-                  ]
-                : [
-                    'make it lankier',
-                    'add more horns and a new variation',
-                    'make it friendlier and smaller',
-                  ]
-              ).map((example) => (
-                <button key={example} onClick={() => setPrompt(example)}>
-                  {example}
-                </button>
-              ))}
-              {aiResult && <output>{aiResult}</output>}
-            </div>
+            <p className="deterministic-note">
+              Same seed + recipe = same geometry. No model API, generated media,
+              or network request.
+            </p>
           </section>
           <div className="viewport-shell">
             <div className="view-toolbar">

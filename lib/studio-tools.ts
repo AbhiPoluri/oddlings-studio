@@ -1,4 +1,29 @@
 import { parseRecipe, type Recipe } from './asset-recipe';
+import {
+  blueprints,
+  generateBlueprint,
+  mutateRecipe,
+  type Blueprint,
+} from './procedural-director';
+
+type StudioTool = {
+  name: string;
+  description: string;
+  inputSchema: object;
+  annotations: { readOnlyHint: boolean };
+  execute: (input: unknown) => unknown;
+};
+
+declare global {
+  interface Document {
+    modelContext?: {
+      registerTool: (
+        tool: StudioTool,
+        options: { signal: AbortSignal },
+      ) => void | Promise<void>;
+    };
+  }
+}
 export function registerStudioTools(
   read: () => Recipe,
   update: (r: Recipe) => void,
@@ -6,7 +31,7 @@ export function registerStudioTools(
   const context = document.modelContext;
   if (!context?.registerTool) return;
   const lifecycle = new AbortController();
-  const tools = [
+  const tools: StudioTool[] = [
     {
       name: 'read_asset_recipe',
       description:
@@ -51,16 +76,16 @@ export function registerStudioTools(
       },
     },
     {
-      name: 'direct_asset_with_ai',
+      name: 'generate_procedural_asset',
       description:
-        'Create a new procedural game asset or refine the current one from a natural-language instruction using Jev. Updates the visible editable recipe as one undoable step; does not save or export.',
+        'Generate a complete editable asset locally from a named code blueprint and integer seed. Updates the visible recipe as one undoable step; does not use an LLM, save, or export.',
       inputSchema: {
         type: 'object',
         properties: {
-          mode: { type: 'string', enum: ['create', 'refine'] },
-          instruction: { type: 'string', minLength: 3, maxLength: 600 },
+          blueprint: { type: 'string', enum: Object.keys(blueprints) },
+          seed: { type: 'integer', minimum: 0, maximum: 2147483647 },
         },
-        required: ['mode', 'instruction'],
+        required: ['blueprint', 'seed'],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
@@ -69,41 +94,59 @@ export function registerStudioTools(
           !input ||
           typeof input !== 'object' ||
           Object.keys(input).length !== 2 ||
-          !('mode' in input) ||
-          !('instruction' in input) ||
-          !['create', 'refine'].includes(String(input.mode)) ||
-          typeof input.instruction !== 'string' ||
-          input.instruction.trim().length < 3 ||
-          input.instruction.length > 600
+          !('blueprint' in input) ||
+          !('seed' in input) ||
+          typeof input.blueprint !== 'string' ||
+          !(input.blueprint in blueprints) ||
+          !Number.isInteger(input.seed)
         )
-          throw Error('Expected a create or refine mode and a 3–600 character instruction.');
-        const response = await fetch('/api/assist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mode: input.mode,
-            prompt: input.instruction.trim(),
-            recipe: read(),
-          }),
-        });
-        const data = (await response.json()) as {
-          recipe?: unknown;
-          confidence?: number;
-          model?: string;
-          error?: string;
-        };
-        if (!response.ok || !data.recipe)
-          throw Error(data.error || 'The AI asset director could not finish.');
-        const recipe = parseRecipe(data.recipe);
+          throw Error('Expected a valid blueprint and integer seed.');
+        const recipe = generateBlueprint(
+          input.blueprint as Blueprint,
+          input.seed as number,
+        );
         update(recipe);
         await new Promise<void>((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         );
-        return {
-          recipe: read(),
-          model: data.model ?? 'jev',
-          confidence: data.confidence ?? 0,
-        };
+        return read();
+      },
+    },
+    {
+      name: 'mutate_procedural_asset',
+      description:
+        'Create a deterministic code-generated variation of the current asset from a new seed and mutation strength. Updates the visible recipe as one undoable step; does not use an LLM, save, or export.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          seed: { type: 'integer', minimum: 0, maximum: 2147483647 },
+          strength: { type: 'number', minimum: 0.05, maximum: 1 },
+        },
+        required: ['seed', 'strength'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input: unknown) {
+        if (
+          !input ||
+          typeof input !== 'object' ||
+          Object.keys(input).length !== 2 ||
+          !('seed' in input) ||
+          !('strength' in input) ||
+          !Number.isInteger(input.seed) ||
+          typeof input.strength !== 'number'
+        )
+          throw Error('Expected an integer seed and mutation strength from 0.05 to 1.');
+        const recipe = mutateRecipe(
+          read(),
+          input.seed as number,
+          input.strength,
+        );
+        update(recipe);
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        return read();
       },
     },
   ];

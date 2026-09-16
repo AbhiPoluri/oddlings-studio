@@ -278,7 +278,7 @@ button.quiet:not([data-slot]) {
   margin-top: 9px;
   word-break: break-word;
 }
-.ai-workshop {
+.generator-workshop {
   border: 1px solid #46523e;
   border-radius: 9px;
   padding: 15px;
@@ -286,26 +286,26 @@ button.quiet:not([data-slot]) {
   background: linear-gradient(110deg, #293126 0%, #222925 62%, #202624 100%);
   box-shadow: inset 0 1px #ffffff08;
 }
-.ai-workshop-head {
+.generator-workshop-head {
   display: flex;
   align-items: center;
   gap: 11px;
 }
-.ai-workshop-head > div:nth-child(2) {
+.generator-workshop-head > div:nth-child(2) {
   min-width: 0;
 }
-.ai-workshop-head h3 {
+.generator-workshop-head h3 {
   font-size: 14px;
   font-weight: 600;
   color: #e4ebdc;
 }
-.ai-workshop-head p {
+.generator-workshop-head p {
   margin-top: 3px;
   font-size: 12px;
   line-height: 1.45;
   color: #9eaa98;
 }
-.ai-mark {
+.code-mark {
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
@@ -316,7 +316,7 @@ button.quiet:not([data-slot]) {
   border-radius: 7px;
   background: #34412c;
 }
-.jev-badge {
+.code-badge {
   margin-left: auto;
   align-self: flex-start;
   display: inline-flex;
@@ -328,86 +328,84 @@ button.quiet:not([data-slot]) {
   letter-spacing: 1.2px;
   color: #b7c7a7;
 }
-.jev-badge i {
+.code-badge i {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: #b9d77f;
   box-shadow: 0 0 8px #b9d77f88;
 }
-.ai-mode {
+.blueprint-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin: 13px 0;
+}
+.blueprint-grid button:not([data-slot]) {
   display: flex;
-  gap: 4px;
-  margin: 13px 0 8px;
-  padding: 0;
-  border: 0;
-}
-.ai-mode button:not([data-slot]) {
-  padding: 5px 9px;
-  border-color: transparent;
-  font-size: 11px;
-  color: #9eaa98;
-}
-.ai-mode button[aria-pressed='true'] {
-  border-color: #4a5941;
-  background: #35412f;
-  color: #d9e8c3;
-}
-.ai-compose {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-.ai-compose textarea {
-  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
   min-width: 0;
-  resize: vertical;
-  min-height: 54px;
-  max-height: 140px;
-  border: 1px solid #44503f;
-  border-radius: 6px;
-  padding: 9px 11px;
-  background: #151b17;
-  color: #e0e7da;
-  font-size: 13px;
-  line-height: 1.45;
+  padding: 8px 9px;
+  text-align: left;
+  border-color: #3e4a3a;
+  background: #1a211c;
 }
-.ai-compose textarea::placeholder {
-  color: #758171;
+.blueprint-grid button[aria-pressed='true'] {
+  border-color: #7e9463;
+  background: #35412f;
+  box-shadow: inset 0 0 0 1px #667b52;
 }
-.ai-run {
-  min-width: 126px;
+.blueprint-grid strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: #dbe7ce;
 }
-.spin {
-  animation: spin 0.9s linear infinite;
+.blueprint-grid span {
+  font-size: 10px;
+  line-height: 1.35;
+  color: #8f9c89;
 }
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.prompt-examples {
+.generator-actions {
   display: flex;
-  gap: 5px;
   align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-top: 8px;
-  color: #899684;
-  font-size: 10px;
 }
-.prompt-examples button:not([data-slot]) {
-  padding: 3px 6px;
-  border-color: #3b4638;
-  border-radius: 12px;
-  color: #9faa9b;
-  font-size: 10px;
+.generator-actions > button {
+  min-height: 36px;
 }
-.prompt-examples output {
+.generator-actions > label {
+  display: grid;
+  grid-template-columns: auto minmax(70px, 120px) 34px;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
-  font:
-    10px var(--font-geist-mono),
-    monospace;
-  color: #a9bc93;
+  font-size: 11px;
+  color: #a8b3a2;
+}
+.generator-actions [data-slot='slider-track'] {
+  height: 3px;
+  background: #485443;
+}
+.generator-actions [data-slot='slider-range'] {
+  background: #bad585;
+}
+.generator-actions [data-slot='slider-thumb'] {
+  width: 10px;
+  height: 10px;
+  background: #d4e5ac;
+  border-color: #d4e5ac;
+}
+.generator-actions output {
+  font: 10px var(--font-geist-mono), monospace;
+  color: #c1d4a6;
+}
+.deterministic-note {
+  margin-top: 10px;
+  font: 10px var(--font-geist-mono), monospace;
+  color: #819079;
 }
 .history {
   display: flex;
@@ -1022,18 +1020,19 @@ button.quiet:not([data-slot]) {
   .properties .toggle {
     font-size: 14px;
   }
-  .ai-workshop-head p {
+  .generator-workshop-head p {
     display: none;
   }
-  .ai-compose {
-    flex-direction: column;
+  .blueprint-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .ai-run {
+  .generator-actions > button {
     width: 100%;
   }
-  .prompt-examples output {
+  .generator-actions > label {
     width: 100%;
-    margin: 3px 0 0;
+    margin-left: 0;
+    grid-template-columns: auto 1fr 34px;
   }
 }
 .rigging > .toggle {
