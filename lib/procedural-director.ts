@@ -351,6 +351,10 @@ export function mutateRecipe(
     next.horns = count(rng, current.horns, 3 * amount, 0, 8);
     next.teeth = count(rng, current.teeth, 4 * amount, 0, 10);
     next.ears = jitter(rng, current.ears, 0.65 * amount, 0, 1.8);
+    // Eye count is the most characterful creature dial, so variations should
+    // move it too. Only creatures read it, so leave people and props alone.
+    if (current.kind === 'creature')
+      next.eyes = count(rng, current.eyes, 2 * amount, 1, 5);
     if (character) {
       next.hipHeight = jitter(rng, current.hipHeight, 0.1 * amount, 0.35, 0.85);
       next.headPivot = jitter(rng, current.headPivot, 0.2 * amount, 0.7, 1.65);

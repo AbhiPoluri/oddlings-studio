@@ -40,3 +40,10 @@ next-env.d.ts
 .sites-runtime/
 *.tsbuildinfo
 
+
+# generated assets and local scratch
+/assets/
+/.scratch/
+
+# Studio preview pointer — points at whatever was built last.
+.oddlings/

@@ -1,0 +1,290 @@
+{
+  "version": 1,
+  "name": "Scrap Knight",
+  "kind": "person",
+  "seed": 1207,
+  "color": "#a7aed2",
+  "rig": {
+    "hipHeight": 0.5,
+    "headPivot": 0.88,
+    "shoulderWidth": 0.26
+  },
+  "surface": {
+    "blend": 0.025,
+    "detail": 128,
+    "budget": 4000,
+    "shading": "flat"
+  },
+  "parts": [
+    {
+      "name": "head",
+      "shape": "box",
+      "size": [
+        0.28,
+        0.3,
+        0.28
+      ],
+      "position": [
+        0,
+        1.0,
+        0
+      ],
+      "rigPart": "head",
+      "children": [
+        {
+          "name": "visor",
+          "shape": "box",
+          "size": [
+            0.25,
+            0.09,
+            0.06
+          ],
+          "position": [
+            0,
+            0.02,
+            0.14
+          ],
+          "color": "#e8d18a"
+        },
+        {
+          "name": "crest",
+          "shape": "box",
+          "size": [
+            0.04,
+            0.1,
+            0.26
+          ],
+          "position": [
+            0,
+            0.18,
+            -0.01
+          ],
+          "color": "#c7a4b5"
+        },
+        {
+          "name": "antenna",
+          "shape": "cylinder",
+          "size": [
+            0.025,
+            0.16,
+            0.025
+          ],
+          "position": [
+            0.1,
+            0.24,
+            -0.06
+          ],
+          "rotation": [
+            0,
+            0,
+            14
+          ],
+          "detail": 4,
+          "color": "#6d5f52",
+          "mirror": "x"
+        }
+      ]
+    },
+    {
+      "name": "collar",
+      "shape": "cylinder",
+      "size": [
+        0.2,
+        0.08,
+        0.2
+      ],
+      "position": [
+        0,
+        0.87,
+        0
+      ],
+      "detail": 6,
+      "color": "#6d5f52",
+      "rigPart": "spine"
+    },
+    {
+      "name": "torso",
+      "shape": "box",
+      "size": [
+        0.42,
+        0.4,
+        0.26
+      ],
+      "position": [
+        0,
+        0.68,
+        0
+      ],
+      "rigPart": "spine",
+      "children": [
+        {
+          "name": "core",
+          "shape": "octahedron",
+          "size": [
+            0.14,
+            0.14,
+            0.08
+          ],
+          "position": [
+            0,
+            0.04,
+            0.14
+          ],
+          "color": "#e8d18a"
+        },
+        {
+          "name": "plate",
+          "shape": "box",
+          "size": [
+            0.34,
+            0.1,
+            0.24
+          ],
+          "position": [
+            0,
+            0.16,
+            0
+          ],
+          "color": "#c7a4b5"
+        }
+      ]
+    },
+    {
+      "name": "hips",
+      "shape": "box",
+      "size": [
+        0.3,
+        0.16,
+        0.24
+      ],
+      "position": [
+        0,
+        0.46,
+        0
+      ],
+      "rigPart": "hips",
+      "color": "#6d5f52"
+    },
+    {
+      "name": "shoulder",
+      "shape": "icosahedron",
+      "size": [
+        0.16,
+        0.16,
+        0.18
+      ],
+      "position": [
+        0.27,
+        0.8,
+        0
+      ],
+      "detail": 4,
+      "rigPart": "arm_l",
+      "color": "#c7a4b5",
+      "mirror": "x"
+    },
+    {
+      "name": "upperarm",
+      "shape": "limb",
+      "from": [
+        0.27,
+        0.78,
+        0
+      ],
+      "to": [
+        0.31,
+        0.58,
+        0
+      ],
+      "radius": 0.055,
+      "rigPart": "arm_l",
+      "mirror": "x"
+    },
+    {
+      "name": "forearm",
+      "shape": "limb",
+      "from": [
+        0.31,
+        0.58,
+        0
+      ],
+      "to": [
+        0.34,
+        0.38,
+        0.04
+      ],
+      "radius": 0.05,
+      "taper": 0.8,
+      "rigPart": "forearm_l",
+      "mirror": "x",
+      "children": [
+        {
+          "name": "hand",
+          "shape": "box",
+          "size": [
+            0.1,
+            0.12,
+            0.11
+          ],
+          "position": [
+            0.35,
+            0.31,
+            0.05
+          ],
+          "color": "#6d5f52"
+        }
+      ]
+    },
+    {
+      "name": "thigh",
+      "shape": "limb",
+      "from": [
+        0.12,
+        0.45,
+        0
+      ],
+      "to": [
+        0.14,
+        0.24,
+        0
+      ],
+      "radius": 0.07,
+      "rigPart": "thigh_l",
+      "mirror": "x"
+    },
+    {
+      "name": "shin",
+      "shape": "limb",
+      "from": [
+        0.14,
+        0.24,
+        0
+      ],
+      "to": [
+        0.15,
+        0.07,
+        0
+      ],
+      "radius": 0.055,
+      "rigPart": "shin_l",
+      "mirror": "x"
+    },
+    {
+      "name": "foot",
+      "shape": "box",
+      "size": [
+        0.14,
+        0.09,
+        0.24
+      ],
+      "position": [
+        0.15,
+        0.045,
+        0.05
+      ],
+      "rigPart": "foot_l",
+      "color": "#6d5f52",
+      "mirror": "x"
+    }
+  ]
+}

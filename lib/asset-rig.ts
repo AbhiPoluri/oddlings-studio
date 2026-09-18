@@ -15,16 +15,128 @@ export const JOINTS = [
   'Shin_R',
   'Foot_R',
 ] as const;
+/** The 14 bones a humanoid rig has, and the only names an override may use. */
+export type BoneName = (typeof JOINTS)[number];
 export type RigSettings = {
   hipHeight: number;
   headPivot: number;
   shoulderWidth: number;
+  /**
+   * Absolute model-space positions for individual bones, replacing whatever
+   * the three measurements derived.
+   *
+   * Three numbers describe a body well enough to get a skeleton roughly right,
+   * and never well enough to get one exactly right: a long-armed goblin or a
+   * head sitting forward of the spine has no expression in hipHeight,
+   * headPivot and shoulderWidth. An override says where one bone actually
+   * goes. It is absolute rather than a delta so that a hand-editor can write
+   * back the position it just dragged a handle to, and mirroring is the
+   * author's business — setting `Arm_L` does not move `Arm_R`.
+   */
+  bones?: Partial<Record<BoneName, [number, number, number]>>;
 };
 export const defaultRig: RigSettings = {
   hipHeight: 0.48,
   headPivot: 0.9,
   shoulderWidth: 0.28,
 };
+/**
+ * Which bone each of `JOINTS` hangs off, by index; the root hangs off nothing.
+ *
+ * `JOINTS` is ordered parent before child, which is what lets the layout below
+ * resolve every absolute position in one forward pass.
+ */
+const BONE_PARENT: readonly (number | null)[] = [
+  null, 0, 1, 2, 2, 4, 2, 6, 1, 8, 9, 1, 11, 12,
+];
+
+/** Where a bone sits relative to its parent before any override. */
+function restOffsets(settings: RigSettings) {
+  const local: [number, number, number][] = JOINTS.map(() => [0, 0, 0]);
+  local[1] = [0, settings.hipHeight, 0];
+  local[2] = [0, 0.1, 0];
+  local[3] = [0, settings.headPivot - settings.hipHeight - 0.1, 0];
+  // +Z is the front, so a character's own left is +x. Every shipped spec put
+  // its `_l` parts there; the bones used to sit on the other side, which Walk
+  // hid (a swing about x does not care which side you are on) and Wave did
+  // not (the arm lifted about a pivot across the body).
+  for (const [side, arm, thigh] of [
+    [1, 4, 8],
+    [-1, 6, 11],
+  ]) {
+    local[arm] = [side * settings.shoulderWidth, 0, 0];
+    local[arm + 1] = [side * 0.09, -0.12, 0.025];
+    local[thigh] = [side * 0.16, 0.34 - settings.hipHeight, 0];
+    local[thigh + 1] = [side * 0.015, -0.15, 0.015];
+    local[thigh + 2] = [side * 0.015, -0.14, 0.055];
+  }
+  return local;
+}
+
+export type BonePlacement = {
+  name: BoneName;
+  parent: BoneName | null;
+  /** Model space, before the spec's display scale. */
+  at: [number, number, number];
+};
+
+/**
+ * The skeleton a rig block describes, in model space, overrides applied.
+ *
+ * Pure, and the single source of truth for bone positions: `rigCreature`
+ * builds its hierarchy from this, and `boneLayout` hands the same numbers to
+ * anything that wants to draw a handle on a bone without building the model.
+ * Returned in `JOINTS` order, so entry `i` is skeleton bone `i`.
+ */
+export function rigBoneLayout(settings: RigSettings = defaultRig) {
+  const local = restOffsets(settings);
+  const placed: BonePlacement[] = [];
+  JOINTS.forEach((name, index) => {
+    const parent = BONE_PARENT[index];
+    // Safe because JOINTS lists a parent before its children.
+    const base = parent === null ? [0, 0, 0] : placed[parent].at;
+    const override = settings.bones?.[name];
+    placed.push({
+      name,
+      parent: parent === null ? null : JOINTS[parent],
+      at: override
+        ? [override[0], override[1], override[2]]
+        : [
+            base[0] + local[index][0],
+            base[1] + local[index][1],
+            base[2] + local[index][2],
+          ],
+    });
+  });
+  return placed;
+}
+/**
+ * Where automatic skin weighting puts an unpinned part, by the position of its
+ * centre. These are absolute metres, not derived from the rig settings, which
+ * is why auto-weighting only suits a character of roughly human-ish height at
+ * the origin. The audit reads the same numbers so the two can never drift.
+ */
+export const AUTO_WEIGHT = {
+  /** Above this height a part follows the head. */
+  head: 0.82,
+  /** Below this height a part follows the nearer leg. */
+  legs: 0.36,
+  /** Wider than this from the centre line a part follows the nearer arm. */
+  arms: 0.28,
+  /** The height range these thresholds were tuned for. */
+  designedFor: [0.7, 1.5] as [number, number],
+};
+
+/** The bone an unpinned part at this centre will be weighted to. */
+export function autoBone(centre: { x: number; y: number }) {
+  if (centre.y > AUTO_WEIGHT.head) return 'Head';
+  if (centre.y < AUTO_WEIGHT.legs)
+    return centre.x > 0 ? 'Thigh_L' : 'Thigh_R';
+  if (Math.abs(centre.x) > AUTO_WEIGHT.arms)
+    return centre.x > 0 ? 'Arm_L' : 'Arm_R';
+  return 'Spine';
+}
+
 export function rigCreature(
   source: T.Group,
   settings: RigSettings = defaultRig,
@@ -32,28 +144,25 @@ export function rigCreature(
   const model = new T.Group();
   model.name = source.name;
   model.userData = source.userData;
-  const bones = JOINTS.map((name) => {
+  const layout = rigBoneLayout(settings);
+  const bones = layout.map((place) => {
     const b = new T.Bone();
-    b.name = name;
+    b.name = place.name;
     return b;
   });
-  function joint(i: number, parent: number, x: number, y: number, z = 0) {
-    bones[i].position.set(x, y, z);
-    bones[parent].add(bones[i]);
-  }
-  joint(1, 0, 0, settings.hipHeight);
-  joint(2, 1, 0, 0.1);
-  joint(3, 2, 0, settings.headPivot - settings.hipHeight - 0.1);
-  for (const [side, arm, thigh] of [
-    [-1, 4, 8],
-    [1, 6, 11],
-  ]) {
-    joint(arm, 2, side * settings.shoulderWidth, 0);
-    joint(arm + 1, arm, side * 0.09, -0.12, 0.025);
-    joint(thigh, 1, side * 0.16, 0.34 - settings.hipHeight);
-    joint(thigh + 1, thigh, side * 0.015, -0.15, 0.015);
-    joint(thigh + 2, thigh + 1, side * 0.015, -0.14, 0.055);
-  }
+  // The layout is absolute; a bone's `position` is relative to its parent, so
+  // an override on a parent carries its children along rather than stretching
+  // the limb away from them.
+  layout.forEach((place, index) => {
+    const parent = BONE_PARENT[index];
+    const base = parent === null ? [0, 0, 0] : layout[parent].at;
+    bones[index].position.set(
+      place.at[0] - base[0],
+      place.at[1] - base[1],
+      place.at[2] - base[2],
+    );
+    if (parent !== null) bones[parent].add(bones[index]);
+  });
   model.add(bones[0]);
   model.updateMatrixWorld(true);
   const skeleton = new T.Skeleton(bones);
@@ -66,11 +175,23 @@ export function rigCreature(
     const position = geometry.attributes.position;
     const ids: number[] = [],
       weights: number[] = [];
-    const partCenter = new T.Box3()
+    const meshCenter = new T.Box3()
       .setFromBufferAttribute(position as T.BufferAttribute)
       .getCenter(new T.Vector3());
+    // A surface-mode asset is one mesh covering the whole body, so binding it
+    // by the mesh's own centre would weight the entire creature to a single
+    // bone. It carries the bone each vertex's source primitive was pinned to
+    // instead, and unpinned vertices fall back to their own position rather
+    // than to the centre of everything.
+    const perVertex = geometry.userData.rigParts as
+      | (string | undefined)[]
+      | undefined;
+    const partCenter = new T.Vector3();
     for (let i = 0; i < position.count; i++) {
       const y = position.getY(i);
+      if (perVertex)
+        partCenter.set(position.getX(i), y, position.getZ(i));
+      else partCenter.copy(meshCenter);
       let a = 1,
         b = 1,
         t = 0;
@@ -89,14 +210,17 @@ export function rigCreature(
         shin_r: 12,
         foot_r: 13,
       };
-      const explicit = named[String(object.userData.rigPart)];
+      const explicit =
+        named[
+          String(perVertex ? perVertex[i] : object.userData.rigPart)
+        ];
       if (explicit !== undefined) {
         a = explicit;
         b = explicit;
-      } else if (partCenter.y > 0.82) {
+      } else if (partCenter.y > AUTO_WEIGHT.head) {
         a = 3;
         b = 3;
-      } else if (partCenter.y < 0.36) {
+      } else if (partCenter.y < AUTO_WEIGHT.legs) {
         const thigh = partCenter.x < 0 ? 8 : 11;
         if (y > 0.19) {
           a = thigh;
@@ -107,7 +231,7 @@ export function rigCreature(
           b = thigh + 2;
           t = T.MathUtils.clamp((0.14 - y) / 0.1, 0, 1);
         }
-      } else if (Math.abs(partCenter.x) > 0.28) {
+      } else if (Math.abs(partCenter.x) > AUTO_WEIGHT.arms) {
         a = partCenter.x < 0 ? 4 : 6;
         b = a + 1;
         t = T.MathUtils.clamp((0.52 - y) / 0.14, 0, 1);
@@ -126,6 +250,10 @@ export function rigCreature(
     );
     const skinned = new T.SkinnedMesh(geometry, object.material);
     skinned.name = object.name;
+    // Carry the source mesh's metadata across. Without this a rigged asset
+    // loses `specPath` and `rigPart`, which silently disables the editor's
+    // part selection and every audit check that groups meshes by part.
+    skinned.userData = { ...object.userData };
     skinned.castShadow = true;
     skinned.receiveShadow = true;
     model.add(skinned);

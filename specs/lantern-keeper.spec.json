@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "name": "Lantern Keeper",
+  "kind": "creature",
+  "seed": 42,
+  "scale": 1,
+  "color": "#93cec8",
+  "rig": {
+    "hipHeight": 0.5,
+    "headPivot": 0.95,
+    "shoulderWidth": 0.3
+  },
+  "surface": {
+    "blend": 0.03,
+    "detail": 128,
+    "budget": 4000,
+    "shading": "flat"
+  },
+  "parts": [
+    {
+      "name": "head",
+      "shape": "icosahedron",
+      "size": [
+        0.62,
+        0.58,
+        0.6
+      ],
+      "position": [
+        0,
+        1.02,
+        0
+      ],
+      "jitter": 0.3,
+      "rigPart": "head",
+      "children": [
+        {
+          "name": "eye",
+          "shape": "sphere",
+          "size": [
+            0.13,
+            0.13,
+            0.13
+          ],
+          "position": [
+            0.15,
+            0.05,
+            0.27
+          ],
+          "color": "#1d2321",
+          "mirror": "x"
+        },
+        {
+          "name": "horn",
+          "shape": "cone",
+          "size": [
+            0.1,
+            0.3,
+            0.1
+          ],
+          "position": [
+            0.14,
+            0.3,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            -14
+          ],
+          "color": "#d2c385",
+          "mirror": "x"
+        },
+        {
+          "name": "tooth",
+          "shape": "cone",
+          "size": [
+            0.05,
+            0.09,
+            0.05
+          ],
+          "position": [
+            -0.08,
+            -0.18,
+            0.23
+          ],
+          "rotation": [
+            180,
+            0,
+            0
+          ],
+          "color": "#f2efe6",
+          "repeat": {
+            "count": 3,
+            "mode": "linear",
+            "offset": [
+              0.08,
+              0,
+              0
+            ],
+            "axis": "y",
+            "arc": 360,
+            "embed": -0.25,
+            "align": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "torso",
+      "shape": "capsule",
+      "size": [
+        0.5,
+        0.62,
+        0.42
+      ],
+      "position": [
+        0,
+        0.62,
+        0
+      ],
+      "jitter": 0.15,
+      "rigPart": "spine"
+    },
+    {
+      "name": "arm",
+      "shape": "limb",
+      "taper": 0.7,
+      "from": [
+        0.26,
+        0.8,
+        0
+      ],
+      "to": [
+        0.42,
+        0.42,
+        0.06
+      ],
+      "radius": 0.075,
+      "rigPart": "arm_l",
+      "mirror": "x"
+    },
+    {
+      "name": "leg",
+      "shape": "limb",
+      "from": [
+        0.15,
+        0.36,
+        0
+      ],
+      "to": [
+        0.17,
+        0.02,
+        0.02
+      ],
+      "radius": 0.09,
+      "rigPart": "thigh_l",
+      "mirror": "x"
+    },
+    {
+      "name": "backspike",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.16,
+        0.08
+      ],
+      "position": [
+        0,
+        0.95,
+        -0.2
+      ],
+      "color": "#6f8f86",
+      "repeat": {
+        "count": 5,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.26,
+        "arc": 180,
+        "embed": -0.25,
+        "align": true
+      }
+    }
+  ]
+}

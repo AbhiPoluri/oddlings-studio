@@ -1,0 +1,1040 @@
+{
+  "version": 1,
+  "name": "Lich",
+  "kind": "person",
+  "seed": 431,
+  "scale": 1.25,
+  "color": "#48513f",
+  "rig": {
+    "hipHeight": 0.79,
+    "headPivot": 1.17,
+    "shoulderWidth": 0.16
+  },
+  "surface": {
+    "blend": 0.008,
+    "detail": 320,
+    "budget": 28000,
+    "shading": "smooth"
+  },
+  "parts": [
+    {
+      "name": "sacrum",
+      "shape": "box",
+      "size": [
+        0.115,
+        0.1,
+        0.055
+      ],
+      "position": [
+        0,
+        0.842,
+        -0.058
+      ],
+      "rotation": [
+        14,
+        0,
+        0
+      ],
+      "jitter": 0.24,
+      "color": "#272c1f",
+      "rigPart": "hips"
+    },
+    {
+      "name": "ilium",
+      "shape": "box",
+      "size": [
+        0.038,
+        0.125,
+        0.105
+      ],
+      "position": [
+        0.073,
+        0.856,
+        -0.018
+      ],
+      "rotation": [
+        6,
+        0,
+        -24
+      ],
+      "jitter": 0.26,
+      "color": "#373e2e",
+      "rigPart": "hips",
+      "mirror": "x"
+    },
+    {
+      "name": "hip-socket",
+      "shape": "sphere",
+      "size": [
+        0.058,
+        0.058,
+        0.058
+      ],
+      "position": [
+        0.088,
+        0.796,
+        -0.004
+      ],
+      "detail": 7,
+      "color": "#272c1f",
+      "rigPart": "thigh_l",
+      "mirror": "x"
+    },
+    {
+      "name": "ischium",
+      "shape": "limb",
+      "from": [
+        0.084,
+        0.788,
+        -0.012
+      ],
+      "to": [
+        0.042,
+        0.752,
+        0.018
+      ],
+      "radius": 0.016,
+      "taper": 0.85,
+      "color": "#1b1f16",
+      "rigPart": "hips",
+      "mirror": "x"
+    },
+    {
+      "name": "pubis",
+      "shape": "limb",
+      "from": [
+        -0.046,
+        0.752,
+        0.018
+      ],
+      "to": [
+        0.046,
+        0.752,
+        0.018
+      ],
+      "radius": 0.013,
+      "color": "#272c1f",
+      "rigPart": "hips"
+    },
+    {
+      "name": "rib-1",
+      "shape": "box",
+      "size": [
+        0.019,
+        0.016,
+        0.052
+      ],
+      "position": [
+        0,
+        1.12,
+        0.028
+      ],
+      "color": "#48513f",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 14,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.086,
+        "arc": 360
+      }
+    },
+    {
+      "name": "rib-2",
+      "shape": "box",
+      "size": [
+        0.019,
+        0.016,
+        0.052
+      ],
+      "position": [
+        0,
+        1.08,
+        0.028
+      ],
+      "color": "#48513f",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 16,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.104,
+        "arc": 360
+      }
+    },
+    {
+      "name": "rib-3",
+      "shape": "box",
+      "size": [
+        0.019,
+        0.016,
+        0.052
+      ],
+      "position": [
+        0,
+        1.04,
+        0.028
+      ],
+      "color": "#373e2e",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 18,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.117,
+        "arc": 360
+      }
+    },
+    {
+      "name": "rib-4",
+      "shape": "box",
+      "size": [
+        0.019,
+        0.016,
+        0.052
+      ],
+      "position": [
+        0,
+        1.0,
+        0.028
+      ],
+      "color": "#373e2e",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 19,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.124,
+        "arc": 360
+      }
+    },
+    {
+      "name": "rib-5",
+      "shape": "box",
+      "size": [
+        0.019,
+        0.016,
+        0.052
+      ],
+      "position": [
+        0,
+        0.96,
+        0.028
+      ],
+      "color": "#272c1f",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 19,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.124,
+        "arc": 360
+      }
+    },
+    {
+      "name": "rib-6",
+      "shape": "box",
+      "size": [
+        0.019,
+        0.016,
+        0.052
+      ],
+      "position": [
+        0,
+        0.92,
+        0.028
+      ],
+      "color": "#272c1f",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 17,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.113,
+        "arc": 360
+      }
+    },
+    {
+      "name": "sternum",
+      "shape": "box",
+      "size": [
+        0.042,
+        0.175,
+        0.02
+      ],
+      "position": [
+        0,
+        1.022,
+        0.146
+      ],
+      "rotation": [
+        7,
+        0,
+        0
+      ],
+      "jitter": 0.12,
+      "color": "#48513f",
+      "rigPart": "spine"
+    },
+    {
+      "name": "vertebra",
+      "shape": "box",
+      "size": [
+        0.05,
+        0.026,
+        0.048
+      ],
+      "position": [
+        0,
+        0.868,
+        -0.068
+      ],
+      "jitter": 0.2,
+      "rigPart": "spine",
+      "repeat": {
+        "count": 11,
+        "mode": "linear",
+        "offset": [
+          0,
+          0.031,
+          0.0035
+        ]
+      },
+      "color": "#373e2e"
+    },
+    {
+      "name": "spinous-process",
+      "shape": "cone",
+      "size": [
+        0.02,
+        0.05,
+        0.022
+      ],
+      "position": [
+        0,
+        0.872,
+        -0.097
+      ],
+      "rotation": [
+        -118,
+        0,
+        0
+      ],
+      "color": "#272c1f",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 11,
+        "mode": "linear",
+        "offset": [
+          0,
+          0.031,
+          0.0035
+        ]
+      }
+    },
+    {
+      "name": "clavicle",
+      "shape": "limb",
+      "from": [
+        0.012,
+        1.104,
+        0.138
+      ],
+      "to": [
+        0.155,
+        1.16,
+        0.036
+      ],
+      "radius": 0.0153,
+      "rigPart": "spine",
+      "mirror": "x",
+      "color": "#48513f"
+    },
+    {
+      "name": "scapula",
+      "shape": "box",
+      "size": [
+        0.075,
+        0.1,
+        0.02
+      ],
+      "position": [
+        0.108,
+        1.115,
+        -0.07
+      ],
+      "rotation": [
+        -12,
+        0,
+        16
+      ],
+      "jitter": 0.18,
+      "color": "#1b1f16",
+      "rigPart": "spine",
+      "mirror": "x"
+    },
+    {
+      "name": "shoulder-ball",
+      "shape": "sphere",
+      "size": [
+        0.052,
+        0.052,
+        0.052
+      ],
+      "position": [
+        0.163,
+        1.152,
+        0.005
+      ],
+      "detail": 7,
+      "rigPart": "arm_l",
+      "mirror": "x",
+      "color": "#373e2e"
+    },
+    {
+      "name": "humerus",
+      "shape": "limb",
+      "from": [
+        0.163,
+        1.148,
+        0.005
+      ],
+      "to": [
+        0.186,
+        0.912,
+        -0.005
+      ],
+      "radius": 0.0156,
+      "taper": 0.95,
+      "rigPart": "arm_l",
+      "mirror": "x",
+      "color": "#48513f"
+    },
+    {
+      "name": "elbow",
+      "shape": "sphere",
+      "size": [
+        0.044,
+        0.044,
+        0.044
+      ],
+      "position": [
+        0.186,
+        0.908,
+        -0.005
+      ],
+      "detail": 7,
+      "rigPart": "forearm_l",
+      "mirror": "x",
+      "color": "#373e2e"
+    },
+    {
+      "name": "ulna",
+      "shape": "limb",
+      "from": [
+        0.172,
+        0.906,
+        -0.014
+      ],
+      "to": [
+        0.193,
+        0.684,
+        0.008
+      ],
+      "radius": 0.0115,
+      "taper": 0.75,
+      "rigPart": "forearm_l",
+      "mirror": "x",
+      "color": "#48513f"
+    },
+    {
+      "name": "radius",
+      "shape": "limb",
+      "from": [
+        0.186,
+        0.906,
+        0.012
+      ],
+      "to": [
+        0.202,
+        0.684,
+        0.024
+      ],
+      "radius": 0.0098,
+      "taper": 0.85,
+      "rigPart": "forearm_l",
+      "mirror": "x",
+      "color": "#373e2e"
+    },
+    {
+      "name": "palm",
+      "shape": "box",
+      "size": [
+        0.052,
+        0.058,
+        0.018
+      ],
+      "position": [
+        0.199,
+        0.652,
+        0.019
+      ],
+      "rotation": [
+        6,
+        0,
+        -4
+      ],
+      "jitter": 0.14,
+      "rigPart": "forearm_l",
+      "mirror": "x",
+      "color": "#373e2e"
+    },
+    {
+      "name": "finger",
+      "shape": "limb",
+      "from": [
+        0.18,
+        0.628,
+        0.02
+      ],
+      "to": [
+        0.176,
+        0.578,
+        0.028
+      ],
+      "radius": 0.0065,
+      "taper": 0.7,
+      "color": "#48513f",
+      "rigPart": "forearm_l",
+      "mirror": "x",
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          0.0145,
+          0.004,
+          -0.001
+        ],
+        "scaleStep": 0.97
+      }
+    },
+    {
+      "name": "thumb",
+      "shape": "limb",
+      "from": [
+        0.176,
+        0.646,
+        0.024
+      ],
+      "to": [
+        0.152,
+        0.616,
+        0.032
+      ],
+      "radius": 0.0075,
+      "taper": 0.75,
+      "color": "#48513f",
+      "rigPart": "forearm_l",
+      "mirror": "x"
+    },
+    {
+      "name": "femur",
+      "shape": "limb",
+      "from": [
+        0.088,
+        0.796,
+        -0.005
+      ],
+      "to": [
+        0.094,
+        0.462,
+        0.012
+      ],
+      "radius": 0.0202,
+      "taper": 0.92,
+      "rigPart": "thigh_l",
+      "mirror": "x",
+      "color": "#373e2e"
+    },
+    {
+      "name": "knee",
+      "shape": "sphere",
+      "size": [
+        0.058,
+        0.055,
+        0.058
+      ],
+      "position": [
+        0.094,
+        0.458,
+        0.012
+      ],
+      "detail": 7,
+      "rigPart": "shin_l",
+      "mirror": "x",
+      "color": "#272c1f"
+    },
+    {
+      "name": "tibia",
+      "shape": "limb",
+      "from": [
+        0.09,
+        0.456,
+        0.008
+      ],
+      "to": [
+        0.096,
+        0.108,
+        -0.004
+      ],
+      "radius": 0.0168,
+      "taper": 0.78,
+      "rigPart": "shin_l",
+      "mirror": "x",
+      "color": "#373e2e"
+    },
+    {
+      "name": "fibula",
+      "shape": "limb",
+      "from": [
+        0.116,
+        0.45,
+        -0.004
+      ],
+      "to": [
+        0.112,
+        0.114,
+        -0.012
+      ],
+      "radius": 0.0086,
+      "taper": 0.85,
+      "color": "#272c1f",
+      "rigPart": "shin_l",
+      "mirror": "x"
+    },
+    {
+      "name": "ankle",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.099,
+        0.088,
+        -0.006
+      ],
+      "detail": 7,
+      "rigPart": "foot_l",
+      "mirror": "x",
+      "color": "#1b1f16"
+    },
+    {
+      "name": "foot",
+      "shape": "box",
+      "size": [
+        0.062,
+        0.046,
+        0.135
+      ],
+      "position": [
+        0.099,
+        0.052,
+        0.035
+      ],
+      "jitter": 0.16,
+      "rigPart": "foot_l",
+      "mirror": "x",
+      "color": "#1b1f16"
+    },
+    {
+      "name": "toe",
+      "shape": "limb",
+      "from": [
+        0.075,
+        0.04,
+        0.09
+      ],
+      "to": [
+        0.073,
+        0.032,
+        0.125
+      ],
+      "radius": 0.008,
+      "taper": 0.7,
+      "color": "#272c1f",
+      "rigPart": "foot_l",
+      "mirror": "x",
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          0.0155,
+          0,
+          -0.004
+        ],
+        "scaleStep": 0.95
+      }
+    },
+    {
+      "name": "neck",
+      "shape": "limb",
+      "from": [
+        0,
+        1.168,
+        0.008
+      ],
+      "to": [
+        0,
+        1.251,
+        0.016
+      ],
+      "radius": 0.0246,
+      "taper": 0.9,
+      "rigPart": "head",
+      "color": "#373e2e"
+    },
+    {
+      "name": "cranium",
+      "shape": "icosahedron",
+      "size": [
+        0.152,
+        0.168,
+        0.185
+      ],
+      "position": [
+        0,
+        1.333,
+        0.012
+      ],
+      "jitter": 0.14,
+      "detail": 7,
+      "rigPart": "head",
+      "children": [
+        {
+          "name": "brow",
+          "shape": "box",
+          "size": [
+            0.142,
+            0.032,
+            0.052
+          ],
+          "position": [
+            0,
+            0.032,
+            0.072
+          ],
+          "rotation": [
+            -10,
+            0,
+            0
+          ],
+          "color": "#373e2e"
+        },
+        {
+          "name": "eye-socket",
+          "shape": "box",
+          "size": [
+            0.072,
+            0.066,
+            0.078
+          ],
+          "position": [
+            0.04,
+            -0.01,
+            0.05
+          ],
+          "detail": 8,
+          "color": "#86ff3d",
+          "mirror": "x",
+          "rotation": [
+            0,
+            -12,
+            4
+          ]
+        },
+        {
+          "name": "cheekbone",
+          "shape": "box",
+          "size": [
+            0.03,
+            0.05,
+            0.06
+          ],
+          "position": [
+            0.056,
+            -0.052,
+            0.045
+          ],
+          "rotation": [
+            0,
+            0,
+            14
+          ],
+          "color": "#373e2e",
+          "mirror": "x"
+        },
+        {
+          "name": "nasal-cavity",
+          "shape": "box",
+          "size": [
+            0.026,
+            0.042,
+            0.058
+          ],
+          "position": [
+            0,
+            -0.046,
+            0.054
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "color": "#0d0f09"
+        },
+        {
+          "name": "maxilla",
+          "shape": "box",
+          "size": [
+            0.086,
+            0.034,
+            0.072
+          ],
+          "position": [
+            0,
+            -0.078,
+            0.056
+          ],
+          "color": "#5a6350"
+        },
+        {
+          "name": "upper-tooth",
+          "shape": "box",
+          "size": [
+            0.072,
+            0.016,
+            0.05
+          ],
+          "position": [
+            0,
+            -0.104,
+            0.062
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "color": "#9aa284"
+        },
+        {
+          "name": "mandible",
+          "shape": "box",
+          "size": [
+            0.086,
+            0.034,
+            0.08
+          ],
+          "position": [
+            0,
+            -0.158,
+            0.054
+          ],
+          "rotation": [
+            -10,
+            0,
+            0
+          ],
+          "jitter": 0.1,
+          "color": "#373e2e"
+        },
+        {
+          "name": "jaw-hinge",
+          "shape": "limb",
+          "from": [
+            0.044,
+            -0.154,
+            0.034
+          ],
+          "to": [
+            0.052,
+            -0.05,
+            -0.012
+          ],
+          "radius": 0.015,
+          "color": "#272c1f",
+          "mirror": "x"
+        },
+        {
+          "name": "lower-tooth",
+          "shape": "box",
+          "size": [
+            0.07,
+            0.015,
+            0.05
+          ],
+          "position": [
+            0,
+            -0.134,
+            0.062
+          ],
+          "color": "#9aa284",
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "fang-upper",
+          "shape": "cone",
+          "size": [
+            0.016,
+            0.026,
+            0.016
+          ],
+          "position": [
+            -0.026,
+            -0.122,
+            0.074
+          ],
+          "rotation": [
+            184,
+            0,
+            0
+          ],
+          "color": "#9aa284",
+          "repeat": {
+            "count": 2,
+            "mode": "linear",
+            "offset": [
+              0.052,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "name": "fang-lower",
+          "shape": "cone",
+          "size": [
+            0.015,
+            0.022,
+            0.015
+          ],
+          "position": [
+            -0.031,
+            -0.13,
+            0.072
+          ],
+          "rotation": [
+            -4,
+            0,
+            0
+          ],
+          "color": "#9aa284",
+          "repeat": {
+            "count": 2,
+            "mode": "linear",
+            "offset": [
+              0.062,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "name": "horn-1",
+          "shape": "limb",
+          "from": [
+            0.062,
+            0.045,
+            -0.015
+          ],
+          "to": [
+            0.118,
+            0.112,
+            -0.058
+          ],
+          "radius": 0.027,
+          "taper": 0.85,
+          "color": "#272c1f",
+          "mirror": "x"
+        },
+        {
+          "name": "horn-2",
+          "shape": "limb",
+          "from": [
+            0.118,
+            0.112,
+            -0.058
+          ],
+          "to": [
+            0.158,
+            0.205,
+            -0.104
+          ],
+          "radius": 0.023,
+          "taper": 0.82,
+          "color": "#15180f",
+          "mirror": "x"
+        },
+        {
+          "name": "horn-3",
+          "shape": "limb",
+          "from": [
+            0.158,
+            0.205,
+            -0.104
+          ],
+          "to": [
+            0.156,
+            0.302,
+            -0.128
+          ],
+          "radius": 0.019,
+          "taper": 0.74,
+          "color": "#15180f",
+          "mirror": "x"
+        },
+        {
+          "name": "horn-4",
+          "shape": "limb",
+          "from": [
+            0.156,
+            0.302,
+            -0.128
+          ],
+          "to": [
+            0.112,
+            0.382,
+            -0.098
+          ],
+          "radius": 0.014,
+          "taper": 0.12,
+          "color": "#15180f",
+          "mirror": "x"
+        },
+        {
+          "name": "nose-bridge",
+          "shape": "box",
+          "size": [
+            0.024,
+            0.07,
+            0.056
+          ],
+          "position": [
+            0,
+            -0.004,
+            0.07
+          ],
+          "color": "#5a6350"
+        }
+      ],
+      "color": "#5a6350"
+    }
+  ]
+}

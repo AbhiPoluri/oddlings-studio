@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Download,
@@ -45,8 +45,30 @@ import {
   type Recipe,
   type Kind,
 } from '@/lib/asset-recipe';
+import { disposeScene } from '@/lib/three-world';
 import { registerStudioTools } from '@/lib/studio-tools';
-import { download, exportAsset } from '@/lib/asset-export';
+import {
+  download,
+  exportAsset,
+  exportSpecAsset,
+} from '@/lib/asset-export';
+import { parseSpec, buildSpec, type AssetSpec } from '@/lib/asset-spec';
+import { readySurface } from '@/lib/asset-surface';
+import { auditModel, type Audit } from '@/lib/asset-audit';
+import {
+  flatten,
+  updatePart,
+  deletePart,
+  duplicatePart,
+  moveBone,
+  removeJoint,
+  type PartPatch,
+  type Selection,
+  type Vec3,
+} from '@/lib/spec-edit';
+import { clipsOf } from '@/lib/asset-joints';
+import type { Path } from '@/lib/spec-edit';
+import { SpecEditor } from '@/components/spec-editor';
 import {
   blueprints,
   generateBlueprint,
@@ -55,6 +77,10 @@ import {
   type Blueprint,
 } from '@/lib/procedural-director';
 type Saved = { id: string; recipe: Recipe; thumbnail: string };
+/** One undoable state of the workbench: a generator recipe, optionally overlaid
+ *  by an imported spec being previewed and edited. */
+type Doc = { recipe: Recipe; spec: AssetSpec | null };
+const initialDoc: Doc = { recipe: initialRecipe, spec: null };
 const colors = [
   '#93cec8',
   '#c7a4b5',
@@ -126,7 +152,181 @@ function Toggle({
   );
 }
 export default function Studio() {
-  const [recipe, setRecipe] = useState<Recipe>(initialRecipe);
+  const [doc, setDoc] = useState<Doc>(initialDoc);
+  const recipe = doc.recipe;
+  const spec = doc.spec;
+  /**
+   * What the panel and the viewport are both pointed at.
+   *
+   * One authored part or one bone, never both: a rig handle and a part are
+   * different things to grab, and the part tree, the gizmo and the rig panel
+   * each read the half they own off this rather than keeping a selection each.
+   */
+  const [selected, setSelected] = useState<Selection>(null);
+  /**
+   * The file the studio is mirroring, if any.
+   *
+   * With no URL parameter it follows `.oddlings/active.json`, which every
+   * build and audit rewrites — so opening the studio shows whatever was made
+   * last, and it keeps up as that changes. A `?spec=` parameter pins it to one
+   * file instead. Following is one-way: the moment anyone edits in here, the
+   * studio detaches rather than fighting the file for the same document.
+   */
+  type Target = { url: string; label: string; pinned: boolean };
+  const [follow, setFollow] = useState<Target | null>(null);
+  const [followedAt, setFollowedAt] = useState<string | null>(null);
+  const [followedFile, setFollowedFile] = useState<string | null>(null);
+  /**
+   * `waiting` is not `off`. A fresh clone has no pointer yet, and saying
+   * "not following" there would describe a choice nobody made.
+   */
+  const [link, setLink] = useState<'waiting' | 'live' | 'gaveup' | 'off'>(
+    'waiting',
+  );
+  /** Bumped by "Check again", which re-runs the attach effect. */
+  const [recheck, setRecheck] = useState(0);
+  const linkRef = useRef<'waiting' | 'live' | 'gaveup' | 'off'>('waiting');
+  const target = useRef<Target | null>(null);
+  // Surface-mode specs re-mesh through a WebAssembly decimator. Loading it up
+  // front — and re-running the audit once it lands — means the first spec a
+  // user opens builds the same way every later one does.
+  const [surfaceReady, setSurfaceReady] = useState(false);
+  useEffect(() => {
+    let live = true;
+    readySurface().then(() => live && setSurfaceReady(true));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  /**
+   * Attach to a file on load, and mirror it while it changes.
+   *
+   * ETag rather than content: the dev server sends one for every static file,
+   * so a poll that finds nothing new costs a request with no body. Nothing
+   * here exists in a deployed build, so a miss is a quiet no-op and the studio
+   * just behaves as it always did.
+   */
+  useEffect(() => {
+    const asked = new URLSearchParams(location.search).get('spec');
+    const safe = asked && /^[\w./-]+\.json$/.test(asked) && !asked.includes('..');
+    const want: Target = safe
+      ? { url: `/${asked.replace(/^\//, '')}`, label: asked, pinned: true }
+      : { url: '/.oddlings/active.json', label: 'the latest build', pinned: false };
+    // Survives a detach, so the bar can offer to re-follow the right thing.
+    target.current = want;
+    if (linkRef.current === 'gaveup') {
+      linkRef.current = 'waiting';
+      setLink('waiting');
+    }
+
+    let live = true;
+    let tag: string | null = null;
+
+    async function pull(first: boolean) {
+      let response: Response;
+      try {
+        response = await fetch(want.url, { cache: 'no-store' });
+      } catch {
+        return;
+      }
+      if (!live || !response.ok) return;
+      const next = response.headers.get('etag');
+      if (!first && next && next === tag) return;
+      tag = next;
+      let parsed: unknown;
+      try {
+        parsed = await response.json();
+      } catch {
+        return;
+      }
+      if (!live) return;
+      // The pointer wraps the document; a `?spec=` file is the document.
+      const pointer = parsed as { doc?: unknown; source?: string; at?: string };
+      const doc = pointer && typeof pointer === 'object' && 'doc' in pointer
+        ? pointer.doc
+        : parsed;
+      const where = want.pinned ? want.label : (pointer?.source ?? want.label);
+      if (!first && linkRef.current !== 'live') return;
+      // The first load records one history entry so undo can get back behind
+      // it. Later ones never do: a build loop that saves ten times must not
+      // bury the user's own history under ten identical steps.
+      apply.current(
+        doc,
+        first
+          ? `Following ${where} — %s. Edit anything here and the studio stops following.`
+          : `${where} changed — reloaded %s.`,
+        first,
+      );
+      // Attach only after that first commit lands, or commitDoc would read the
+      // studio's own load as a user edit and detach on the spot.
+      if (first) {
+        // A user who edited while we were still waiting has taken the document;
+        // a build landing now must not reach in and overwrite it.
+        if (linkRef.current === 'off') return;
+        setFollow(want);
+        linkRef.current = 'live';
+        setLink('live');
+      }
+      setFollowedAt(pointer?.at ?? new Date().toISOString());
+      setFollowedFile(where);
+    }
+
+    void pull(true);
+    // A missing pointer is a 404, which the browser logs however carefully we
+    // catch it. Retry slowly, and give up rather than filling the console.
+    let tries = 0;
+    const first = setInterval(() => {
+      if (linkRef.current !== 'waiting') return clearInterval(first);
+      if (++tries > 48) {
+        clearInterval(first);
+        linkRef.current = 'gaveup';
+        setLink('gaveup');
+        return;
+      }
+      void pull(true);
+    }, 2500);
+    const timer = setInterval(
+      () => linkRef.current === 'live' && void pull(false),
+      1000,
+    );
+    return () => {
+      live = false;
+      clearInterval(timer);
+      clearInterval(first);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recheck]);
+  // Re-checked whenever the spec changes, so the panel always describes what
+  // the viewport is showing rather than what was imported.
+  const audit = useMemo<Audit | null>(() => {
+    if (!spec) return null;
+    try {
+      const model = buildSpec(spec);
+      const result = auditModel(model, {
+        rigged: Boolean(spec.rig),
+        scale: spec.scale,
+        labels: new Map(
+          flatten(spec).map((row) => [
+            row.path.join('.'),
+            row.part.name ?? row.part.shape,
+          ]),
+        ),
+      });
+      disposeScene(model);
+      return result;
+    } catch {
+      return null;
+    }
+  }, [spec, surfaceReady]);
+  // The clip picker used to list the humanoid five no matter what was loaded,
+  // so a spec with its own joints exported clips nobody could play.
+  const clips = useMemo(
+    () => ['Bind pose', ...clipsOf(spec, recipe).map((c) => c.name)],
+    [spec, recipe],
+  );
+  const animated = clips.length > 1;
+  const bones = spec?.joints?.length ? spec.joints.length + 1 : 14;
   const [library, setLibrary] = useState<Saved[]>([]);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState('Ready to make something strange.');
@@ -136,7 +336,7 @@ export default function Studio() {
   const [rotate, setRotate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [metric, setMetric] = useState<AssetStats | null>(null);
-  const [history, setHistory] = useState<Recipe[]>([initialRecipe]);
+  const [history, setHistory] = useState<Doc[]>([initialDoc]);
   const [cursor, setCursor] = useState(0);
   const view = useRef<ViewHandle>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -180,28 +380,181 @@ export default function Studio() {
     }
     setReady(true);
   }, []);
-  function commit(next: Recipe = current.current) {
+  /**
+   * Every undoable state — a recipe edit, loading a spec, tweaking a spec part
+   * — is one document in one history, so undo walks back across the boundary
+   * between the generators and an imported spec without stranding either.
+   */
+  function commitDoc(next: Doc) {
     const { history: h, cursor: c } = historyRef.current;
+    // An edit means the user has taken over. Two writers on one document is a
+    // conflict nobody asked for, so the file loses and the studio detaches.
+    if (linkRef.current === 'live' && h.length) detach();
     if (JSON.stringify(h[c]) === JSON.stringify(next)) return;
     const updated = [...h.slice(0, c + 1), next].slice(-60);
     historyRef.current = { history: updated, cursor: updated.length - 1 };
     setHistory(updated);
     setCursor(updated.length - 1);
-    setRecipe(next);
+    current.current = next.recipe;
+    setDoc(next);
+  }
+  function detach(message?: string) {
+    if (linkRef.current === 'off') return;
+    // Also leaves `waiting`: once this document has been edited, a build that
+    // lands later must not reach in and overwrite it.
+    linkRef.current = 'off';
+    setLink('off');
+    setFollow(null);
+    if (message) setStatus(message);
+  }
+  /** Re-follow whatever this page was pointed at when it loaded. */
+  function reattach() {
+    if (target.current?.pinned) location.reload();
+    else location.href = location.pathname;
+  }
+  function commit(next: Recipe = current.current) {
+    commitDoc({ recipe: next, spec: null });
   }
   function change(p: Partial<Recipe>, record = true) {
+    detach();
     const next = { ...current.current, ...p };
     current.current = next;
-    setRecipe(next);
-    if (record) commit(next);
+    setDoc({ recipe: next, spec: null });
+    if (record) commitDoc({ recipe: next, spec: null });
+  }
+  /**
+   * Take a parsed recipe or spec and put it on screen.
+   *
+   * Four things now feed the studio — a picked file, a `?spec=` URL, the
+   * preview pointer, and that pointer changing under us — and they all have to
+   * agree on what loading means, down to clearing the selection and picking an
+   * animation. One function, four callers.
+   */
+  function loadPayload(parsed: unknown, note: string, record = true) {
+    const isSpec =
+      parsed &&
+      typeof parsed === 'object' &&
+      Array.isArray((parsed as { parts?: unknown }).parts);
+    if (isSpec) {
+      const next = parseSpec(parsed);
+      const document = { recipe: current.current, spec: next };
+      if (record) commitDoc(document);
+      else setDoc(document);
+      setSelected(null);
+      setAnimation(clipsOf(next).at(0)?.name ?? 'Bind pose');
+      setStatus(note.replace('%s', next.name));
+      return next.name;
+    }
+    const next = parseRecipe(parsed);
+    current.current = next;
+    if (record) commitDoc({ recipe: next, spec: null });
+    else setDoc({ recipe: next, spec: null });
+    setStatus(note.replace('%s', next.name));
+    return next.name;
+  }
+
+  // The poll effect runs with empty deps and would otherwise close over the
+  // first render's `loadPayload` forever. Today that is harmless — everything
+  // it touches is a ref or a stable setter — but it would break silently the
+  // day someone reads a `useState` value inside it. Keep the latest one here.
+  const apply = useRef(loadPayload);
+  apply.current = loadPayload;
+
+  /** Live spec edits during a drag; only `record` pushes a history step. */
+  function editSpec(next: AssetSpec, record = true) {
+    // Detach before the first frame of a drag, not on release: a poll landing
+    // mid-drag would otherwise reload the file over what is being dragged.
+    detach();
+    const document = { recipe: current.current, spec: next };
+    if (record) commitDoc(document);
+    else setDoc(document);
+  }
+  /**
+   * One finished gizmo drag, as one undo step.
+   *
+   * The viewport never writes the spec while a drag is running — it moves a
+   * proxy and hands the whole drag over as a single patch here, so a rebuild
+   * of a thousand meshes and a history entry happen once per drag rather than
+   * once per pointer move.
+   */
+  function transformPart(path: Path, patch: PartPatch) {
+    if (!doc.spec) return;
+    try {
+      editSpec(updatePart(doc.spec, path, patch));
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : 'That edit is invalid.',
+      );
+    }
+  }
+  /**
+   * One finished bone drag, as one undo step.
+   *
+   * `moveBone` sorts out which of the two rigs it is writing to — a joint's
+   * `at` or an entry in `rig.bones` — so the viewport can hand back a position
+   * without knowing what kind of skeleton it just dragged.
+   */
+  function moveBoneTo(name: string, at: Vec3) {
+    if (!doc.spec) return;
+    try {
+      editSpec(moveBone(doc.spec, name, at));
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : 'That bone cannot be moved.',
+      );
+    }
+  }
+  /** Delete and duplicate are reachable from the panel and from the canvas. */
+  function removeSelected() {
+    if (!doc.spec || !selected) return;
+    if (selected.kind === 'bone') {
+      // The humanoid rig always has all 14 bones: there is no spec for a body
+      // missing a shin, and the reset in the panel is what undoes an edit.
+      if (doc.spec.rig)
+        return setStatus(
+          'A body rig always has its 14 bones. Reset the bone in the Rig panel to undo an override.',
+        );
+      const index =
+        doc.spec.joints?.findIndex((joint) => joint.name === selected.name) ??
+        -1;
+      if (index < 0)
+        return setStatus(
+          'Root is the static bone a joints rig hangs off. It cannot be removed.',
+        );
+      try {
+        editSpec(removeJoint(doc.spec, index));
+        setSelected(null);
+        setStatus(`Joint “${selected.name}” removed. Undo brings it back.`);
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'Cannot delete.');
+      }
+      return;
+    }
+    try {
+      editSpec(deletePart(doc.spec, selected.path));
+      setSelected(null);
+      setStatus('Part removed. Undo brings it back.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Cannot delete.');
+    }
+  }
+  function duplicateSelected() {
+    if (!doc.spec || selected?.kind !== 'part') return;
+    const result = duplicatePart(doc.spec, selected.path);
+    editSpec(result.spec);
+    setSelected({ kind: 'part', path: result.path });
+    setStatus('Part duplicated.');
   }
   function undo(direction: number) {
+    // Undo writes straight to `setDoc`, so without this the next poll would
+    // quietly reload the file over the step the user just walked back to.
+    detach();
     const { history: h, cursor: c } = historyRef.current;
     const next = Math.max(0, Math.min(h.length - 1, c + direction));
     historyRef.current = { history: h, cursor: next };
     setCursor(next);
-    current.current = h[next];
-    setRecipe(h[next]);
+    current.current = h[next].recipe;
+    setDoc(h[next]);
     setStatus(direction < 0 ? 'Previous edit restored.' : 'Edit restored.');
   }
   function randomize() {
@@ -263,6 +616,12 @@ export default function Studio() {
     }
   }
   function save() {
+    if (spec) {
+      setStatus(
+        'The library stores generator recipes. Download the spec JSON to keep this asset.',
+      );
+      return;
+    }
     if (library.length >= 40) {
       setStatus(
         'Library limit reached. Download recipes or remove an older variation.',
@@ -302,16 +661,20 @@ export default function Studio() {
     } else add('');
   }
   function recipeDownload() {
+    const source = spec ?? recipe;
     download(
-      new Blob([JSON.stringify(recipe, null, 2)], { type: 'application/json' }),
-      `${fileName(recipe.name)}.recipe.json`,
+      new Blob([JSON.stringify(source, null, 2)], { type: 'application/json' }),
+      `${fileName(source.name)}.${spec ? 'spec' : 'recipe'}.json`,
     );
-    setStatus('Editable recipe downloaded.');
+    setStatus(
+      spec ? 'Editable spec downloaded.' : 'Editable recipe downloaded.',
+    );
   }
   async function exportModel(format: 'unity' | 'glb') {
     setBusy(true);
     try {
-      await exportAsset(recipe, format);
+      if (spec) await exportSpecAsset(spec, format);
+      else await exportAsset(recipe, format);
       setStatus(
         format === 'unity'
           ? 'Unity pack downloaded: GLB, static OBJ + MTL, recipe, and import notes.'
@@ -418,7 +781,7 @@ export default function Studio() {
         <span className="header-subtitle">Procedural asset workshop</span>
         <div className="header-actions">
           <button className="quiet" onClick={() => input.current?.click()}>
-            <Upload size={16} /> Import recipe
+            <Upload size={16} /> Import recipe or spec
           </button>
           <button className="save-button" onClick={save} disabled={!ready}>
             <Save size={16} /> Save variation
@@ -442,20 +805,35 @@ export default function Studio() {
           const f = e.target.files?.[0];
           if (!f) return;
           try {
-            if (f.size > 20000)
+            if (f.size > 200000)
               throw Error(
-                'Recipe is too large. Choose a single exported recipe.',
+                'That file is too large. Choose a single exported recipe or spec.',
               );
-            const next = parseRecipe(JSON.parse(await f.text()));
-            commit(next);
-            setStatus(
-              'Recipe imported. Every generator setting has been restored.',
-            );
+            const parsed: unknown = JSON.parse(await f.text());
+            if (
+              parsed &&
+              typeof parsed === 'object' &&
+              Array.isArray((parsed as { parts?: unknown }).parts)
+            ) {
+              const next = parseSpec(parsed);
+              commitDoc({ recipe: current.current, spec: next });
+              setSelected(null);
+              setAnimation(clipsOf(next).at(0)?.name ?? 'Bind pose');
+              setStatus(
+                `Spec loaded: ${next.name}. Previewing the exact geometry it describes — edit any slider to go back to the generators.`,
+              );
+            } else {
+              const next = parseRecipe(parsed);
+              commit(next);
+              setStatus(
+                'Recipe imported. Every generator setting has been restored.',
+              );
+            }
           } catch (error) {
             setStatus(
               error instanceof Error
                 ? error.message
-                : 'Could not import this recipe.',
+                : 'Could not import this file.',
             );
           }
           e.target.value = '';
@@ -533,9 +911,11 @@ export default function Studio() {
           <div className="asset-title">
             <div>
               <span className="eyebrow">
-                {`${recipe.kind.toUpperCase()} / ${recipe.archetype.toUpperCase()}`}
+                {spec
+                  ? `${spec.kind.toUpperCase()} / SPEC`
+                  : `${recipe.kind.toUpperCase()} / ${recipe.archetype.toUpperCase()}`}
               </span>
-              <h2>{recipe.name || 'Untitled asset'}</h2>
+              <h2>{(spec ? spec.name : recipe.name) || 'Untitled asset'}</h2>
             </div>
             <div className="history">
               <button
@@ -556,6 +936,31 @@ export default function Studio() {
               </button>
             </div>
           </div>
+          {spec && (
+            <div className="spec-banner">
+              <Braces size={15} />
+              <div>
+                <strong>Previewing an authored spec</strong>
+                <span>
+                  {spec.parts.length} top-level part
+                  {spec.parts.length === 1 ? '' : 's'} · seed {spec.seed}
+                  {spec.rig
+                    ? ' · rigged'
+                    : spec.joints?.length
+                      ? ` · ${spec.joints.length} joint${spec.joints.length === 1 ? '' : 's'}`
+                      : ' · static'}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  commitDoc({ recipe: current.current, spec: null });
+                  setSelected(null);
+                }}
+              >
+                Back to generators
+              </button>
+            </div>
+          )}
           <section
             className="generator-workshop"
             aria-labelledby="generator-workshop-title"
@@ -623,6 +1028,55 @@ export default function Studio() {
             </p>
           </section>
           <div className="viewport-shell">
+            <div className={`follow-bar${link === 'live' ? '' : ' detached'}`}>
+              {link === 'waiting' && !follow ? (
+                <span>
+                  Waiting for a build — run <code>oddlings build</code> or{' '}
+                  <code>oddlings audit</code> and it appears here.
+                </span>
+              ) : link === 'gaveup' ? (
+                <>
+                  <span>
+                    No build found. Run <code>oddlings build</code> or{' '}
+                    <code>oddlings audit</code>, then:
+                  </span>
+                  <button
+                    className="quiet"
+                    onClick={() => setRecheck((n) => n + 1)}
+                  >
+                    Check again
+                  </button>
+                </>
+              ) : follow ? (
+                <>
+                  <span className="follow-dot" aria-hidden />
+                  <span>
+                    Following <strong>{followedFile ?? follow.label}</strong>
+                    {follow.pinned ? ' (pinned)' : ' — latest build'}
+                  </span>
+                  {followedAt && (
+                    <time dateTime={followedAt}>
+                      {new Date(followedAt).toLocaleTimeString()}
+                    </time>
+                  )}
+                  <button
+                    className="quiet"
+                    onClick={() => detach('Stopped following. This document is yours now.')}
+                  >
+                    Stop
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>Not following a file — edits stay here.</span>
+                  <button className="quiet" onClick={reattach}>
+                    {target.current?.pinned
+                      ? `Re-follow ${target.current.label}`
+                      : 'Follow the latest build'}
+                  </button>
+                </>
+              )}
+            </div>
             <div className="view-toolbar">
               <span>
                 <Box size={14} /> PERSPECTIVE
@@ -648,6 +1102,13 @@ export default function Studio() {
             <AssetViewport
               ref={view}
               recipe={recipe}
+              spec={spec}
+              selected={selected}
+              onSelect={setSelected}
+              onTransform={transformPart}
+              onMoveBone={moveBoneTo}
+              onDelete={removeSelected}
+              onDuplicate={duplicateSelected}
               pixel={pixel}
               wireframe={wire}
               grid={grid}
@@ -657,23 +1118,20 @@ export default function Studio() {
               speed={speed}
               onStats={setMetric}
             />
-            {(recipe.kind === 'creature' || recipe.kind === 'person') &&
-              recipe.rigged && (
-                <div className="clip-tests" aria-label="Animation test clips">
-                  <span>TEST</span>
-                  {['Bind pose', 'Idle', 'Walk', 'Jump', 'Wave', 'Attack'].map(
-                    (clip) => (
-                      <button
-                        key={clip}
-                        aria-pressed={animation === clip}
-                        onClick={() => setAnimation(clip)}
-                      >
-                        {clip}
-                      </button>
-                    ),
-                  )}
-                </div>
-              )}
+            {animated && (
+              <div className="clip-tests" aria-label="Animation test clips">
+                <span>TEST</span>
+                {clips.map((clip) => (
+                  <button
+                    key={clip}
+                    aria-pressed={animation === clip}
+                    onClick={() => setAnimation(clip)}
+                  >
+                    {clip}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="view-options">
               <Toggle label="Pixel preview" value={pixel} onChange={setPixel} />
               <Toggle label="Wireframe" value={wire} onChange={setWire} />
@@ -706,9 +1164,8 @@ export default function Studio() {
             <div>
               <h3>From odd little idea to game asset.</h3>
               <p>
-                {(recipe.kind === 'creature' || recipe.kind === 'person') &&
-                recipe.rigged
-                  ? '14-bone rig · 5 test clips · Skinned meshes'
+                {animated
+                  ? `${bones} bones · ${clips.length - 1} clip${clips.length === 2 ? '' : 's'} · Skinned meshes`
                   : 'Static meshes · Flat normals · Solid-color materials'}
               </p>
             </div>
@@ -716,27 +1173,42 @@ export default function Studio() {
               Export GLB <ArrowUpRight size={15} />
             </button>
             <button onClick={recipeDownload}>
-              Recipe JSON <Download size={14} />
+              {spec ? 'Spec JSON' : 'Recipe JSON'} <Download size={14} />
             </button>
           </div>
         </section>
         <aside className="properties">
           <div className="panel-heading">
-            <span>MAKE IT YOURS</span>
-            <button
-              className="icon-button"
-              aria-label="Reset generator settings"
-              title="Reset generator settings"
-              onClick={() =>
-                change({
-                  ...generateBlueprint(activeBlueprint, recipe.seed),
-                  name: recipe.name,
-                })
-              }
-            >
-              <RotateCcw size={14} />
-            </button>
+            <span>{spec ? 'EDIT THE SPEC' : 'MAKE IT YOURS'}</span>
+            {!spec && (
+              <button
+                className="icon-button"
+                aria-label="Reset generator settings"
+                title="Reset generator settings"
+                onClick={() =>
+                  change({
+                    ...generateBlueprint(activeBlueprint, recipe.seed),
+                    name: recipe.name,
+                  })
+                }
+              >
+                <RotateCcw size={14} />
+              </button>
+            )}
           </div>
+          {spec ? (
+            <SpecEditor
+              spec={spec}
+              audit={audit}
+              selected={selected}
+              onSelect={setSelected}
+              onChange={editSpec}
+              onDelete={removeSelected}
+              onDuplicate={duplicateSelected}
+              onStatus={setStatus}
+            />
+          ) : (
+            <>
           <Tabs
             value={recipe.kind}
             onValueChange={(v) => switchKind(v as Kind)}
@@ -913,12 +1385,11 @@ export default function Studio() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Bind pose">Bind pose</SelectItem>
-                      <SelectItem value="Idle">Idle</SelectItem>
-                      <SelectItem value="Walk">Walk</SelectItem>
-                      <SelectItem value="Jump">Jump</SelectItem>
-                      <SelectItem value="Wave">Wave</SelectItem>
-                      <SelectItem value="Attack">Attack</SelectItem>
+                      {clips.map((clip) => (
+                        <SelectItem key={clip} value={clip}>
+                          {clip}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Toggle
@@ -950,6 +1421,8 @@ export default function Studio() {
               exported mesh.
             </p>
           </div>
+            </>
+          )}
           <div className="unity-note">
             <Box size={16} />
             <p>

@@ -1,0 +1,468 @@
+{
+  "version": 1,
+  "name": "Tire Swing Tree",
+  "kind": "environment",
+  "seed": 7714,
+  "scale": 4,
+  "color": "#4f7a3a",
+  "surface": {
+    "blend": 0.008,
+    "detail": 288,
+    "budget": 13000,
+    "shading": "flat"
+  },
+  "parts": [
+    {
+      "name": "root",
+      "shape": "limb",
+      "from": [
+        0,
+        0.1,
+        0
+      ],
+      "to": [
+        0.17,
+        -0.015,
+        0
+      ],
+      "radius": 0.055,
+      "taper": 0.42,
+      "color": "#54402c",
+      "repeat": {
+        "count": 6,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360,
+        "twist": 6
+      }
+    },
+    {
+      "name": "trunk-lower",
+      "shape": "limb",
+      "from": [
+        0,
+        0,
+        0
+      ],
+      "to": [
+        0.015,
+        0.38,
+        0.01
+      ],
+      "radius": 0.118,
+      "taper": 0.84,
+      "jitter": 0.22,
+      "detail": 9,
+      "color": "#6b533b"
+    },
+    {
+      "name": "trunk-upper",
+      "shape": "limb",
+      "from": [
+        0.015,
+        0.38,
+        0.01
+      ],
+      "to": [
+        0.02,
+        0.72,
+        0
+      ],
+      "radius": 0.099,
+      "taper": 0.78,
+      "jitter": 0.2,
+      "detail": 9,
+      "color": "#6b533b"
+    },
+    {
+      "name": "swing-bough",
+      "shape": "limb",
+      "from": [
+        0.01,
+        0.66,
+        0.01
+      ],
+      "to": [
+        0.5,
+        0.73,
+        0.12
+      ],
+      "radius": 0.072,
+      "taper": 0.58,
+      "jitter": 0.18,
+      "detail": 8,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-right",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.68,
+        0
+      ],
+      "to": [
+        0.3,
+        0.99,
+        0.06
+      ],
+      "radius": 0.056,
+      "taper": 0.5,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-left",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.67,
+        0
+      ],
+      "to": [
+        -0.29,
+        0.95,
+        -0.04
+      ],
+      "radius": 0.054,
+      "taper": 0.5,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-crown",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.7,
+        0
+      ],
+      "to": [
+        0.04,
+        1.16,
+        -0.03
+      ],
+      "radius": 0.052,
+      "taper": 0.45,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-front",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.69,
+        0
+      ],
+      "to": [
+        0.06,
+        0.93,
+        0.29
+      ],
+      "radius": 0.05,
+      "taper": 0.5,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-back",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.69,
+        0
+      ],
+      "to": [
+        -0.05,
+        0.94,
+        -0.27
+      ],
+      "radius": 0.048,
+      "taper": 0.5,
+      "color": "#6b533b"
+    },
+    {
+      "name": "rope",
+      "shape": "limb",
+      "from": [
+        0.47,
+        0.72,
+        0.12
+      ],
+      "to": [
+        0.46,
+        0.4,
+        0.12
+      ],
+      "radius": 0.014,
+      "taper": 0.95,
+      "color": "#a58d5f"
+    },
+    {
+      "name": "tire",
+      "shape": "torus",
+      "size": [
+        0.25,
+        0.25,
+        0.095
+      ],
+      "position": [
+        0.46,
+        0.29,
+        0.12
+      ],
+      "detail": 14,
+      "color": "#26272a"
+    },
+    {
+      "name": "canopy-core",
+      "shape": "icosahedron",
+      "size": [
+        0.64,
+        0.52,
+        0.62
+      ],
+      "position": [
+        0,
+        1.04,
+        0.02
+      ],
+      "jitter": 0.3,
+      "detail": 9,
+      "color": "#4f7a3a",
+      "children": [
+        {
+          "name": "leaf-core",
+          "shape": "icosahedron",
+          "size": [
+            0.1496,
+            0.132,
+            0.1496
+          ],
+          "detail": 5,
+          "jitter": 0.5,
+          "color": "#5d8c44",
+          "repeat": {
+            "count": 24,
+            "mode": "surface",
+            "embed": -0.22,
+            "band": [
+              0.25,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-right",
+      "shape": "icosahedron",
+      "size": [
+        0.52,
+        0.46,
+        0.5
+      ],
+      "position": [
+        0.31,
+        1.0,
+        0.08
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#476f34",
+      "children": [
+        {
+          "name": "leaf-right",
+          "shape": "icosahedron",
+          "size": [
+            0.132,
+            0.1144,
+            0.132
+          ],
+          "detail": 5,
+          "jitter": 0.5,
+          "color": "#5d8c44",
+          "repeat": {
+            "count": 17,
+            "mode": "surface",
+            "embed": -0.22,
+            "band": [
+              0.2,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-left",
+      "shape": "icosahedron",
+      "size": [
+        0.5,
+        0.44,
+        0.48
+      ],
+      "position": [
+        -0.3,
+        0.97,
+        -0.05
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#456b33",
+      "children": [
+        {
+          "name": "leaf-left",
+          "shape": "icosahedron",
+          "size": [
+            0.132,
+            0.1144,
+            0.132
+          ],
+          "detail": 5,
+          "jitter": 0.5,
+          "color": "#548040",
+          "repeat": {
+            "count": 17,
+            "mode": "surface",
+            "embed": -0.22,
+            "band": [
+              0.2,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-crown",
+      "shape": "icosahedron",
+      "size": [
+        0.46,
+        0.38,
+        0.44
+      ],
+      "position": [
+        0.03,
+        1.29,
+        -0.02
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#5d8c44",
+      "children": [
+        {
+          "name": "leaf-crown",
+          "shape": "icosahedron",
+          "size": [
+            0.1232,
+            0.1056,
+            0.1232
+          ],
+          "detail": 5,
+          "jitter": 0.5,
+          "color": "#6a9b4c",
+          "repeat": {
+            "count": 15,
+            "mode": "surface",
+            "embed": -0.22,
+            "band": [
+              0.3,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-front",
+      "shape": "icosahedron",
+      "size": [
+        0.46,
+        0.42,
+        0.44
+      ],
+      "position": [
+        0.07,
+        0.92,
+        0.3
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#456b33",
+      "children": [
+        {
+          "name": "leaf-front",
+          "shape": "icosahedron",
+          "size": [
+            0.1232,
+            0.1056,
+            0.1232
+          ],
+          "detail": 5,
+          "jitter": 0.5,
+          "color": "#548040",
+          "repeat": {
+            "count": 15,
+            "mode": "surface",
+            "embed": -0.22,
+            "band": [
+              0.2,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-back",
+      "shape": "icosahedron",
+      "size": [
+        0.44,
+        0.4,
+        0.42
+      ],
+      "position": [
+        -0.05,
+        0.95,
+        -0.28
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#3f6330",
+      "children": [
+        {
+          "name": "leaf-back",
+          "shape": "icosahedron",
+          "size": [
+            0.1144,
+            0.1056,
+            0.1144
+          ],
+          "detail": 5,
+          "jitter": 0.5,
+          "color": "#4c7539",
+          "repeat": {
+            "count": 14,
+            "mode": "surface",
+            "embed": -0.22,
+            "band": [
+              0.2,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        }
+      ]
+    }
+  ]
+}

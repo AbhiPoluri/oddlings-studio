@@ -1,0 +1,797 @@
+{
+  "version": 1,
+  "name": "Sniper Rifle",
+  "kind": "prop",
+  "seed": 7,
+  "scale": 1,
+  "color": "#33373d",
+  "joints": [
+    {
+      "name": "Bolt",
+      "at": [
+        0,
+        0.086,
+        -0.14
+      ],
+      "binds": [
+        "bolt",
+        "bolt-handle",
+        "bolt-knob"
+      ],
+      "spin": {
+        "axis": "z",
+        "degrees": -60,
+        "seconds": 2.4,
+        "drift": 0
+      }
+    }
+  ],
+  "parts": [
+    {
+      "name": "receiver",
+      "shape": "box",
+      "size": [
+        0.058,
+        0.074,
+        0.3
+      ],
+      "position": [
+        0,
+        0.06,
+        0.0
+      ],
+      "color": "#33373d",
+      "bevel": 0.006
+    },
+    {
+      "name": "top-rail",
+      "shape": "box",
+      "size": [
+        0.021,
+        0.012,
+        0.28
+      ],
+      "position": [
+        0,
+        0.103,
+        0.0
+      ],
+      "color": "#1c1e21"
+    },
+    {
+      "name": "rail-tooth",
+      "shape": "box",
+      "size": [
+        0.023,
+        0.006,
+        0.006
+      ],
+      "position": [
+        0,
+        0.111,
+        -0.126
+      ],
+      "color": "#1c1e21",
+      "repeat": {
+        "count": 18,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          0.0148
+        ]
+      }
+    },
+    {
+      "name": "ejection-port",
+      "shape": "box",
+      "size": [
+        0.004,
+        0.03,
+        0.07
+      ],
+      "position": [
+        0.031,
+        0.068,
+        0.04
+      ],
+      "color": "#1c1e21"
+    },
+    {
+      "name": "bolt",
+      "shape": "box",
+      "size": [
+        0.02,
+        0.02,
+        0.11
+      ],
+      "position": [
+        0,
+        0.086,
+        -0.1
+      ],
+      "color": "#5a6068",
+      "bevel": 0.003
+    },
+    {
+      "name": "bolt-handle",
+      "shape": "limb",
+      "from": [
+        0.012,
+        0.086,
+        -0.14
+      ],
+      "to": [
+        0.058,
+        0.04,
+        -0.13
+      ],
+      "radius": 0.006,
+      "color": "#5a6068",
+      "via": [
+        0.05,
+        0.082,
+        -0.135
+      ]
+    },
+    {
+      "name": "bolt-knob",
+      "shape": "sphere",
+      "size": [
+        0.022,
+        0.022,
+        0.022
+      ],
+      "position": [
+        0.06,
+        0.036,
+        -0.13
+      ],
+      "detail": 6,
+      "color": "#101112"
+    },
+    {
+      "name": "barrel",
+      "shape": "limb",
+      "from": [
+        0,
+        0.07,
+        0.15
+      ],
+      "to": [
+        0,
+        0.07,
+        0.74
+      ],
+      "radius": 0.012,
+      "color": "#5a6068",
+      "taper": 0.85
+    },
+    {
+      "name": "muzzle-brake",
+      "shape": "lathe",
+      "size": [
+        0.036,
+        0.075,
+        0.036
+      ],
+      "position": [
+        0,
+        0.07,
+        0.765
+      ],
+      "profile": [
+        [
+          0.01,
+          0
+        ],
+        [
+          0.018,
+          0.006
+        ],
+        [
+          0.018,
+          0.064
+        ],
+        [
+          0.013,
+          0.07
+        ],
+        [
+          0.013,
+          0.075
+        ]
+      ],
+      "color": "#1c1e21",
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "detail": 12
+    },
+    {
+      "name": "brake-port",
+      "shape": "box",
+      "size": [
+        0.008,
+        0.012,
+        0.012
+      ],
+      "position": [
+        0,
+        0.078,
+        0.76
+      ],
+      "color": "#101112",
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          0.016
+        ]
+      }
+    },
+    {
+      "name": "handguard",
+      "shape": "box",
+      "size": [
+        0.048,
+        0.046,
+        0.3
+      ],
+      "position": [
+        0,
+        0.066,
+        0.3
+      ],
+      "color": "#33373d",
+      "bevel": 0.005
+    },
+    {
+      "name": "hg-slot",
+      "shape": "box",
+      "size": [
+        0.05,
+        0.004,
+        0.008
+      ],
+      "position": [
+        0,
+        0.066,
+        0.19
+      ],
+      "color": "#1c1e21",
+      "repeat": {
+        "count": 9,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          0.026
+        ]
+      }
+    },
+    {
+      "name": "hg-rail",
+      "shape": "box",
+      "size": [
+        0.021,
+        0.01,
+        0.24
+      ],
+      "position": [
+        0,
+        0.094,
+        0.3
+      ],
+      "color": "#1c1e21"
+    },
+    {
+      "name": "scope-mount",
+      "shape": "box",
+      "size": [
+        0.03,
+        0.03,
+        0.03
+      ],
+      "position": [
+        0,
+        0.122,
+        -0.06
+      ],
+      "color": "#1c1e21",
+      "bevel": 0.004,
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          0.12
+        ]
+      }
+    },
+    {
+      "name": "scope",
+      "shape": "lathe",
+      "size": [
+        0.056,
+        0.3,
+        0.056
+      ],
+      "position": [
+        0,
+        0.15,
+        0.0
+      ],
+      "profile": [
+        [
+          0.014,
+          0
+        ],
+        [
+          0.02,
+          0.012
+        ],
+        [
+          0.02,
+          0.055
+        ],
+        [
+          0.015,
+          0.07
+        ],
+        [
+          0.015,
+          0.2
+        ],
+        [
+          0.024,
+          0.225
+        ],
+        [
+          0.028,
+          0.245
+        ],
+        [
+          0.028,
+          0.29
+        ],
+        [
+          0.025,
+          0.3
+        ]
+      ],
+      "color": "#1c1e21",
+      "rotation": [
+        -90,
+        0,
+        0
+      ],
+      "detail": 14
+    },
+    {
+      "name": "objective-lens",
+      "shape": "cylinder",
+      "size": [
+        0.044,
+        0.004,
+        0.044
+      ],
+      "position": [
+        0,
+        0.15,
+        0.15
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "color": "#6fb3cc",
+      "detail": 14
+    },
+    {
+      "name": "eyepiece-lens",
+      "shape": "cylinder",
+      "size": [
+        0.03,
+        0.004,
+        0.03
+      ],
+      "position": [
+        0,
+        0.15,
+        -0.15
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "color": "#6fb3cc",
+      "detail": 12
+    },
+    {
+      "name": "elevation-turret",
+      "shape": "cylinder",
+      "size": [
+        0.022,
+        0.018,
+        0.022
+      ],
+      "position": [
+        0,
+        0.178,
+        0.01
+      ],
+      "color": "#1c1e21",
+      "detail": 10
+    },
+    {
+      "name": "windage-turret",
+      "shape": "cylinder",
+      "size": [
+        0.022,
+        0.018,
+        0.022
+      ],
+      "position": [
+        0.028,
+        0.15,
+        0.01
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "color": "#1c1e21",
+      "detail": 10
+    },
+    {
+      "name": "turret-cap",
+      "shape": "box",
+      "size": [
+        0.024,
+        0.003,
+        0.024
+      ],
+      "position": [
+        0,
+        0.188,
+        0.01
+      ],
+      "color": "#5a6068"
+    },
+    {
+      "name": "grip",
+      "shape": "extrude",
+      "size": [
+        0.06,
+        0.11,
+        0.032
+      ],
+      "position": [
+        0,
+        -0.005,
+        -0.09
+      ],
+      "profile": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.9,
+          -0.05
+        ],
+        [
+          1.05,
+          0.55
+        ],
+        [
+          0.7,
+          1.0
+        ],
+        [
+          0.0,
+          1.0
+        ],
+        [
+          -0.15,
+          0.6
+        ]
+      ],
+      "color": "#7d7256",
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "bevel": 0.003
+    },
+    {
+      "name": "trigger-guard",
+      "shape": "limb",
+      "from": [
+        0,
+        0.02,
+        -0.02
+      ],
+      "to": [
+        0,
+        0.02,
+        -0.075
+      ],
+      "radius": 0.004,
+      "color": "#1c1e21",
+      "via": [
+        0,
+        -0.012,
+        -0.048
+      ]
+    },
+    {
+      "name": "trigger",
+      "shape": "box",
+      "size": [
+        0.006,
+        0.022,
+        0.006
+      ],
+      "position": [
+        0,
+        0.012,
+        -0.045
+      ],
+      "color": "#5a6068",
+      "rotation": [
+        12,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "magazine",
+      "shape": "box",
+      "size": [
+        0.032,
+        0.075,
+        0.075
+      ],
+      "position": [
+        0,
+        -0.012,
+        0.02
+      ],
+      "color": "#1c1e21",
+      "rotation": [
+        6,
+        0,
+        0
+      ],
+      "bevel": 0.003
+    },
+    {
+      "name": "mag-floorplate",
+      "shape": "box",
+      "size": [
+        0.036,
+        0.006,
+        0.08
+      ],
+      "position": [
+        0,
+        -0.05,
+        0.024
+      ],
+      "color": "#101112",
+      "rotation": [
+        6,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "stock",
+      "shape": "extrude",
+      "size": [
+        0.3,
+        0.13,
+        0.04
+      ],
+      "position": [
+        0,
+        0.048,
+        -0.29
+      ],
+      "profile": [
+        [
+          0.0,
+          0.35
+        ],
+        [
+          0.0,
+          0.85
+        ],
+        [
+          0.35,
+          1.0
+        ],
+        [
+          0.55,
+          0.86
+        ],
+        [
+          0.62,
+          0.6
+        ],
+        [
+          1.0,
+          0.62
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          0.78,
+          0.0
+        ],
+        [
+          0.62,
+          0.2
+        ],
+        [
+          0.3,
+          0.22
+        ]
+      ],
+      "color": "#7d7256",
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "bevel": 0.004
+    },
+    {
+      "name": "cheek-riser",
+      "shape": "box",
+      "size": [
+        0.042,
+        0.024,
+        0.11
+      ],
+      "position": [
+        0,
+        0.118,
+        -0.28
+      ],
+      "color": "#101112",
+      "bevel": 0.004
+    },
+    {
+      "name": "butt-pad",
+      "shape": "box",
+      "size": [
+        0.044,
+        0.1,
+        0.018
+      ],
+      "position": [
+        0,
+        0.05,
+        -0.446
+      ],
+      "color": "#101112",
+      "bevel": 0.004
+    },
+    {
+      "name": "stock-vent",
+      "shape": "box",
+      "size": [
+        0.044,
+        0.006,
+        0.03
+      ],
+      "position": [
+        0,
+        0.03,
+        -0.24
+      ],
+      "color": "#1c1e21",
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0,
+          0.016,
+          0
+        ]
+      }
+    },
+    {
+      "name": "bipod-hub",
+      "shape": "box",
+      "size": [
+        0.034,
+        0.024,
+        0.034
+      ],
+      "position": [
+        0,
+        0.037,
+        0.4
+      ],
+      "color": "#1c1e21"
+    },
+    {
+      "name": "bipod-leg",
+      "shape": "limb",
+      "from": [
+        0.012,
+        0.03,
+        0.4
+      ],
+      "to": [
+        0.055,
+        -0.1,
+        0.43
+      ],
+      "radius": 0.008,
+      "color": "#5a6068",
+      "mirror": "x"
+    },
+    {
+      "name": "bipod-foot",
+      "shape": "box",
+      "size": [
+        0.018,
+        0.012,
+        0.022
+      ],
+      "position": [
+        0.056,
+        -0.106,
+        0.43
+      ],
+      "color": "#101112",
+      "mirror": "x"
+    },
+    {
+      "name": "sling-stud",
+      "shape": "box",
+      "size": [
+        0.006,
+        0.012,
+        0.006
+      ],
+      "position": [
+        0,
+        0.04,
+        0.42
+      ],
+      "color": "#5a6068"
+    },
+    {
+      "name": "selector",
+      "shape": "box",
+      "size": [
+        0.004,
+        0.006,
+        0.02
+      ],
+      "position": [
+        0.03,
+        0.04,
+        -0.05
+      ],
+      "color": "#5a6068"
+    }
+  ]
+}

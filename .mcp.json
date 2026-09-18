@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "oddlings": {
+      "command": "npx",
+      "args": ["tsx", "mcp/server.ts"]
+    }
+  }
+}

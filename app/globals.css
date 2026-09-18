@@ -1064,3 +1064,620 @@ button.quiet:not([data-slot]) {
 .status-bar > span:last-child {
   font-size: 12px;
 }
+.spec-banner {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 14px;
+  margin-bottom: 13px;
+  border: 1px solid var(--border);
+  border-left: 3px solid #b9d77f;
+  border-radius: var(--radius);
+  background: var(--popover);
+}
+.spec-banner > svg {
+  color: #b9d77f;
+  flex: none;
+}
+.spec-banner div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.spec-banner strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.spec-banner span {
+  font:
+    11px var(--font-geist-mono),
+    monospace;
+  color: var(--muted-foreground);
+}
+.spec-banner button {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  padding: 6px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--foreground);
+}
+.spec-banner button:hover {
+  background: var(--accent);
+}
+.part-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 264px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  background: #14181a;
+}
+.part-tree button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+}
+.part-tree button:hover {
+  background: var(--accent);
+}
+.part-tree button[aria-selected='true'] {
+  background: #33402c;
+  border-color: #91a86a;
+}
+.part-tree button > svg {
+  flex: none;
+  color: var(--muted-foreground);
+}
+.part-tree strong {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.part-tree span {
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  color: var(--muted-foreground);
+  margin-left: auto;
+  flex: none;
+}
+.part-tree i {
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  font-style: normal;
+  color: #b9d77f;
+  flex: none;
+}
+.part-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.part-header h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.part-header button {
+  margin-left: 0;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.part-header button:first-of-type {
+  margin-left: auto;
+}
+.part-header button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.vector-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 11px;
+}
+.vector-field > span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.vector-field > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+.vector-field label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--input);
+  border-radius: 3px;
+  padding: 0 5px;
+  background: #14181a;
+}
+.vector-field i {
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  font-style: normal;
+  color: var(--muted-foreground);
+}
+.vector-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 5px 0;
+  color: var(--foreground);
+  font:
+    11px var(--font-geist-mono),
+    monospace;
+}
+.vector-field input:focus {
+  outline: none;
+}
+.vector-field label:focus-within {
+  border-color: var(--ring);
+}
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.audit-list button {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #14181a;
+  color: var(--muted-foreground);
+  text-align: left;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.audit-list button:not(:disabled):hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.audit-list button:disabled {
+  cursor: default;
+}
+.audit-list i {
+  font-style: normal;
+  flex: none;
+  font-weight: 700;
+}
+.audit-list .audit-error,
+.audit-list button.audit-error {
+  border-left: 3px solid #d98b7a;
+}
+.audit-list button.audit-error i {
+  color: #d98b7a;
+}
+.audit-list button.audit-warn {
+  border-left: 3px solid #d2c385;
+}
+.audit-list button.audit-warn i {
+  color: #d2c385;
+}
+.audit-list button.audit-info i {
+  color: var(--muted-foreground);
+}
+.audit-pass,
+.audit-fail {
+  margin-left: auto;
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 1px;
+}
+.audit-pass {
+  color: #b9d77f;
+}
+.audit-fail {
+  color: #d98b7a;
+}
+.properties h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Follow bar — says at a glance whether the viewport is mirroring a file on
+   disk or holding the user's own edits. It sits on the viewport rather than in
+   the header because that is where the eye already is. */
+.follow-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft, #9aa39b);
+  background: color-mix(in srgb, var(--accent, #cfe38f) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent, #cfe38f) 22%, transparent);
+}
+.follow-bar.detached {
+  background: transparent;
+  border-bottom-color: color-mix(in srgb, currentColor 18%, transparent);
+}
+.follow-bar strong {
+  color: var(--ink, #e7ece4);
+  font-weight: 600;
+}
+.follow-bar time {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.follow-bar.detached button {
+  margin-left: auto;
+}
+.follow-bar button {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.74rem;
+}
+.follow-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent, #cfe38f);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #cfe38f) 70%, transparent);
+  animation: follow-pulse 2.4s ease-out infinite;
+}
+@keyframes follow-pulse {
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .follow-dot { animation: none; }
+}
+
+/* Direct manipulation: the gizmo's mode switch and the typed number fields. */
+.gizmo-modes {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 5px;
+  background: #0f1412cc;
+  border: 1px solid #2e3a2b;
+  backdrop-filter: blur(4px);
+}
+.gizmo-modes button {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #8fa085;
+}
+.gizmo-modes button:hover {
+  color: #d4e5ac;
+}
+.gizmo-modes button[aria-pressed='true'] {
+  background: #2c3a26;
+  color: #d4e5ac;
+}
+.asset-viewport > canvas:focus-visible {
+  outline: 1px solid #5c6e51;
+  outline-offset: -1px;
+}
+.parameter .typed-number {
+  font:
+    12px var(--font-geist-mono),
+    monospace;
+  width: 62px;
+  background: #111811;
+  border: 1px solid #36442f;
+  border-radius: 3px;
+  padding: 3px 5px;
+  text-align: center;
+  color: #d4dfc4;
+}
+.parameter .typed-number:focus {
+  outline: none;
+  border-color: #7d9a5e;
+}
+
+/* Rig panel: the three-way skeleton choice, bone list and joint cards. */
+.rig-kinds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 4px;
+}
+.rig-kinds button {
+  padding: 7px 4px;
+  border: 1px solid #3d4936;
+  border-radius: 3px;
+  background: #141b15;
+  color: #9dab90;
+  font-size: 12px;
+}
+.rig-kinds button:hover {
+  color: #d4e5ac;
+}
+.rig-kinds button[aria-pressed='true'] {
+  background: #33402c;
+  border-color: #91a86a;
+  color: #dcecbb;
+}
+.rig-error {
+  margin-top: 10px;
+  padding: 7px 9px;
+  border-left: 3px solid #d98b7a;
+  background: #1b1513;
+  border-radius: 3px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #e0b6ac;
+}
+.bone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 13px;
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px;
+  background: #14181a;
+}
+.bone-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 5px;
+  padding: 4px 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+.bone-row.chosen,
+.joint-card.chosen {
+  background: #22301f;
+  border-color: #91a86a;
+}
+.bone-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--foreground);
+  text-align: left;
+}
+.bone-name strong {
+  font:
+    11px var(--font-geist-mono),
+    monospace;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bone-name i {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #e8d18a;
+}
+.bone-name:hover strong {
+  color: #d4e5ac;
+}
+.bone-reset,
+.joint-head button:last-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.bone-reset:hover,
+.joint-head button:last-child:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.bone-axes {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.bone-axes label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--input);
+  border-radius: 3px;
+  padding: 0 4px;
+  background: #111811;
+  margin: 0;
+}
+.bone-axes i {
+  font:
+    9px var(--font-geist-mono),
+    monospace;
+  font-style: normal;
+  color: var(--muted-foreground);
+}
+.bone-axes input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  color: var(--foreground);
+  font:
+    11px var(--font-geist-mono),
+    monospace;
+}
+.bone-axes input:focus {
+  outline: none;
+}
+.bone-axes label:focus-within {
+  border-color: var(--ring);
+}
+.joint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 13px;
+}
+.joint-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #14181a;
+  padding: 10px 11px;
+}
+.joint-card .vector-field,
+.joint-card .parameter {
+  margin-bottom: 11px;
+}
+.joint-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.joint-head .bone-name {
+  flex: none;
+  max-width: 96px;
+}
+.joint-head input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  background: #111811;
+  border: 1px solid #36442f;
+  border-radius: 3px;
+  padding: 3px 7px;
+  color: #d4dfc4;
+  font-size: 12px;
+}
+.joint-head input:focus {
+  outline: none;
+  border-color: #7d9a5e;
+}
+.field-label {
+  display: block;
+  font-size: 13px;
+  color: #aebba6;
+  margin-bottom: 8px;
+}
+.bind-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px;
+  margin-bottom: 13px;
+  background: #111811;
+}
+.bind-list label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 4px;
+  font-size: 12px;
+  color: var(--foreground);
+}
+.bind-list label.blocked {
+  color: #6f7a6c;
+}
+.bind-list input {
+  accent-color: #91a86a;
+}
+.bind-list strong {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bind-list span {
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  color: var(--muted-foreground);
+  margin-left: auto;
+  flex: none;
+}
+.add-joint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 11px;
+  padding: 8px;
+  border: 1px dashed #4a5a41;
+  border-radius: 3px;
+  background: transparent;
+  color: #9dab90;
+  font-size: 12px;
+}
+.add-joint:hover {
+  border-color: #91a86a;
+  color: #d4e5ac;
+}
+.gizmo-modes button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.bone-row.static {
+  margin-top: 13px;
+  border: 1px dashed #3d4936;
+  background: #14181a;
+}
+.bone-note {
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+  color: var(--muted-foreground);
+  align-self: center;
+}

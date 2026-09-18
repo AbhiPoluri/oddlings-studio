@@ -1,0 +1,752 @@
+{
+  "version": 1,
+  "name": "Tire Swing Tree Leafy",
+  "kind": "environment",
+  "seed": 7714,
+  "scale": 4,
+  "color": "#4f7a3a",
+  "joints": [
+    {
+      "name": "Swing",
+      "at": [
+        0.47,
+        0.72,
+        0.12
+      ],
+      "binds": [
+        "rope"
+      ],
+      "spin": {
+        "axis": "x",
+        "degrees": 22,
+        "seconds": 3.2,
+        "clip": "Swing"
+      }
+    },
+    {
+      "name": "Tire",
+      "parent": "Swing",
+      "at": [
+        0.46,
+        0.4,
+        0.12
+      ],
+      "binds": [
+        "tire"
+      ],
+      "spin": {
+        "axis": "x",
+        "degrees": 6,
+        "seconds": 3.2,
+        "clip": "Swing",
+        "phase": 90
+      }
+    }
+  ],
+  "parts": [
+    {
+      "name": "root",
+      "shape": "limb",
+      "from": [
+        0,
+        0.1,
+        0
+      ],
+      "to": [
+        0.17,
+        -0.015,
+        0
+      ],
+      "radius": 0.055,
+      "taper": 0.42,
+      "color": "#54402c",
+      "repeat": {
+        "count": 6,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360,
+        "twist": 6
+      }
+    },
+    {
+      "name": "trunk-lower",
+      "shape": "limb",
+      "from": [
+        0,
+        0,
+        0
+      ],
+      "to": [
+        0.015,
+        0.38,
+        0.01
+      ],
+      "radius": 0.118,
+      "taper": 0.84,
+      "jitter": 0.22,
+      "detail": 9,
+      "color": "#6b533b"
+    },
+    {
+      "name": "trunk-upper",
+      "shape": "limb",
+      "from": [
+        0.015,
+        0.38,
+        0.01
+      ],
+      "to": [
+        0.02,
+        0.72,
+        0
+      ],
+      "radius": 0.099,
+      "taper": 0.78,
+      "jitter": 0.2,
+      "detail": 9,
+      "color": "#6b533b"
+    },
+    {
+      "name": "swing-bough",
+      "shape": "limb",
+      "from": [
+        0.01,
+        0.66,
+        0.01
+      ],
+      "to": [
+        0.5,
+        0.73,
+        0.12
+      ],
+      "radius": 0.072,
+      "taper": 0.58,
+      "jitter": 0.18,
+      "detail": 8,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-right",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.68,
+        0
+      ],
+      "to": [
+        0.3,
+        0.99,
+        0.06
+      ],
+      "radius": 0.056,
+      "taper": 0.5,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-left",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.67,
+        0
+      ],
+      "to": [
+        -0.29,
+        0.95,
+        -0.04
+      ],
+      "radius": 0.054,
+      "taper": 0.5,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-crown",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.7,
+        0
+      ],
+      "to": [
+        0.04,
+        1.16,
+        -0.03
+      ],
+      "radius": 0.052,
+      "taper": 0.45,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-front",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.69,
+        0
+      ],
+      "to": [
+        0.06,
+        0.93,
+        0.29
+      ],
+      "radius": 0.05,
+      "taper": 0.5,
+      "color": "#6b533b"
+    },
+    {
+      "name": "bough-back",
+      "shape": "limb",
+      "from": [
+        0.02,
+        0.69,
+        0
+      ],
+      "to": [
+        -0.05,
+        0.94,
+        -0.27
+      ],
+      "radius": 0.048,
+      "taper": 0.5,
+      "color": "#6b533b"
+    },
+    {
+      "name": "rope",
+      "shape": "limb",
+      "from": [
+        0.47,
+        0.72,
+        0.12
+      ],
+      "to": [
+        0.46,
+        0.4,
+        0.12
+      ],
+      "radius": 0.014,
+      "taper": 0.95,
+      "color": "#a58d5f"
+    },
+    {
+      "name": "tire",
+      "shape": "torus",
+      "size": [
+        0.25,
+        0.25,
+        0.095
+      ],
+      "position": [
+        0.46,
+        0.29,
+        0.12
+      ],
+      "detail": 14,
+      "color": "#26272a"
+    },
+    {
+      "name": "canopy-core",
+      "shape": "icosahedron",
+      "size": [
+        0.64,
+        0.52,
+        0.62
+      ],
+      "position": [
+        0,
+        1.04,
+        0.02
+      ],
+      "jitter": 0.3,
+      "detail": 9,
+      "color": "#4f7a3a",
+      "children": [
+        {
+          "name": "leaf-core",
+          "shape": "icosahedron",
+          "size": [
+            0.1496,
+            0.132,
+            0.1496
+          ],
+          "detail": 4,
+          "jitter": 0.5,
+          "color": "#5d8c44",
+          "repeat": {
+            "count": 40,
+            "mode": "surface",
+            "embed": -0.45,
+            "band": [
+              0.25,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        },
+        {
+          "name": "leaf-blade-core-1",
+          "shape": "box",
+          "size": [
+            0.03,
+            0.046,
+            0.007
+          ],
+          "color": "#63a049",
+          "repeat": {
+            "count": 120,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        },
+        {
+          "name": "leaf-blade-core-2",
+          "shape": "box",
+          "size": [
+            0.024,
+            0.036,
+            0.006
+          ],
+          "color": "#63a049",
+          "repeat": {
+            "count": 120,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-right",
+      "shape": "icosahedron",
+      "size": [
+        0.52,
+        0.46,
+        0.5
+      ],
+      "position": [
+        0.31,
+        1.0,
+        0.08
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#476f34",
+      "children": [
+        {
+          "name": "leaf-right",
+          "shape": "icosahedron",
+          "size": [
+            0.132,
+            0.1144,
+            0.132
+          ],
+          "detail": 4,
+          "jitter": 0.5,
+          "color": "#5d8c44",
+          "repeat": {
+            "count": 28,
+            "mode": "surface",
+            "embed": -0.45,
+            "band": [
+              0.2,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        },
+        {
+          "name": "leaf-blade-right-1",
+          "shape": "box",
+          "size": [
+            0.03,
+            0.046,
+            0.007
+          ],
+          "color": "#5c9442",
+          "repeat": {
+            "count": 81,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        },
+        {
+          "name": "leaf-blade-right-2",
+          "shape": "box",
+          "size": [
+            0.024,
+            0.036,
+            0.006
+          ],
+          "color": "#5c9442",
+          "repeat": {
+            "count": 81,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-left",
+      "shape": "icosahedron",
+      "size": [
+        0.5,
+        0.44,
+        0.48
+      ],
+      "position": [
+        -0.3,
+        0.97,
+        -0.05
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#456b33",
+      "children": [
+        {
+          "name": "leaf-left",
+          "shape": "icosahedron",
+          "size": [
+            0.132,
+            0.1144,
+            0.132
+          ],
+          "detail": 4,
+          "jitter": 0.5,
+          "color": "#548040",
+          "repeat": {
+            "count": 28,
+            "mode": "surface",
+            "embed": -0.45,
+            "band": [
+              0.2,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        },
+        {
+          "name": "leaf-blade-left-1",
+          "shape": "box",
+          "size": [
+            0.03,
+            0.046,
+            0.007
+          ],
+          "color": "#548a3d",
+          "repeat": {
+            "count": 81,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        },
+        {
+          "name": "leaf-blade-left-2",
+          "shape": "box",
+          "size": [
+            0.024,
+            0.036,
+            0.006
+          ],
+          "color": "#548a3d",
+          "repeat": {
+            "count": 81,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-crown",
+      "shape": "icosahedron",
+      "size": [
+        0.46,
+        0.38,
+        0.44
+      ],
+      "position": [
+        0.03,
+        1.29,
+        -0.02
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#5d8c44",
+      "children": [
+        {
+          "name": "leaf-crown",
+          "shape": "icosahedron",
+          "size": [
+            0.1232,
+            0.1056,
+            0.1232
+          ],
+          "detail": 4,
+          "jitter": 0.5,
+          "color": "#6a9b4c",
+          "repeat": {
+            "count": 25,
+            "mode": "surface",
+            "embed": -0.45,
+            "band": [
+              0.3,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        },
+        {
+          "name": "leaf-blade-crown-1",
+          "shape": "box",
+          "size": [
+            0.03,
+            0.046,
+            0.007
+          ],
+          "color": "#74b355",
+          "repeat": {
+            "count": 70,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        },
+        {
+          "name": "leaf-blade-crown-2",
+          "shape": "box",
+          "size": [
+            0.024,
+            0.036,
+            0.006
+          ],
+          "color": "#74b355",
+          "repeat": {
+            "count": 70,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-front",
+      "shape": "icosahedron",
+      "size": [
+        0.46,
+        0.42,
+        0.44
+      ],
+      "position": [
+        0.07,
+        0.92,
+        0.3
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#456b33",
+      "children": [
+        {
+          "name": "leaf-front",
+          "shape": "icosahedron",
+          "size": [
+            0.1232,
+            0.1056,
+            0.1232
+          ],
+          "detail": 4,
+          "jitter": 0.5,
+          "color": "#548040",
+          "repeat": {
+            "count": 25,
+            "mode": "surface",
+            "embed": -0.45,
+            "band": [
+              0.2,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        },
+        {
+          "name": "leaf-blade-front-1",
+          "shape": "box",
+          "size": [
+            0.03,
+            0.046,
+            0.007
+          ],
+          "color": "#5c9442",
+          "repeat": {
+            "count": 70,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        },
+        {
+          "name": "leaf-blade-front-2",
+          "shape": "box",
+          "size": [
+            0.024,
+            0.036,
+            0.006
+          ],
+          "color": "#5c9442",
+          "repeat": {
+            "count": 70,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        }
+      ]
+    },
+    {
+      "name": "canopy-back",
+      "shape": "icosahedron",
+      "size": [
+        0.44,
+        0.4,
+        0.42
+      ],
+      "position": [
+        -0.05,
+        0.95,
+        -0.28
+      ],
+      "jitter": 0.3,
+      "detail": 8,
+      "color": "#3f6330",
+      "children": [
+        {
+          "name": "leaf-back",
+          "shape": "icosahedron",
+          "size": [
+            0.1144,
+            0.1056,
+            0.1144
+          ],
+          "detail": 4,
+          "jitter": 0.5,
+          "color": "#4c7539",
+          "repeat": {
+            "count": 23,
+            "mode": "surface",
+            "embed": -0.45,
+            "band": [
+              0.2,
+              1
+            ],
+            "sizeJitter": 0.45,
+            "twist": 55
+          }
+        },
+        {
+          "name": "leaf-blade-back-1",
+          "shape": "box",
+          "size": [
+            0.03,
+            0.046,
+            0.007
+          ],
+          "color": "#4b7d38",
+          "repeat": {
+            "count": 60,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        },
+        {
+          "name": "leaf-blade-back-2",
+          "shape": "box",
+          "size": [
+            0.024,
+            0.036,
+            0.006
+          ],
+          "color": "#4b7d38",
+          "repeat": {
+            "count": 60,
+            "mode": "surface",
+            "embed": -0.35,
+            "band": [
+              0.12,
+              1
+            ],
+            "sizeJitter": 0.5,
+            "twist": 75
+          }
+        }
+      ]
+    }
+  ]
+}

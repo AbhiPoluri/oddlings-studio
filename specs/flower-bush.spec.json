@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "name": "Flower Bush",
+  "kind": "prop",
+  "seed": 606,
+  "color": "#52684a",
+  "parts": [
+    {
+      "name": "mound",
+      "shape": "icosahedron",
+      "size": [
+        0.7,
+        0.14,
+        0.62
+      ],
+      "position": [
+        0,
+        0.04,
+        0
+      ],
+      "jitter": 0.45,
+      "detail": 5,
+      "color": "#4a4136"
+    },
+    {
+      "name": "twig",
+      "shape": "limb",
+      "from": [
+        0,
+        0.03,
+        0
+      ],
+      "to": [
+        0.14,
+        0.36,
+        0.05
+      ],
+      "radius": 0.026,
+      "taper": 0.45,
+      "color": "#6d5f52",
+      "repeat": {
+        "count": 5,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.04,
+        "arc": 360,
+        "twist": 14,
+        "sizeJitter": 0.3
+      }
+    },
+    {
+      "name": "core",
+      "shape": "icosahedron",
+      "size": [
+        0.62,
+        0.56,
+        0.58
+      ],
+      "position": [
+        0,
+        0.42,
+        0
+      ],
+      "jitter": 0.4,
+      "detail": 5
+    },
+    {
+      "name": "clump",
+      "shape": "icosahedron",
+      "size": [
+        0.42,
+        0.4,
+        0.4
+      ],
+      "position": [
+        0,
+        0.38,
+        0
+      ],
+      "jitter": 0.4,
+      "detail": 5,
+      "color": "#6f8a5b",
+      "repeat": {
+        "count": 7,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.24,
+        "arc": 360,
+        "scatter": [
+          0.08,
+          0.15,
+          0.08
+        ],
+        "twist": 45,
+        "sizeJitter": 0.24
+      }
+    },
+    {
+      "name": "bud",
+      "shape": "cone",
+      "size": [
+        0.045,
+        0.085,
+        0.045
+      ],
+      "color": "#d7b8c6",
+      "detail": 5,
+      "repeat": {
+        "count": 6,
+        "mode": "surface",
+        "band": [
+          0.75,
+          1.0
+        ],
+        "embed": -0.5,
+        "twist": 20,
+        "sizeJitter": 0.3
+      }
+    },
+    {
+      "name": "leaf",
+      "shape": "tetrahedron",
+      "size": [
+        0.17,
+        0.05,
+        0.19
+      ],
+      "rotation": [
+        0,
+        0,
+        22
+      ],
+      "color": "#7d9a63",
+      "repeat": {
+        "count": 14,
+        "mode": "surface",
+        "band": [
+          0.3,
+          0.95
+        ],
+        "embed": -0.35,
+        "twist": 45,
+        "sizeJitter": 0.4
+      }
+    },
+    {
+      "name": "bloom",
+      "shape": "sphere",
+      "size": [
+        0.06,
+        0.055,
+        0.06
+      ],
+      "detail": 4,
+      "color": "#e8d18a",
+      "repeat": {
+        "count": 15,
+        "mode": "surface",
+        "band": [
+          0.42,
+          1.0
+        ],
+        "embed": -0.4,
+        "twist": 18,
+        "sizeJitter": 0.35
+      },
+      "children": [
+        {
+          "name": "petal",
+          "shape": "octahedron",
+          "size": [
+            0.14,
+            0.032,
+            0.085
+          ],
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "color": "#c7a4b5",
+          "repeat": {
+            "count": 5,
+            "mode": "radial",
+            "axis": "y",
+            "radius": 0.075,
+            "arc": 360,
+            "twist": 12
+          }
+        }
+      ]
+    }
+  ]
+}

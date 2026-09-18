@@ -1,0 +1,1459 @@
+{
+  "version": 1,
+  "name": "Tower Windmill",
+  "kind": "prop",
+  "seed": 1783,
+  "scale": 10.0,
+  "color": "#9d7461",
+  "joints": [
+    {
+      "name": "Yaw",
+      "at": [
+        0.0,
+        1.125,
+        0.0
+      ],
+      "binds": [
+        "cap"
+      ],
+      "spin": {
+        "axis": "y",
+        "degrees": 5,
+        "seconds": 11,
+        "clip": "Yaw",
+        "drift": 0
+      }
+    },
+    {
+      "name": "Sails",
+      "parent": "Yaw",
+      "at": [
+        0.0,
+        1.27,
+        0.39
+      ],
+      "binds": [
+        "hub"
+      ],
+      "spin": {
+        "axis": "z",
+        "degrees": 90,
+        "seconds": 5,
+        "clip": "Sails",
+        "mode": "turn"
+      }
+    }
+  ],
+  "parts": [
+    {
+      "name": "base-course",
+      "shape": "cylinder",
+      "size": [
+        0.76,
+        0.085,
+        0.76
+      ],
+      "position": [
+        0.0,
+        0.0425,
+        0.0
+      ],
+      "taper": 0.905,
+      "detail": 12,
+      "color": "#7a5a4c"
+    },
+    {
+      "name": "tower",
+      "shape": "lathe",
+      "profile": [
+        [
+          3.42,
+          0.0
+        ],
+        [
+          3.2,
+          2.8
+        ],
+        [
+          2.92,
+          5.6
+        ],
+        [
+          2.56,
+          8.4
+        ],
+        [
+          2.12,
+          11.25
+        ]
+      ],
+      "size": [
+        0.684,
+        1.125,
+        0.684
+      ],
+      "position": [
+        0.0,
+        0.5625,
+        0.0
+      ],
+      "detail": 12,
+      "color": "#9d7461"
+    },
+    {
+      "name": "curb-course",
+      "shape": "cylinder",
+      "size": [
+        0.45,
+        0.032,
+        0.45
+      ],
+      "position": [
+        0.0,
+        1.118,
+        0.0
+      ],
+      "detail": 12,
+      "color": "#a9a094"
+    },
+    {
+      "name": "gallery-corbel",
+      "shape": "cylinder",
+      "size": [
+        0.71,
+        0.055,
+        0.71
+      ],
+      "position": [
+        0.0,
+        0.353,
+        0.0
+      ],
+      "taper": 2.3,
+      "detail": 12,
+      "color": "#7a5a4c"
+    },
+    {
+      "name": "gallery-deck",
+      "shape": "cylinder",
+      "size": [
+        0.755,
+        0.024,
+        0.755
+      ],
+      "position": [
+        0.0,
+        0.392,
+        0.0
+      ],
+      "detail": 12,
+      "color": "#6e5539"
+    },
+    {
+      "name": "gallery-post",
+      "shape": "box",
+      "size": [
+        0.013,
+        0.095,
+        0.013
+      ],
+      "position": [
+        0.0,
+        0.446,
+        0.0
+      ],
+      "color": "#6e5539",
+      "repeat": {
+        "count": 12,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.358,
+        "arc": 360
+      }
+    },
+    {
+      "name": "gallery-rail",
+      "shape": "box",
+      "size": [
+        0.013,
+        0.013,
+        0.195
+      ],
+      "position": [
+        0.0,
+        0.487,
+        0.0
+      ],
+      "color": "#6e5539",
+      "repeat": {
+        "count": 12,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.358,
+        "arc": 360
+      }
+    },
+    {
+      "name": "door-surround",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.19,
+        0.28,
+        0.034
+      ],
+      "position": [
+        0.0,
+        0.14,
+        0.332
+      ],
+      "bevel": 0.005,
+      "color": "#b8ad9a"
+    },
+    {
+      "name": "door",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.145,
+        0.225,
+        0.022
+      ],
+      "position": [
+        0.0,
+        0.112,
+        0.353
+      ],
+      "color": "#4c3a2a"
+    },
+    {
+      "name": "door-hood",
+      "shape": "box",
+      "size": [
+        0.215,
+        0.018,
+        0.066
+      ],
+      "position": [
+        0.0,
+        0.288,
+        0.33
+      ],
+      "bevel": 0.005,
+      "color": "#b8ad9a"
+    },
+    {
+      "name": "door-step",
+      "shape": "box",
+      "size": [
+        0.23,
+        0.026,
+        0.085
+      ],
+      "position": [
+        0.0,
+        0.013,
+        0.355
+      ],
+      "bevel": 0.005,
+      "color": "#a9a094"
+    },
+    {
+      "name": "window-mid",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.095,
+        0.135,
+        0.034
+      ],
+      "position": [
+        0.0,
+        0.64,
+        0.28324
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "color": "#b8ad9a"
+    },
+    {
+      "name": "window-mid-panel",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.062,
+        0.092,
+        0.018
+      ],
+      "position": [
+        0.0,
+        0.63226,
+        0.30424
+      ],
+      "rotation": [
+        0,
+        0.0,
+        0
+      ],
+      "color": "#2a2f36"
+    },
+    {
+      "name": "window-high",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.088,
+        0.125,
+        0.032
+      ],
+      "position": [
+        0.17023,
+        0.85,
+        0.18906
+      ],
+      "rotation": [
+        0,
+        42.0,
+        0
+      ],
+      "color": "#b8ad9a"
+    },
+    {
+      "name": "window-high-panel",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.058,
+        0.086,
+        0.018
+      ],
+      "position": [
+        0.18361,
+        0.84298,
+        0.20392
+      ],
+      "rotation": [
+        0,
+        42.0,
+        0
+      ],
+      "color": "#2a2f36"
+    },
+    {
+      "name": "window-low",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.085,
+        0.12,
+        0.032
+      ],
+      "position": [
+        -0.27824,
+        0.235,
+        0.17387
+      ],
+      "rotation": [
+        0,
+        -58.0,
+        0
+      ],
+      "color": "#b8ad9a"
+    },
+    {
+      "name": "window-low-panel",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.055,
+        0.082,
+        0.018
+      ],
+      "position": [
+        -0.29521,
+        0.22816,
+        0.18446
+      ],
+      "rotation": [
+        0,
+        -58.0,
+        0
+      ],
+      "color": "#2a2f36"
+    },
+    {
+      "name": "gallery-door",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.105,
+        0.196,
+        0.03
+      ],
+      "position": [
+        -0.07657,
+        0.502,
+        -0.28578
+      ],
+      "rotation": [
+        0,
+        195.0,
+        0
+      ],
+      "color": "#b8ad9a"
+    },
+    {
+      "name": "gallery-door-panel",
+      "shape": "extrude",
+      "profile": [
+        [
+          -0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          -0.5
+        ],
+        [
+          0.5,
+          0.05
+        ],
+        [
+          0.35,
+          0.35
+        ],
+        [
+          0.0,
+          0.5
+        ],
+        [
+          -0.35,
+          0.35
+        ],
+        [
+          -0.5,
+          0.05
+        ]
+      ],
+      "size": [
+        0.078,
+        0.158,
+        0.018
+      ],
+      "position": [
+        -0.08149,
+        0.49516,
+        -0.30413
+      ],
+      "rotation": [
+        0,
+        195.0,
+        0
+      ],
+      "color": "#4c3a2a"
+    },
+    {
+      "name": "millstone",
+      "shape": "cylinder",
+      "size": [
+        0.2,
+        0.03,
+        0.2
+      ],
+      "position": [
+        0.23051,
+        0.015,
+        0.3689
+      ],
+      "detail": 10,
+      "color": "#8d8a84"
+    },
+    {
+      "name": "rubble-a",
+      "shape": "icosahedron",
+      "size": [
+        0.086,
+        0.052,
+        0.074
+      ],
+      "position": [
+        -0.16989,
+        0.024,
+        0.36434
+      ],
+      "detail": 4,
+      "jitter": 0.3,
+      "color": "#7e7b75"
+    },
+    {
+      "name": "rubble-b",
+      "shape": "icosahedron",
+      "size": [
+        0.072,
+        0.044,
+        0.066
+      ],
+      "position": [
+        -0.39284,
+        0.021,
+        -0.04129
+      ],
+      "detail": 4,
+      "jitter": 0.32,
+      "color": "#7e7b75"
+    },
+    {
+      "name": "rubble-c",
+      "shape": "icosahedron",
+      "size": [
+        0.094,
+        0.058,
+        0.08
+      ],
+      "position": [
+        0.19014,
+        0.026,
+        -0.35759
+      ],
+      "detail": 4,
+      "jitter": 0.28,
+      "color": "#7e7b75"
+    },
+    {
+      "name": "rubble-d",
+      "shape": "icosahedron",
+      "size": [
+        0.066,
+        0.04,
+        0.06
+      ],
+      "position": [
+        -0.22256,
+        0.019,
+        -0.32996
+      ],
+      "detail": 4,
+      "jitter": 0.34,
+      "color": "#7e7b75"
+    },
+    {
+      "name": "cap",
+      "shape": "lathe",
+      "profile": [
+        [
+          2.12,
+          0.0
+        ],
+        [
+          2.36,
+          0.25
+        ],
+        [
+          2.24,
+          1.15
+        ],
+        [
+          1.72,
+          2.05
+        ],
+        [
+          0.6,
+          2.65
+        ]
+      ],
+      "size": [
+        0.472,
+        0.265,
+        0.472
+      ],
+      "position": [
+        0.0,
+        1.2575,
+        0.0
+      ],
+      "detail": 12,
+      "color": "#44514a",
+      "children": [
+        {
+          "name": "cap-finial",
+          "shape": "icosahedron",
+          "size": [
+            0.062,
+            0.062,
+            0.062
+          ],
+          "position": [
+            0.0,
+            0.1425,
+            0.0
+          ],
+          "detail": 4,
+          "color": "#a9a094"
+        },
+        {
+          "name": "windshaft",
+          "shape": "limb",
+          "from": [
+            0.0,
+            0.0125,
+            -0.17
+          ],
+          "to": [
+            0.0,
+            0.0125,
+            0.335
+          ],
+          "radius": 0.03,
+          "taper": 0.82,
+          "detail": 6,
+          "color": "#6b5238"
+        },
+        {
+          "name": "neck-bearing",
+          "shape": "cylinder",
+          "size": [
+            0.092,
+            0.055,
+            0.092
+          ],
+          "position": [
+            0.0,
+            0.0125,
+            0.205
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "detail": 8,
+          "color": "#3a4045"
+        },
+        {
+          "name": "tail-beam",
+          "shape": "box",
+          "size": [
+            0.036,
+            0.032,
+            0.26
+          ],
+          "position": [
+            0.0,
+            -0.0325,
+            -0.31
+          ],
+          "bevel": 0.006,
+          "color": "#6b5238",
+          "children": [
+            {
+              "name": "tailpole",
+              "shape": "limb",
+              "from": [
+                0.0,
+                -0.01,
+                -0.11
+              ],
+              "to": [
+                0.0,
+                -1.18,
+                -0.53
+              ],
+              "radius": 0.017,
+              "taper": 0.75,
+              "detail": 5,
+              "color": "#6b5238"
+            },
+            {
+              "name": "tailpole-wheel",
+              "shape": "cylinder",
+              "size": [
+                0.09,
+                0.018,
+                0.09
+              ],
+              "position": [
+                0.0,
+                -1.18,
+                -0.535
+              ],
+              "rotation": [
+                0,
+                0,
+                90
+              ],
+              "detail": 8,
+              "color": "#4c3a2a"
+            }
+          ]
+        },
+        {
+          "name": "hub",
+          "shape": "box",
+          "size": [
+            0.13,
+            0.13,
+            0.125
+          ],
+          "position": [
+            0.0,
+            0.0125,
+            0.39
+          ],
+          "bevel": 0.012,
+          "color": "#3a4045",
+          "children": [
+            {
+              "name": "hub-nose",
+              "shape": "cone",
+              "size": [
+                0.095,
+                0.055,
+                0.095
+              ],
+              "position": [
+                0.0,
+                0.0,
+                0.082
+              ],
+              "rotation": [
+                90,
+                0,
+                0
+              ],
+              "detail": 8,
+              "color": "#3a4045"
+            },
+            {
+              "name": "stock-upright",
+              "shape": "box",
+              "size": [
+                0.034,
+                1.42,
+                0.028
+              ],
+              "position": [
+                0.0,
+                0.0,
+                0.016
+              ],
+              "bevel": 0.006,
+              "color": "#6b5238"
+            },
+            {
+              "name": "stock-across",
+              "shape": "box",
+              "size": [
+                1.42,
+                0.034,
+                0.028
+              ],
+              "position": [
+                0.0,
+                0.0,
+                -0.016
+              ],
+              "bevel": 0.006,
+              "color": "#6b5238"
+            },
+            {
+              "name": "whip-a",
+              "shape": "box",
+              "size": [
+                0.67,
+                0.03,
+                0.024
+              ],
+              "position": [
+                0.39,
+                0.0,
+                0.0
+              ],
+              "rotation": [
+                14.0,
+                0,
+                0
+              ],
+              "bevel": 0.0055,
+              "color": "#6b5238",
+              "children": [
+                {
+                  "name": "sailbar-a",
+                  "shape": "box",
+                  "size": [
+                    0.012,
+                    0.2,
+                    0.01
+                  ],
+                  "position": [
+                    -0.26,
+                    0.064,
+                    0.002
+                  ],
+                  "color": "#cabfa7",
+                  "repeat": {
+                    "count": 9,
+                    "mode": "linear",
+                    "offset": [
+                      0.072,
+                      0.0,
+                      0.0
+                    ],
+                    "scaleStep": 0.985
+                  }
+                },
+                {
+                  "name": "uplong-in-a",
+                  "shape": "box",
+                  "size": [
+                    0.61,
+                    0.01,
+                    0.008
+                  ],
+                  "position": [
+                    0.025,
+                    0.05,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "uplong-out-a",
+                  "shape": "box",
+                  "size": [
+                    0.57,
+                    0.01,
+                    0.008
+                  ],
+                  "position": [
+                    0.045,
+                    0.134,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "hemlath-a",
+                  "shape": "box",
+                  "size": [
+                    0.013,
+                    0.18,
+                    0.008
+                  ],
+                  "position": [
+                    0.31,
+                    0.062,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "leading-board-a",
+                  "shape": "box",
+                  "size": [
+                    0.61,
+                    0.034,
+                    0.007
+                  ],
+                  "position": [
+                    0.025,
+                    -0.03,
+                    0.006
+                  ],
+                  "color": "#cabfa7"
+                }
+              ]
+            },
+            {
+              "name": "whip-b",
+              "shape": "box",
+              "size": [
+                0.67,
+                0.03,
+                0.024
+              ],
+              "position": [
+                0.0,
+                0.39,
+                0.0
+              ],
+              "rotation": [
+                0,
+                14.0,
+                90
+              ],
+              "bevel": 0.0055,
+              "color": "#6b5238",
+              "children": [
+                {
+                  "name": "sailbar-b",
+                  "shape": "box",
+                  "size": [
+                    0.012,
+                    0.2,
+                    0.01
+                  ],
+                  "position": [
+                    -0.26,
+                    0.064,
+                    0.002
+                  ],
+                  "color": "#cabfa7",
+                  "repeat": {
+                    "count": 9,
+                    "mode": "linear",
+                    "offset": [
+                      0.072,
+                      0.0,
+                      0.0
+                    ],
+                    "scaleStep": 0.985
+                  }
+                },
+                {
+                  "name": "uplong-in-b",
+                  "shape": "box",
+                  "size": [
+                    0.61,
+                    0.01,
+                    0.008
+                  ],
+                  "position": [
+                    0.025,
+                    0.05,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "uplong-out-b",
+                  "shape": "box",
+                  "size": [
+                    0.57,
+                    0.01,
+                    0.008
+                  ],
+                  "position": [
+                    0.045,
+                    0.134,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "hemlath-b",
+                  "shape": "box",
+                  "size": [
+                    0.013,
+                    0.18,
+                    0.008
+                  ],
+                  "position": [
+                    0.31,
+                    0.062,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "leading-board-b",
+                  "shape": "box",
+                  "size": [
+                    0.61,
+                    0.034,
+                    0.007
+                  ],
+                  "position": [
+                    0.025,
+                    -0.03,
+                    0.006
+                  ],
+                  "color": "#cabfa7"
+                }
+              ]
+            },
+            {
+              "name": "whip-c",
+              "shape": "box",
+              "size": [
+                0.67,
+                0.03,
+                0.024
+              ],
+              "position": [
+                -0.39,
+                0.0,
+                0.0
+              ],
+              "rotation": [
+                -14.0,
+                0,
+                180
+              ],
+              "bevel": 0.0055,
+              "color": "#6b5238",
+              "children": [
+                {
+                  "name": "sailbar-c",
+                  "shape": "box",
+                  "size": [
+                    0.012,
+                    0.2,
+                    0.01
+                  ],
+                  "position": [
+                    -0.26,
+                    0.064,
+                    0.002
+                  ],
+                  "color": "#cabfa7",
+                  "repeat": {
+                    "count": 9,
+                    "mode": "linear",
+                    "offset": [
+                      0.072,
+                      0.0,
+                      0.0
+                    ],
+                    "scaleStep": 0.985
+                  }
+                },
+                {
+                  "name": "uplong-in-c",
+                  "shape": "box",
+                  "size": [
+                    0.61,
+                    0.01,
+                    0.008
+                  ],
+                  "position": [
+                    0.025,
+                    0.05,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "uplong-out-c",
+                  "shape": "box",
+                  "size": [
+                    0.57,
+                    0.01,
+                    0.008
+                  ],
+                  "position": [
+                    0.045,
+                    0.134,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "hemlath-c",
+                  "shape": "box",
+                  "size": [
+                    0.013,
+                    0.18,
+                    0.008
+                  ],
+                  "position": [
+                    0.31,
+                    0.062,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "leading-board-c",
+                  "shape": "box",
+                  "size": [
+                    0.61,
+                    0.034,
+                    0.007
+                  ],
+                  "position": [
+                    0.025,
+                    -0.03,
+                    0.006
+                  ],
+                  "color": "#cabfa7"
+                }
+              ]
+            },
+            {
+              "name": "whip-d",
+              "shape": "box",
+              "size": [
+                0.67,
+                0.03,
+                0.024
+              ],
+              "position": [
+                0.0,
+                -0.39,
+                0.0
+              ],
+              "rotation": [
+                0,
+                -14.0,
+                -90
+              ],
+              "bevel": 0.0055,
+              "color": "#6b5238",
+              "children": [
+                {
+                  "name": "sailbar-d",
+                  "shape": "box",
+                  "size": [
+                    0.012,
+                    0.2,
+                    0.01
+                  ],
+                  "position": [
+                    -0.26,
+                    0.064,
+                    0.002
+                  ],
+                  "color": "#cabfa7",
+                  "repeat": {
+                    "count": 9,
+                    "mode": "linear",
+                    "offset": [
+                      0.072,
+                      0.0,
+                      0.0
+                    ],
+                    "scaleStep": 0.985
+                  }
+                },
+                {
+                  "name": "uplong-in-d",
+                  "shape": "box",
+                  "size": [
+                    0.61,
+                    0.01,
+                    0.008
+                  ],
+                  "position": [
+                    0.025,
+                    0.05,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "uplong-out-d",
+                  "shape": "box",
+                  "size": [
+                    0.57,
+                    0.01,
+                    0.008
+                  ],
+                  "position": [
+                    0.045,
+                    0.134,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "hemlath-d",
+                  "shape": "box",
+                  "size": [
+                    0.013,
+                    0.18,
+                    0.008
+                  ],
+                  "position": [
+                    0.31,
+                    0.062,
+                    0.009
+                  ],
+                  "color": "#cabfa7"
+                },
+                {
+                  "name": "leading-board-d",
+                  "shape": "box",
+                  "size": [
+                    0.61,
+                    0.034,
+                    0.007
+                  ],
+                  "position": [
+                    0.025,
+                    -0.03,
+                    0.006
+                  ],
+                  "color": "#cabfa7"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
