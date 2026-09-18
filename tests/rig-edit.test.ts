@@ -12,6 +12,8 @@ import {
   setClipSeconds,
   setRigKind,
   updateJoint,
+  updatePart,
+  type RememberedRig,
   type Vec3,
 } from '../lib/spec-edit';
 import { boneLayout } from '../lib/asset-joints';
@@ -250,5 +252,80 @@ describe('removing joints', () => {
   test('the last joint is kept: an empty list is not a rig', () => {
     const one = removeJoint(swing, 0);
     expect(() => removeJoint(one, 0)).toThrow(/at least one joint/);
+  });
+});
+
+/**
+ * Switching rigs used to be destructive.
+ *
+ * The three-way choice clears whichever skeleton it is not, so a click on None
+ * to look at the bare mesh — or a mis-click on Body rig — threw away every
+ * hand-placed joint, and clicking back handed you one fresh pivot. The editor
+ * keeps whatever a switch drops; these are the rules for putting it back.
+ */
+describe('switching back to a remembered rig', () => {
+  const stashed = { joints: swing.joints };
+
+  test('restores the joints that were dropped, chain and clips intact', () => {
+    const bare = setRigKind(swing, 'none');
+    expect(bare.joints).toBeUndefined();
+    const back = setRigKind(bare, 'joints', stashed);
+    expect(back.joints).toEqual(swing.joints);
+    expect(boneLayout(back)).toEqual(boneLayout(swing));
+    expect(clipTable(back)).toEqual(clipTable(swing));
+  });
+
+  test('a body rig comes back with its measurements and pinned bones', () => {
+    const pinned = setBoneOverride(godzilla, 'Head', [0, 2.4, 0.3]);
+    const bare = setRigKind(pinned, 'none');
+    const back = setRigKind(bare, 'rig', { rig: pinned.rig });
+    expect(back.rig).toEqual(pinned.rig);
+    expect(placeOf(back, 'Head').at).toEqual([0, 2.4, 0.3]);
+  });
+
+  test('drops only the joints whose binds no longer name one part', () => {
+    // `Swing` carries `rope`; renaming it leaves that joint with nothing, while
+    // `Tire` still binds a part that exists exactly once.
+    const bare = setRigKind(swing, 'none');
+    const renamed = { ...bare, parts: updatePart(bare, [9], { name: 'cord' }).parts };
+    const back = setRigKind(renamed, 'joints', stashed);
+    expect(back.joints!.map((j) => j.name)).toEqual(['Tire']);
+    // Tire hung off Swing, which is gone, so it adopts Swing's place: the root.
+    expect(back.joints![0].parent).toBeUndefined();
+    expect(placeOf(back, 'Tire').parent).toBe('Root');
+    expect(() => parseSpec(back)).not.toThrow();
+  });
+
+  test('a bind that two parts now share is not a bind, so that joint goes', () => {
+    const bare = setRigKind(swing, 'none');
+    // A second part called `tire` makes the Tire joint's bind ambiguous.
+    const twice = updatePart(bare, [1], { name: 'tire' });
+    const back = setRigKind(twice, 'joints', stashed);
+    expect(back.joints!.map((j) => j.name)).toEqual(['Swing']);
+  });
+
+  test('falls back to one seeded pivot when nothing can be restored', () => {
+    const bare = setRigKind(swing, 'none');
+    const ghost: RememberedRig = {
+      joints: [{ name: 'Ghost', at: [0, 0, 0], binds: ['nothing-is-called-this'] }],
+    };
+    const gone = setRigKind(bare, 'joints', ghost);
+    expect(gone.joints).toHaveLength(1);
+    expect(gone.joints![0].name).toBe('Pivot');
+  });
+
+  test('with nothing remembered it seeds a pivot, exactly as before', () => {
+    const bare = setRigKind(swing, 'none');
+    expect(setRigKind(bare, 'joints').joints![0].name).toBe('Pivot');
+    expect(setRigKind(bare, 'joints', {}).joints![0].name).toBe('Pivot');
+  });
+
+  test('a stash from another asset is ignored rather than thrown', () => {
+    const bare = setRigKind(godzilla, 'none');
+    // Godzilla has no part the tire swing's joints could bind to.
+    const back = setRigKind(bare, 'joints', stashed);
+    expect(back.joints).toHaveLength(1);
+    expect(back.joints![0].name).toBe('Pivot');
+    expect(() => parseSpec(back)).not.toThrow();
   });
 });

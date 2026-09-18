@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Oddlings Studio — Procedural 3D Asset Workshop',
-  description: 'Generate, shape, save, and export original 3D creatures and environments for game development.',
+  title: 'Oddlings Studio',
+  description:
+    'Review and edit the 3D asset specs your agents author: outliner, viewport, checks, and a build log.',
 };
 
 export default function RootLayout({
@@ -23,7 +24,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // `dark` so the shadcn primitives resolve their dark utilities; the studio
+    // has one theme, and `height: 100%` is what lets the shell fill the window
+    // without the document itself ever gaining a scrollbar.
+    <html lang="en" className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

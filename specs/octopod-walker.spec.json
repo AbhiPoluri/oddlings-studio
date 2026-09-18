@@ -1,0 +1,1312 @@
+{
+  "version": 1,
+  "name": "Octopod Walker",
+  "kind": "creature",
+  "seed": 8,
+  "scale": 1,
+  "color": "#1f2327",
+  "surface": {
+    "blend": 0.02,
+    "detail": 320,
+    "budget": 9000,
+    "shading": "smooth"
+  },
+  "joints": [
+    {
+      "name": "Body",
+      "at": [
+        0,
+        0.72,
+        0
+      ],
+      "binds": [
+        "body",
+        "seam-equator",
+        "seam-upper",
+        "eye-socket",
+        "eye-lens",
+        "eye-core",
+        "eye-ring"
+      ],
+      "spin": {
+        "axis": "x",
+        "degrees": 1.5,
+        "seconds": 3.2,
+        "drift": 0
+      }
+    },
+    {
+      "name": "Leg1_Hip",
+      "parent": "Body",
+      "at": [
+        0.14,
+        0.6599999999999999,
+        0.2425
+      ],
+      "binds": [
+        "shoulder1",
+        "upper1",
+        "knee1"
+      ]
+    },
+    {
+      "name": "Leg1_Knee",
+      "parent": "Leg1_Hip",
+      "at": [
+        0.31,
+        1.14,
+        0.5369
+      ],
+      "binds": [
+        "lower1",
+        "ankle1"
+      ]
+    },
+    {
+      "name": "Leg1_Ankle",
+      "parent": "Leg1_Knee",
+      "at": [
+        0.49,
+        0.34,
+        0.8487
+      ],
+      "binds": [
+        "claw1"
+      ]
+    },
+    {
+      "name": "Leg2_Hip",
+      "parent": "Body",
+      "at": [
+        0.2631,
+        0.6599999999999999,
+        0.0958
+      ],
+      "binds": [
+        "shoulder2",
+        "upper2",
+        "knee2"
+      ]
+    },
+    {
+      "name": "Leg2_Knee",
+      "parent": "Leg2_Hip",
+      "at": [
+        0.5826,
+        1.14,
+        0.2121
+      ],
+      "binds": [
+        "lower2",
+        "ankle2"
+      ]
+    },
+    {
+      "name": "Leg2_Ankle",
+      "parent": "Leg2_Knee",
+      "at": [
+        0.9209,
+        0.34,
+        0.3352
+      ],
+      "binds": [
+        "claw2"
+      ]
+    },
+    {
+      "name": "Leg3_Hip",
+      "parent": "Body",
+      "at": [
+        0.2631,
+        0.6599999999999999,
+        -0.0958
+      ],
+      "binds": [
+        "shoulder3",
+        "upper3",
+        "knee3"
+      ]
+    },
+    {
+      "name": "Leg3_Knee",
+      "parent": "Leg3_Hip",
+      "at": [
+        0.5826,
+        1.14,
+        -0.2121
+      ],
+      "binds": [
+        "lower3",
+        "ankle3"
+      ]
+    },
+    {
+      "name": "Leg3_Ankle",
+      "parent": "Leg3_Knee",
+      "at": [
+        0.9209,
+        0.34,
+        -0.3352
+      ],
+      "binds": [
+        "claw3"
+      ]
+    },
+    {
+      "name": "Leg4_Hip",
+      "parent": "Body",
+      "at": [
+        0.14,
+        0.6599999999999999,
+        -0.2425
+      ],
+      "binds": [
+        "shoulder4",
+        "upper4",
+        "knee4"
+      ]
+    },
+    {
+      "name": "Leg4_Knee",
+      "parent": "Leg4_Hip",
+      "at": [
+        0.31,
+        1.14,
+        -0.5369
+      ],
+      "binds": [
+        "lower4",
+        "ankle4"
+      ]
+    },
+    {
+      "name": "Leg4_Ankle",
+      "parent": "Leg4_Knee",
+      "at": [
+        0.49,
+        0.34,
+        -0.8487
+      ],
+      "binds": [
+        "claw4"
+      ]
+    },
+    {
+      "name": "Leg5_Hip",
+      "parent": "Body",
+      "at": [
+        -0.14,
+        0.6599999999999999,
+        0.2425
+      ],
+      "binds": [
+        "shoulder5",
+        "upper5",
+        "knee5"
+      ]
+    },
+    {
+      "name": "Leg5_Knee",
+      "parent": "Leg5_Hip",
+      "at": [
+        -0.31,
+        1.14,
+        0.5369
+      ],
+      "binds": [
+        "lower5",
+        "ankle5"
+      ]
+    },
+    {
+      "name": "Leg5_Ankle",
+      "parent": "Leg5_Knee",
+      "at": [
+        -0.49,
+        0.34,
+        0.8487
+      ],
+      "binds": [
+        "claw5"
+      ]
+    },
+    {
+      "name": "Leg6_Hip",
+      "parent": "Body",
+      "at": [
+        -0.2631,
+        0.6599999999999999,
+        0.0958
+      ],
+      "binds": [
+        "shoulder6",
+        "upper6",
+        "knee6"
+      ]
+    },
+    {
+      "name": "Leg6_Knee",
+      "parent": "Leg6_Hip",
+      "at": [
+        -0.5826,
+        1.14,
+        0.2121
+      ],
+      "binds": [
+        "lower6",
+        "ankle6"
+      ]
+    },
+    {
+      "name": "Leg6_Ankle",
+      "parent": "Leg6_Knee",
+      "at": [
+        -0.9209,
+        0.34,
+        0.3352
+      ],
+      "binds": [
+        "claw6"
+      ]
+    },
+    {
+      "name": "Leg7_Hip",
+      "parent": "Body",
+      "at": [
+        -0.2631,
+        0.6599999999999999,
+        -0.0958
+      ],
+      "binds": [
+        "shoulder7",
+        "upper7",
+        "knee7"
+      ]
+    },
+    {
+      "name": "Leg7_Knee",
+      "parent": "Leg7_Hip",
+      "at": [
+        -0.5826,
+        1.14,
+        -0.2121
+      ],
+      "binds": [
+        "lower7",
+        "ankle7"
+      ]
+    },
+    {
+      "name": "Leg7_Ankle",
+      "parent": "Leg7_Knee",
+      "at": [
+        -0.9209,
+        0.34,
+        -0.3352
+      ],
+      "binds": [
+        "claw7"
+      ]
+    },
+    {
+      "name": "Leg8_Hip",
+      "parent": "Body",
+      "at": [
+        -0.14,
+        0.6599999999999999,
+        -0.2425
+      ],
+      "binds": [
+        "shoulder8",
+        "upper8",
+        "knee8"
+      ]
+    },
+    {
+      "name": "Leg8_Knee",
+      "parent": "Leg8_Hip",
+      "at": [
+        -0.31,
+        1.14,
+        -0.5369
+      ],
+      "binds": [
+        "lower8",
+        "ankle8"
+      ]
+    },
+    {
+      "name": "Leg8_Ankle",
+      "parent": "Leg8_Knee",
+      "at": [
+        -0.49,
+        0.34,
+        -0.8487
+      ],
+      "binds": [
+        "claw8"
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "name": "body",
+      "shape": "sphere",
+      "size": [
+        0.68,
+        0.68,
+        0.68
+      ],
+      "position": [
+        0,
+        0.72,
+        0
+      ],
+      "color": "#1f2327",
+      "detail": 9
+    },
+    {
+      "name": "seam-equator",
+      "shape": "torus",
+      "size": [
+        0.7000000000000001,
+        0.7000000000000001,
+        0.03
+      ],
+      "position": [
+        0,
+        0.72,
+        0
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "color": "#2c3136",
+      "detail": 24
+    },
+    {
+      "name": "seam-upper",
+      "shape": "torus",
+      "size": [
+        0.5,
+        0.5,
+        0.025
+      ],
+      "position": [
+        0,
+        0.94,
+        0
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "color": "#2c3136",
+      "detail": 20
+    },
+    {
+      "name": "eye-socket",
+      "shape": "sphere",
+      "size": [
+        0.24,
+        0.24,
+        0.24
+      ],
+      "position": [
+        0,
+        0.74,
+        0.32
+      ],
+      "color": "#0b0c0e",
+      "detail": 8
+    },
+    {
+      "name": "eye-lens",
+      "shape": "cylinder",
+      "size": [
+        0.17,
+        0.05,
+        0.17
+      ],
+      "position": [
+        0,
+        0.74,
+        0.38
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "color": "#ff2418",
+      "detail": 16
+    },
+    {
+      "name": "eye-core",
+      "shape": "sphere",
+      "size": [
+        0.07,
+        0.07,
+        0.07
+      ],
+      "position": [
+        0,
+        0.74,
+        0.41000000000000003
+      ],
+      "color": "#fff1c8",
+      "detail": 6
+    },
+    {
+      "name": "eye-ring",
+      "shape": "torus",
+      "size": [
+        0.22,
+        0.22,
+        0.035
+      ],
+      "position": [
+        0,
+        0.74,
+        0.37
+      ],
+      "color": "#3a4046",
+      "detail": 18
+    },
+    {
+      "name": "shoulder1",
+      "shape": "sphere",
+      "size": [
+        0.14,
+        0.14,
+        0.14
+      ],
+      "position": [
+        0.14,
+        0.6599999999999999,
+        0.2425
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "upper1",
+      "shape": "limb",
+      "from": [
+        0.14,
+        0.6599999999999999,
+        0.2425
+      ],
+      "to": [
+        0.31,
+        1.14,
+        0.5369
+      ],
+      "radius": 0.05,
+      "color": "#2c3136",
+      "taper": 0.8
+    },
+    {
+      "name": "knee1",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.11,
+        0.11
+      ],
+      "position": [
+        0.31,
+        1.14,
+        0.5369
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "lower1",
+      "shape": "limb",
+      "from": [
+        0.31,
+        1.14,
+        0.5369
+      ],
+      "to": [
+        0.49,
+        0.34,
+        0.8487
+      ],
+      "radius": 0.04,
+      "color": "#2c3136",
+      "taper": 0.75
+    },
+    {
+      "name": "ankle1",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        0.49,
+        0.34,
+        0.8487
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "claw1",
+      "shape": "limb",
+      "from": [
+        0.49,
+        0.34,
+        0.8487
+      ],
+      "to": [
+        0.56,
+        0.0,
+        0.9699
+      ],
+      "radius": 0.028,
+      "color": "#15171a",
+      "taper": 0.12,
+      "via": [
+        0.6,
+        0.16,
+        1.0392
+      ]
+    },
+    {
+      "name": "shoulder2",
+      "shape": "sphere",
+      "size": [
+        0.14,
+        0.14,
+        0.14
+      ],
+      "position": [
+        0.2631,
+        0.6599999999999999,
+        0.0958
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "upper2",
+      "shape": "limb",
+      "from": [
+        0.2631,
+        0.6599999999999999,
+        0.0958
+      ],
+      "to": [
+        0.5826,
+        1.14,
+        0.2121
+      ],
+      "radius": 0.05,
+      "color": "#2c3136",
+      "taper": 0.8
+    },
+    {
+      "name": "knee2",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.11,
+        0.11
+      ],
+      "position": [
+        0.5826,
+        1.14,
+        0.2121
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "lower2",
+      "shape": "limb",
+      "from": [
+        0.5826,
+        1.14,
+        0.2121
+      ],
+      "to": [
+        0.9209,
+        0.34,
+        0.3352
+      ],
+      "radius": 0.04,
+      "color": "#2c3136",
+      "taper": 0.75
+    },
+    {
+      "name": "ankle2",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        0.9209,
+        0.34,
+        0.3352
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "claw2",
+      "shape": "limb",
+      "from": [
+        0.9209,
+        0.34,
+        0.3352
+      ],
+      "to": [
+        1.0525,
+        0.0,
+        0.3831
+      ],
+      "radius": 0.028,
+      "color": "#15171a",
+      "taper": 0.12,
+      "via": [
+        1.1276,
+        0.16,
+        0.4104
+      ]
+    },
+    {
+      "name": "shoulder3",
+      "shape": "sphere",
+      "size": [
+        0.14,
+        0.14,
+        0.14
+      ],
+      "position": [
+        0.2631,
+        0.6599999999999999,
+        -0.0958
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "upper3",
+      "shape": "limb",
+      "from": [
+        0.2631,
+        0.6599999999999999,
+        -0.0958
+      ],
+      "to": [
+        0.5826,
+        1.14,
+        -0.2121
+      ],
+      "radius": 0.05,
+      "color": "#2c3136",
+      "taper": 0.8
+    },
+    {
+      "name": "knee3",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.11,
+        0.11
+      ],
+      "position": [
+        0.5826,
+        1.14,
+        -0.2121
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "lower3",
+      "shape": "limb",
+      "from": [
+        0.5826,
+        1.14,
+        -0.2121
+      ],
+      "to": [
+        0.9209,
+        0.34,
+        -0.3352
+      ],
+      "radius": 0.04,
+      "color": "#2c3136",
+      "taper": 0.75
+    },
+    {
+      "name": "ankle3",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        0.9209,
+        0.34,
+        -0.3352
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "claw3",
+      "shape": "limb",
+      "from": [
+        0.9209,
+        0.34,
+        -0.3352
+      ],
+      "to": [
+        1.0525,
+        0.0,
+        -0.3831
+      ],
+      "radius": 0.028,
+      "color": "#15171a",
+      "taper": 0.12,
+      "via": [
+        1.1276,
+        0.16,
+        -0.4104
+      ]
+    },
+    {
+      "name": "shoulder4",
+      "shape": "sphere",
+      "size": [
+        0.14,
+        0.14,
+        0.14
+      ],
+      "position": [
+        0.14,
+        0.6599999999999999,
+        -0.2425
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "upper4",
+      "shape": "limb",
+      "from": [
+        0.14,
+        0.6599999999999999,
+        -0.2425
+      ],
+      "to": [
+        0.31,
+        1.14,
+        -0.5369
+      ],
+      "radius": 0.05,
+      "color": "#2c3136",
+      "taper": 0.8
+    },
+    {
+      "name": "knee4",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.11,
+        0.11
+      ],
+      "position": [
+        0.31,
+        1.14,
+        -0.5369
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "lower4",
+      "shape": "limb",
+      "from": [
+        0.31,
+        1.14,
+        -0.5369
+      ],
+      "to": [
+        0.49,
+        0.34,
+        -0.8487
+      ],
+      "radius": 0.04,
+      "color": "#2c3136",
+      "taper": 0.75
+    },
+    {
+      "name": "ankle4",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        0.49,
+        0.34,
+        -0.8487
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "claw4",
+      "shape": "limb",
+      "from": [
+        0.49,
+        0.34,
+        -0.8487
+      ],
+      "to": [
+        0.56,
+        0.0,
+        -0.9699
+      ],
+      "radius": 0.028,
+      "color": "#15171a",
+      "taper": 0.12,
+      "via": [
+        0.6,
+        0.16,
+        -1.0392
+      ]
+    },
+    {
+      "name": "shoulder5",
+      "shape": "sphere",
+      "size": [
+        0.14,
+        0.14,
+        0.14
+      ],
+      "position": [
+        -0.14,
+        0.6599999999999999,
+        0.2425
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "upper5",
+      "shape": "limb",
+      "from": [
+        -0.14,
+        0.6599999999999999,
+        0.2425
+      ],
+      "to": [
+        -0.31,
+        1.14,
+        0.5369
+      ],
+      "radius": 0.05,
+      "color": "#2c3136",
+      "taper": 0.8
+    },
+    {
+      "name": "knee5",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.11,
+        0.11
+      ],
+      "position": [
+        -0.31,
+        1.14,
+        0.5369
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "lower5",
+      "shape": "limb",
+      "from": [
+        -0.31,
+        1.14,
+        0.5369
+      ],
+      "to": [
+        -0.49,
+        0.34,
+        0.8487
+      ],
+      "radius": 0.04,
+      "color": "#2c3136",
+      "taper": 0.75
+    },
+    {
+      "name": "ankle5",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        -0.49,
+        0.34,
+        0.8487
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "claw5",
+      "shape": "limb",
+      "from": [
+        -0.49,
+        0.34,
+        0.8487
+      ],
+      "to": [
+        -0.56,
+        0.0,
+        0.9699
+      ],
+      "radius": 0.028,
+      "color": "#15171a",
+      "taper": 0.12,
+      "via": [
+        -0.6,
+        0.16,
+        1.0392
+      ]
+    },
+    {
+      "name": "shoulder6",
+      "shape": "sphere",
+      "size": [
+        0.14,
+        0.14,
+        0.14
+      ],
+      "position": [
+        -0.2631,
+        0.6599999999999999,
+        0.0958
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "upper6",
+      "shape": "limb",
+      "from": [
+        -0.2631,
+        0.6599999999999999,
+        0.0958
+      ],
+      "to": [
+        -0.5826,
+        1.14,
+        0.2121
+      ],
+      "radius": 0.05,
+      "color": "#2c3136",
+      "taper": 0.8
+    },
+    {
+      "name": "knee6",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.11,
+        0.11
+      ],
+      "position": [
+        -0.5826,
+        1.14,
+        0.2121
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "lower6",
+      "shape": "limb",
+      "from": [
+        -0.5826,
+        1.14,
+        0.2121
+      ],
+      "to": [
+        -0.9209,
+        0.34,
+        0.3352
+      ],
+      "radius": 0.04,
+      "color": "#2c3136",
+      "taper": 0.75
+    },
+    {
+      "name": "ankle6",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        -0.9209,
+        0.34,
+        0.3352
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "claw6",
+      "shape": "limb",
+      "from": [
+        -0.9209,
+        0.34,
+        0.3352
+      ],
+      "to": [
+        -1.0525,
+        0.0,
+        0.3831
+      ],
+      "radius": 0.028,
+      "color": "#15171a",
+      "taper": 0.12,
+      "via": [
+        -1.1276,
+        0.16,
+        0.4104
+      ]
+    },
+    {
+      "name": "shoulder7",
+      "shape": "sphere",
+      "size": [
+        0.14,
+        0.14,
+        0.14
+      ],
+      "position": [
+        -0.2631,
+        0.6599999999999999,
+        -0.0958
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "upper7",
+      "shape": "limb",
+      "from": [
+        -0.2631,
+        0.6599999999999999,
+        -0.0958
+      ],
+      "to": [
+        -0.5826,
+        1.14,
+        -0.2121
+      ],
+      "radius": 0.05,
+      "color": "#2c3136",
+      "taper": 0.8
+    },
+    {
+      "name": "knee7",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.11,
+        0.11
+      ],
+      "position": [
+        -0.5826,
+        1.14,
+        -0.2121
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "lower7",
+      "shape": "limb",
+      "from": [
+        -0.5826,
+        1.14,
+        -0.2121
+      ],
+      "to": [
+        -0.9209,
+        0.34,
+        -0.3352
+      ],
+      "radius": 0.04,
+      "color": "#2c3136",
+      "taper": 0.75
+    },
+    {
+      "name": "ankle7",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        -0.9209,
+        0.34,
+        -0.3352
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "claw7",
+      "shape": "limb",
+      "from": [
+        -0.9209,
+        0.34,
+        -0.3352
+      ],
+      "to": [
+        -1.0525,
+        0.0,
+        -0.3831
+      ],
+      "radius": 0.028,
+      "color": "#15171a",
+      "taper": 0.12,
+      "via": [
+        -1.1276,
+        0.16,
+        -0.4104
+      ]
+    },
+    {
+      "name": "shoulder8",
+      "shape": "sphere",
+      "size": [
+        0.14,
+        0.14,
+        0.14
+      ],
+      "position": [
+        -0.14,
+        0.6599999999999999,
+        -0.2425
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "upper8",
+      "shape": "limb",
+      "from": [
+        -0.14,
+        0.6599999999999999,
+        -0.2425
+      ],
+      "to": [
+        -0.31,
+        1.14,
+        -0.5369
+      ],
+      "radius": 0.05,
+      "color": "#2c3136",
+      "taper": 0.8
+    },
+    {
+      "name": "knee8",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.11,
+        0.11
+      ],
+      "position": [
+        -0.31,
+        1.14,
+        -0.5369
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "lower8",
+      "shape": "limb",
+      "from": [
+        -0.31,
+        1.14,
+        -0.5369
+      ],
+      "to": [
+        -0.49,
+        0.34,
+        -0.8487
+      ],
+      "radius": 0.04,
+      "color": "#2c3136",
+      "taper": 0.75
+    },
+    {
+      "name": "ankle8",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        -0.49,
+        0.34,
+        -0.8487
+      ],
+      "color": "#3a4046",
+      "detail": 7
+    },
+    {
+      "name": "claw8",
+      "shape": "limb",
+      "from": [
+        -0.49,
+        0.34,
+        -0.8487
+      ],
+      "to": [
+        -0.56,
+        0.0,
+        -0.9699
+      ],
+      "radius": 0.028,
+      "color": "#15171a",
+      "taper": 0.12,
+      "via": [
+        -0.6,
+        0.16,
+        -1.0392
+      ]
+    }
+  ]
+}

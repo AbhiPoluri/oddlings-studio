@@ -462,17 +462,105 @@ function firstBindable(spec: AssetSpec): { parts: Part[]; name: string } {
 }
 
 /**
+ * A skeleton this spec used to have, kept aside while another one is in play.
+ *
+ * The editor stashes whichever block a switch drops, so the three-way choice
+ * stops being destructive: a rig with twenty-five hand-placed joints used to
+ * evaporate the moment someone clicked None to look at the bare mesh.
+ */
+export type RememberedRig = {
+  rig?: AssetSpec['rig'];
+  joints?: AssetSpec['joints'];
+};
+
+/**
+ * The remembered joints that still describe this spec, re-parented to close
+ * any gaps, or an empty list when none of them do.
+ *
+ * A bind resolves exactly when one part carries that name — `jointBinder`'s
+ * rule, and the reason a joint can stop being valid without anyone touching it:
+ * rename the part it carried, or duplicate it, and the bind no longer names one
+ * thing. Only those joints are dropped. The survivors keep their pivots, their
+ * spins and their clips, and anything left parented to a dropped joint adopts
+ * that joint's parent, the same way `removeJoint` closes a chain up.
+ */
+function restorableJoints(
+  spec: AssetSpec,
+  remembered: NonNullable<AssetSpec['joints']>,
+): NonNullable<AssetSpec['joints']> {
+  const tally = new Map<string, number>();
+  for (const row of flatten(spec))
+    if (row.part.name) tally.set(row.part.name, (tally.get(row.part.name) ?? 0) + 1);
+  const resolves = (name: string) => tally.get(name) === 1;
+
+  const kept = remembered.filter(
+    (joint) => joint.binds.length > 0 && joint.binds.every(resolves),
+  );
+  const alive = new Set(kept.map((joint) => joint.name));
+  /** The nearest ancestor that survived, or undefined for the root bone. */
+  const anchor = (name: string | undefined, seen = new Set<string>()): string | undefined => {
+    if (name === undefined || alive.has(name)) return name;
+    if (seen.has(name)) return undefined;
+    seen.add(name);
+    return anchor(
+      remembered.find((joint) => joint.name === name)?.parent,
+      seen,
+    );
+  };
+  return kept.map((joint) => {
+    const parent = anchor(joint.parent);
+    if (parent === joint.parent) return joint;
+    const moved = { ...joint } as Record<string, unknown>;
+    // `undefined`, never the string "Root": the schema rejects that spelling
+    // because omitting the field is what hangs a joint off the root bone.
+    if (parent === undefined) delete moved.parent;
+    else moved.parent = parent;
+    return moved as (typeof kept)[number];
+  });
+}
+
+/**
  * Swap which skeleton a spec has, clearing the other.
  *
  * Switching to `joints` seeds one, because an empty joint list is not a rig —
  * every consumer reads `joints?.length` — and an author who picked Joints
  * wants something to drag, not an empty panel.
+ *
+ * `remembered` is what makes the choice reversible. Clicking None to look at
+ * the mesh and then clicking back used to hand you a fresh single pivot, which
+ * is the same as deleting the rig: the seeded pivot is now only the fallback
+ * for when there is nothing to put back, or when the parts have moved so far
+ * that what was remembered no longer describes them.
  */
-export function setRigKind(spec: AssetSpec, kind: RigKind): AssetSpec {
+export function setRigKind(
+  spec: AssetSpec,
+  kind: RigKind,
+  remembered?: RememberedRig,
+): AssetSpec {
   if (kind === rigKindOf(spec)) return spec;
   const bare = { ...spec, rig: undefined, joints: undefined };
   if (kind === 'none') return parseSpec(bare);
-  if (kind === 'rig') return parseSpec({ ...bare, rig: { ...defaultRig } });
+  if (kind === 'rig') {
+    // Measurements and pinned bones name nothing outside themselves, so the
+    // only thing that can go wrong is a stash from an incompatible version.
+    if (remembered?.rig)
+      try {
+        return parseSpec({ ...bare, rig: remembered.rig });
+      } catch {
+        // Fall through to a default rig rather than refusing the switch.
+      }
+    return parseSpec({ ...bare, rig: { ...defaultRig } });
+  }
+  if (remembered?.joints?.length) {
+    const restored = restorableJoints(spec, remembered.joints);
+    if (restored.length)
+      try {
+        return parseSpec({ ...bare, joints: restored });
+      } catch {
+        // Same: a stash that will not parse is not worth an error message
+        // about a rig the author is trying to create, not to repair.
+      }
+  }
   const seeded = firstBindable(spec);
   return parseSpec({
     ...bare,

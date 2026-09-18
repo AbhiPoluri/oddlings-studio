@@ -478,7 +478,8 @@ export const specSchema = z
           })
           .strict(),
       )
-      .max(16)
+      // An eight-legged walker with hip, knee and ankle per leg is 25 joints.
+      .max(64)
       .superRefine(checkJointChain)
       .optional(),
     parts: z.array(partSchema).min(1).max(200),

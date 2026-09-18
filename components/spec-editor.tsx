@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { Copy, Trash2, Shuffle, ChevronRight, Plus, RotateCcw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Copy, Trash2, Shuffle, Plus, RotateCcw } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -16,7 +16,6 @@ import {
   flatten,
   partAt,
   updatePart,
-  samePath,
   labelFor,
   addJoint,
   clipTable,
@@ -30,14 +29,15 @@ import {
   setRigKind,
   setRigSettings,
   updateJoint,
-  type Path,
   type PartPatch,
+  type RememberedRig,
   type RigKind,
   type Selection,
   type Vec3,
 } from '@/lib/spec-edit';
 import { boneLayout } from '@/lib/asset-joints';
 import type { BoneName } from '@/lib/asset-rig';
+import { Outliner } from '@/components/outliner';
 
 
 const SOLID_COLORS = [
@@ -265,6 +265,7 @@ function BoneRow({
   at,
   pinned,
   chosen,
+  innerRef,
   onSelect,
   onCommit,
   onReset,
@@ -273,12 +274,14 @@ function BoneRow({
   at: Vec3;
   pinned: boolean;
   chosen: boolean;
+  /** Set on the chosen row only, so the panel can scroll it into view. */
+  innerRef?: React.Ref<HTMLDivElement>;
   onSelect: () => void;
   onCommit: (at: Vec3) => void;
   onReset: () => void;
 }) {
   return (
-    <div className={`bone-row${chosen ? ' chosen' : ''}`}>
+    <div className={`bone-row${chosen ? ' chosen' : ''}`} ref={innerRef}>
       <button
         className="bone-name"
         aria-pressed={chosen}
@@ -322,6 +325,55 @@ function BoneRow({
 const AXES = ['x', 'y', 'z'] as const;
 
 /**
+ * The skeleton each document had before someone switched away from it.
+ *
+ * Module scope rather than a ref, because the panel holding it is unmounted by
+ * the very things a person does between the two clicks: selecting a part swaps
+ * the rig panel out for the part fields, and the Checks and JSON tabs unmount
+ * the editor entirely. A ref would be reset by a glance at the checks, which is
+ * exactly when it needs to survive.
+ *
+ * Keyed by what identifies the asset on screen rather than by object identity,
+ * since every edit produces a new spec. Bounded, because this outlives the
+ * component and nothing else would ever clear it.
+ */
+const STASH = new Map<string, RememberedRig>();
+const STASH_LIMIT = 8;
+
+/** Name plus part count: enough to tell two assets apart, stable across edits. */
+function stashKey(spec: AssetSpec): string {
+  return `${spec.name} ${spec.parts.length}`;
+}
+
+function rememberedRig(spec: AssetSpec): RememberedRig | undefined {
+  return STASH.get(stashKey(spec));
+}
+
+/**
+ * Put aside whichever block the switch away from `kind` is about to drop.
+ *
+ * Merged rather than replaced so a walk through all three choices keeps both:
+ * Joints → None → Body rig → None → Joints still has the joints to put back.
+ */
+function rememberRig(spec: AssetSpec, kind: RigKind): RememberedRig | undefined {
+  const key = stashKey(spec);
+  const held = STASH.get(key);
+  const dropped: RememberedRig | null =
+    kind === 'rig' && spec.rig
+      ? { rig: spec.rig }
+      : kind === 'joints' && spec.joints?.length
+        ? { joints: spec.joints }
+        : null;
+  if (!dropped) return held;
+  const next = { ...held, ...dropped };
+  STASH.set(key, next);
+  if (STASH.size > STASH_LIMIT) STASH.delete(STASH.keys().next().value!);
+  return next;
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/**
  * Hand-editing whichever skeleton a spec declares.
  *
  * The two rigs are mutually exclusive by schema, so this is a three-way choice
@@ -349,6 +401,14 @@ function RigPanel({
   } | null>(null);
   const kind = rigKindOf(spec);
   const chosen = selectedBone(selected);
+  // A bone picked in the outliner or grabbed in the viewport has to bring its
+  // row here, or selecting a handle scrolls nothing and looks like nothing
+  // happened. `useEffect` rather than `useLayoutEffect`: the latter warns on
+  // the server, and a frame of delay on a scroll is invisible.
+  const chosenRow = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    chosenRow.current?.scrollIntoView({ block: 'nearest' });
+  }, [chosen]);
   const layout = boneLayout(spec);
   const joints = spec.joints ?? [];
   const clips = clipTable(spec);
@@ -359,12 +419,17 @@ function RigPanel({
       tally.set(row.part.name, (tally.get(row.part.name) ?? 0) + 1);
 
   /** Run one rig edit, and keep whatever the schema said about it. */
-  function edit(make: () => AssetSpec, record = true, note?: string) {
+  function edit(
+    make: () => AssetSpec,
+    record = true,
+    /** A function when the message depends on what the edit actually produced. */
+    note?: string | ((next: AssetSpec) => string),
+  ) {
     try {
       const next = make();
       setIssue(null);
       onChange(next, record);
-      if (note) onStatus(note);
+      if (note) onStatus(typeof note === 'function' ? note(next) : note);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'That rig edit is invalid.';
@@ -373,17 +438,52 @@ function RigPanel({
     }
   }
 
+  /**
+   * Change which skeleton this spec has, without throwing the old one away.
+   *
+   * The block being dropped is stashed first, and handed back on the way in, so
+   * the three buttons are a view switch rather than a delete. What the status
+   * line says therefore has to be read off the result: how many joints came
+   * back is not something the click can know, because a joint whose part was
+   * renamed in the meantime no longer binds anything and cannot be restored.
+   */
   function switchKind(next: RigKind) {
     if (next === kind) return;
     onSelect(null);
+    const held = rememberRig(spec, kind);
+    const dropped = kind === 'joints' ? (spec.joints?.length ?? 0) : 0;
+    const putBack = next === 'joints' ? (held?.joints?.length ?? 0) : 0;
+
     edit(
-      () => setRigKind(spec, next),
+      () => setRigKind(spec, next, held),
       true,
-      next === 'none'
-        ? 'Skeleton removed. The spec exports as a static mesh.'
-        : next === 'rig'
-          ? 'Body rig added: 14 bones, automatic skin weights, five clips.'
-          : 'Joints rig started with one pivot. Drag its handle, or add more.',
+      (result) => {
+        if (next === 'none')
+          return dropped
+            ? `Skeleton removed — switch back to restore ${plural(dropped, 'joint')}.`
+            : 'Skeleton removed — switch back to restore the body rig. The spec exports as a static mesh.';
+        const trailer = dropped
+          ? ` Joints removed — switch back to restore ${plural(dropped, 'joint')}.`
+          : '';
+        if (next === 'rig')
+          return held?.rig
+            ? `Body rig restored, measurements and all.${trailer}`
+            : `Body rig added: 14 bones, automatic skin weights, five clips.${trailer}`;
+        // Counted by name, because a stash that could not be used at all falls
+        // back to a freshly seeded pivot — one joint, but not a restored one.
+        const stashed = new Set((held?.joints ?? []).map((joint) => joint.name));
+        const got = (result.joints ?? []).filter((joint) =>
+          stashed.has(joint.name),
+        ).length;
+        if (!got)
+          return 'Joints rig started with one pivot. Drag its handle, or add more.';
+        if (got < putBack)
+          return `Restored ${plural(got, 'joint')}. ${plural(
+            putBack - got,
+            'joint',
+          )} could not come back — the parts they carried have been renamed or duplicated.`;
+        return `Restored ${plural(got, 'joint')}, pivots and clips intact.`;
+      },
     );
   }
 
@@ -477,6 +577,7 @@ function RigPanel({
                 at={bone.at}
                 pinned={Boolean(spec.rig?.bones?.[bone.name as BoneName])}
                 chosen={chosen === bone.name}
+                innerRef={chosen === bone.name ? chosenRow : undefined}
                 onSelect={() =>
                   onSelect(
                     chosen === bone.name
@@ -509,7 +610,10 @@ function RigPanel({
             must agree on its length, and editing one length here changes them
             all.
           </p>
-          <div className={`bone-row static${chosen === 'Root' ? ' chosen' : ''}`}>
+          <div
+            className={`bone-row static${chosen === 'Root' ? ' chosen' : ''}`}
+            ref={chosen === 'Root' ? chosenRow : undefined}
+          >
             <button
               className="bone-name"
               aria-pressed={chosen === 'Root'}
@@ -531,6 +635,7 @@ function RigPanel({
                 <div
                   className={`joint-card${lit ? ' chosen' : ''}`}
                   key={`${joint.name}-${index}`}
+                  ref={lit ? chosenRow : undefined}
                 >
                   <div className="joint-head">
                     <button
@@ -804,6 +909,19 @@ function RigPanel({
 
 const AUDIT_MARK = { error: '✗', warn: '!', info: '·' } as const;
 
+/**
+ * The properties panel: what the one selected thing is made of.
+ *
+ * Three states, because the panel is read against a selection rather than
+ * against the whole spec — a part shows its own fields, a bone shows the rig
+ * scrolled to it, and an empty selection shows what belongs to the asset
+ * itself. Showing all of it at once is how the panel used to grow past the
+ * height of any screen.
+ *
+ * The scene list moved out to `Outliner` and is still rendered here until the
+ * layout gives it a column of its own; `showParts={false}` is how that column
+ * takes it over without either panel losing it in between.
+ */
 export function SpecEditor({
   spec,
   audit,
@@ -813,6 +931,7 @@ export function SpecEditor({
   onDelete,
   onDuplicate,
   onStatus,
+  showParts = true,
 }: {
   spec: AssetSpec;
   audit: Audit | null;
@@ -824,13 +943,15 @@ export function SpecEditor({
   onDelete: () => void;
   onDuplicate: () => void;
   onStatus: (message: string) => void;
+  /** False once the layout mounts `Outliner` in its own panel. */
+  showParts?: boolean;
 }) {
-  const rows = flatten(spec);
-  // The part tree and everything under it ignore a bone selection: a bone is
-  // the rig panel's business, and blanking the part editor while one is up
-  // would take the part fields away every time a handle was clicked.
+  // A bone selection belongs to the rig panel, not to the part fields, so the
+  // two are read separately rather than as one "is anything selected".
   const picked = selectedPath(selected);
+  const bone = selectedBone(selected);
   const part = picked ? partAt(spec, picked) : undefined;
+  const mode = part && picked ? 'part' : bone ? 'bone' : 'asset';
 
   function patch(p: PartPatch, record = true) {
     if (!picked) return;
@@ -858,133 +979,156 @@ export function SpecEditor({
 
   return (
     <>
-      <div className="property-section identity">
-        <label htmlFor="spec-name">Asset name</label>
-        <input
-          id="spec-name"
-          value={spec.name}
-          maxLength={60}
-          onChange={(e) => onChange({ ...spec, name: e.target.value }, false)}
-          onBlur={() => onChange({ ...spec, name: spec.name })}
-        />
-        <label htmlFor="spec-seed">Scatter seed</label>
-        <div className="seed-row">
-          <input
-            id="spec-seed"
-            type="number"
-            min={0}
-            max={2147483647}
-            value={spec.seed}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isInteger(n) && n >= 0 && n <= 2147483647)
-                onChange({ ...spec, seed: n }, false);
-            }}
-            onBlur={() => onChange({ ...spec, seed: spec.seed })}
+      {showParts && (
+        <div className="property-section">
+          <h3>Parts</h3>
+          <Outliner
+            spec={spec}
+            selected={selected}
+            onSelect={onSelect}
+            bones
+            // The tree only ever fires these for the row it has selected, so
+            // routing them to the page's selection-based handlers cannot act
+            // on the wrong part.
+            onDelete={picked ? () => onDelete() : undefined}
+            onDuplicate={picked ? () => onDuplicate() : undefined}
           />
-          <button
-            title="Re-roll every scatter, twist and jitter"
-            aria-label="Re-roll the scatter seed"
-            onClick={() => {
-              const seed =
-                crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647;
-              onChange({ ...spec, seed });
-              onStatus(
-                'Re-rolled the seed. Every scattered repeat found a new arrangement.',
-              );
-            }}
-          >
-            <Shuffle size={17} />
-          </button>
         </div>
-      </div>
+      )}
 
-      <div className="property-section">
-        <h3>Mesh</h3>
-        <p className="help">
-          Surface mode fuses every part into one continuous polygon mesh
-          instead of leaving them stacked as separate solids — no buried
-          faces, one shell to unwrap, and topology that holds together when
-          the rig bends it.
-        </p>
-        <label className="toggle">
-          <span>Single polygon mesh</span>
-          <Switch
-            aria-label="Single polygon mesh"
-            checked={Boolean(spec.surface)}
-            onCheckedChange={(on) =>
-              onChange({
-                ...spec,
-                surface: on
-                  ? (spec.surface ?? {
-                      blend: 0.03,
-                      detail: 128,
-                      budget: 6000,
-                      shading: 'flat',
-                    })
-                  : undefined,
-              })
-            }
+      {mode === 'asset' && (
+        <>
+        <div className="property-section identity">
+          <label htmlFor="spec-name">Asset name</label>
+          <input
+            id="spec-name"
+            value={spec.name}
+            maxLength={60}
+            onChange={(e) => onChange({ ...spec, name: e.target.value }, false)}
+            onBlur={() => onChange({ ...spec, name: spec.name })}
           />
-        </label>
-        {spec.surface && (
-          <>
-            <Scalar
-              label="Blend"
-              value={spec.surface.blend}
+          <label htmlFor="spec-seed">Scatter seed</label>
+          <div className="seed-row">
+            <input
+              id="spec-seed"
+              type="number"
               min={0}
-              max={0.2}
-              step={0.005}
-              onChange={(blend: number, record) =>
-                patchSurface({ blend }, record)
+              max={2147483647}
+              value={spec.seed}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isInteger(n) && n >= 0 && n <= 2147483647)
+                  onChange({ ...spec, seed: n }, false);
+              }}
+              onBlur={() => onChange({ ...spec, seed: spec.seed })}
+            />
+            <button
+              title="Re-roll every scatter, twist and jitter"
+              aria-label="Re-roll the scatter seed"
+              onClick={() => {
+                const seed =
+                  crypto.getRandomValues(new Uint32Array(1))[0] % 2147483647;
+                onChange({ ...spec, seed });
+                onStatus(
+                  'Re-rolled the seed. Every scattered repeat found a new arrangement.',
+                );
+              }}
+            >
+              <Shuffle size={17} />
+            </button>
+          </div>
+        </div>
+
+        <div className="property-section">
+          <h3>Mesh</h3>
+          <p className="help">
+            Surface mode fuses every part into one continuous polygon mesh
+            instead of leaving them stacked as separate solids — no buried
+            faces, one shell to unwrap, and topology that holds together when
+            the rig bends it.
+          </p>
+          <label className="toggle">
+            <span>Single polygon mesh</span>
+            <Switch
+              aria-label="Single polygon mesh"
+              checked={Boolean(spec.surface)}
+              onCheckedChange={(on) =>
+                onChange({
+                  ...spec,
+                  surface: on
+                    ? (spec.surface ?? {
+                        blend: 0.03,
+                        detail: 128,
+                        budget: 6000,
+                        shading: 'flat',
+                      })
+                    : undefined,
+                })
               }
             />
-            <p className="help">
-              How softly parts melt together. A blend closes gaps up to half
-              its own width, so 6 cm fuses parts sitting 3 cm apart. Zero welds
-              them with a hard crease.
-            </p>
-            <Scalar
-              label="Detail"
-              value={spec.surface.detail}
-              min={24}
-              max={320}
-              step={8}
-              onChange={(detail: number, record) =>
-                patchSurface({ detail }, record)
-              }
-            />
-            <Scalar
-              label="Triangle budget"
-              value={spec.surface.budget}
-              min={200}
-              max={60000}
-              step={200}
-              onChange={(budget: number, record) =>
-                patchSurface({ budget }, record)
-              }
-            />
-            <label className="toggle">
-              <span>Smooth shading</span>
-              <Switch
-                aria-label="Smooth shading"
-                checked={spec.surface.shading === 'smooth'}
-                onCheckedChange={(on) =>
-                  patchSurface({ shading: on ? 'smooth' : 'flat' }, true)
+          </label>
+          {spec.surface && (
+            <>
+              <Scalar
+                label="Blend"
+                value={spec.surface.blend}
+                min={0}
+                max={0.2}
+                step={0.005}
+                onChange={(blend: number, record) =>
+                  patchSurface({ blend }, record)
                 }
               />
-            </label>
-          </>
-        )}
-      </div>
+              <p className="help">
+                How softly parts melt together. A blend closes gaps up to half
+                its own width, so 6 cm fuses parts sitting 3 cm apart. Zero welds
+                them with a hard crease.
+              </p>
+              <Scalar
+                label="Detail"
+                value={spec.surface.detail}
+                min={24}
+                max={320}
+                step={8}
+                onChange={(detail: number, record) =>
+                  patchSurface({ detail }, record)
+                }
+              />
+              <Scalar
+                label="Triangle budget"
+                value={spec.surface.budget}
+                min={200}
+                max={60000}
+                step={200}
+                onChange={(budget: number, record) =>
+                  patchSurface({ budget }, record)
+                }
+              />
+              <label className="toggle">
+                <span>Smooth shading</span>
+                <Switch
+                  aria-label="Smooth shading"
+                  checked={spec.surface.shading === 'smooth'}
+                  onCheckedChange={(on) =>
+                    patchSurface({ shading: on ? 'smooth' : 'flat' }, true)
+                  }
+                />
+              </label>
+            </>
+          )}
+        </div>
+        </>
+      )}
 
-      <RigPanel
-        spec={spec}
-        selected={selected}
-        onSelect={onSelect}
-        onChange={onChange}
-        onStatus={onStatus}
-      />
+      {mode !== 'part' && (
+        <RigPanel
+          spec={spec}
+          selected={selected}
+          onSelect={onSelect}
+          onChange={onChange}
+          onStatus={onStatus}
+        />
+      )}
 
       {audit && (
         <div className="property-section">
@@ -1012,32 +1156,8 @@ export function SpecEditor({
           </div>
         </div>
       )}
-      <div className="property-section">
-        <h3>Parts</h3>
-        <div className="part-tree" role="tree" aria-label="Spec parts">
-          {rows.map(({ path, part: row, depth, copies }) => (
-            <button
-              key={path.join('.')}
-              role="treeitem"
-              aria-selected={samePath(path, picked)}
-              aria-level={depth + 1}
-              style={{ paddingLeft: `${8 + depth * 13}px` }}
-              onClick={() =>
-                onSelect(
-                  samePath(path, picked) ? null : { kind: 'part', path },
-                )
-              }
-            >
-              {depth > 0 && <ChevronRight size={11} />}
-              <strong>{labelFor(row)}</strong>
-              <span>{row.shape}</span>
-              {copies > 1 && <i>×{copies}</i>}
-            </button>
-          ))}
-        </div>
-      </div>
 
-      {part && picked ? (
+      {part && picked && (
         <>
           <div className="property-section">
             <div className="part-header">
@@ -1256,28 +1376,24 @@ export function SpecEditor({
             </div>
           )}
         </>
-      ) : (
+      )}
+
+      {mode === 'asset' && (
         <div className="property-section">
+          <h3>Game scale</h3>
+          <Scalar
+            label="Scale multiplier"
+            min={0.1}
+            max={5}
+            step={0.1}
+            value={spec.scale}
+            onChange={(scale, record) => onChange({ ...spec, scale }, record)}
+          />
           <p className="help">
-            Pick a part above to edit its shape, placement, surface and repeat.
+            1 unit = 1 meter. Edits stay in the spec — download it to keep them.
           </p>
         </div>
       )}
-
-      <div className="property-section">
-        <h3>Game scale</h3>
-        <Scalar
-          label="Scale multiplier"
-          min={0.1}
-          max={5}
-          step={0.1}
-          value={spec.scale}
-          onChange={(scale, record) => onChange({ ...spec, scale }, record)}
-        />
-        <p className="help">
-          1 unit = 1 meter. Edits stay in the spec — download it to keep them.
-        </p>
-      </div>
     </>
   );
 }
