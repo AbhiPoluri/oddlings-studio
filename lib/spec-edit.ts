@@ -730,3 +730,125 @@ export function jointErrorIndex(message: string): number | null {
   const found = /\bjoints\.(\d+)\b/.exec(message);
   return found ? Number(found[1]) : null;
 }
+
+/* ------------------------------------------------------------------------ *
+ * Panel helpers: what an outliner needs to know that the spec only implies.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * A path as a stable string key — `[1, 0]` reads `"1.0"`.
+ *
+ * The same spelling `auditModel` takes its labels in, so a finding, a row and
+ * a changed-since-last-build mark can all be looked up with one key rather
+ * than with three slightly different ones that drift apart.
+ */
+export function pathKey(path: Path): string {
+  return path.join('.');
+}
+
+/** True when `path` is, or sits under, `bound` — the rule bindings inherit by. */
+function under(path: Path, bound: Path) {
+  if (path.length < bound.length) return false;
+  for (let i = 0; i < bound.length; i++) if (path[i] !== bound[i]) return false;
+  return true;
+}
+
+/**
+ * Which joint carries each part, by path key.
+ *
+ * `jointBinder` answers the same question for the builder and throws on a bind
+ * that names nothing or names two parts, because a model that cannot be skinned
+ * must not be built. A panel is the other case: it draws specs mid-edit, where
+ * a half-typed bind is a message to show beside the joint rather than a reason
+ * to blank the tree — so an unresolvable bind is simply skipped here.
+ *
+ * Deeper bindings win and children inherit, matching what the builder does, so
+ * the badge on a row says which bone that row will actually follow.
+ */
+export function jointBindingsByPath(spec: AssetSpec): Map<string, string> {
+  const out = new Map<string, string>();
+  const joints = spec.joints ?? [];
+  if (!joints.length) return out;
+  const rows = flatten(spec);
+  const byName = new Map<string, Path[]>();
+  for (const row of rows)
+    if (row.part.name)
+      byName.set(row.part.name, [...(byName.get(row.part.name) ?? []), row.path]);
+
+  const bound: { path: Path; joint: string }[] = [];
+  for (const joint of joints)
+    for (const name of joint.binds) {
+      const found = byName.get(name);
+      if (found?.length === 1) bound.push({ path: found[0], joint: joint.name });
+    }
+  bound.sort((a, b) => b.path.length - a.path.length);
+
+  for (const row of rows) {
+    const owner = bound.find((entry) => under(row.path, entry.path));
+    if (owner) out.set(pathKey(row.path), owner.joint);
+  }
+  return out;
+}
+
+/**
+ * Structural equality, treating an absent key and an explicit `undefined` as
+ * the same thing.
+ *
+ * `JSON.stringify` would be shorter and wrong: `updatePart` spreads a patch
+ * over a part, which can reorder keys, so a no-op edit would come back as a
+ * change and light up the whole tree.
+ */
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length)
+      return false;
+    return a.every((item, i) => same(item, b[i]));
+  }
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) if (!same(left[key], right[key])) return false;
+  return true;
+}
+
+export type SpecDiff = {
+  /** Path keys present in `b` and not in `a`. */
+  added: Set<string>;
+  /** Path keys present in `a` and not in `b`. */
+  removed: Set<string>;
+  /** Path keys whose own fields differ — children are compared on their own rows. */
+  changed: Set<string>;
+};
+
+/**
+ * What moved between two versions of a spec, by path key.
+ *
+ * Addressed by path rather than by identity because a path is the only handle
+ * a part has: two rebuilds of the same spec share no objects, and a name is
+ * optional and duplicable. Each part is compared without its `children`, so an
+ * edit deep in a branch marks that row and not every ancestor above it — which
+ * is what makes the mark worth showing at all.
+ */
+export function diffSpecs(a: AssetSpec, b: AssetSpec): SpecDiff {
+  const before = new Map(
+    flatten(a).map((row) => [pathKey(row.path), row.part] as const),
+  );
+  const after = new Map(
+    flatten(b).map((row) => [pathKey(row.path), row.part] as const),
+  );
+  const diff: SpecDiff = {
+    added: new Set<string>(),
+    removed: new Set<string>(),
+    changed: new Set<string>(),
+  };
+  const bare = ({ children: _children, ...rest }: Part) => rest;
+  for (const [key, part] of after) {
+    const was = before.get(key);
+    if (!was) diff.added.add(key);
+    else if (!same(bare(was), bare(part))) diff.changed.add(key);
+  }
+  for (const key of before.keys()) if (!after.has(key)) diff.removed.add(key);
+  return diff;
+}
