@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { POINTER_URL, savePath } from './reducer';
 import { useStudio } from './store';
+import { useToaster } from './toasts';
 import { docFrom } from './use-document';
 
 export const SAVE_ROUTE = '/__oddlings/save';
@@ -54,6 +55,12 @@ export function useFollow() {
   /** Bumped by "Check again", which re-runs the attach effect. */
   const [recheck, setRecheck] = useState(0);
   const target = useRef<Target | null>(null);
+  // Read through a ref: the effect below is registered once, and a toaster
+  // captured from the render that registered it would be fine — but saying so
+  // in a ref is what makes the empty dependency list honest.
+  const say = useToaster();
+  const announce = useRef(say);
+  announce.current = say;
 
   useEffect(() => {
     const want = targetOf();
@@ -68,6 +75,25 @@ export function useFollow() {
 
     let live = true;
 
+    /**
+     * Reads of a pinned file that were not a spec, in a row.
+     *
+     * A missing pointer means "no build yet", which is worth waiting two
+     * minutes for. A pinned `?spec=` path that is not there is a different
+     * claim: somebody asked for one file by name and it does not exist, and
+     * making them watch an empty stage for two minutes to be told so is a
+     * studio that looks broken. Four misses is ten seconds, which is long
+     * enough for a file an agent is in the middle of writing.
+     *
+     * Parse failures count too, not only 404s: a dev server that answers an
+     * unknown path with the application's own HTML is a miss by any other name.
+     */
+    let misses = 0;
+    function missed() {
+      if (!want.pinned || ref.current.follow.status === 'live') return;
+      if (++misses >= 4) dispatch({ type: 'gaveUp' });
+    }
+
     async function pull(first: boolean) {
       const status = ref.current.follow.status;
       if (!first && status !== 'live') return;
@@ -77,7 +103,8 @@ export function useFollow() {
       } catch {
         return;
       }
-      if (!live || !response.ok) return;
+      if (!live) return;
+      if (!response.ok) return missed();
       const etag = response.headers.get('etag');
       // Cheap exit before the body is parsed. The reducer checks this again,
       // because it is the gate that makes "the same build twice" impossible.
@@ -95,8 +122,9 @@ export function useFollow() {
       try {
         parsed = JSON.parse(body);
       } catch {
-        return;
+        return missed();
       }
+      misses = 0;
       // The pointer wraps the document; a `?spec=` file is the document.
       const pointer = parsed as { doc?: unknown; source?: string; at?: string };
       const payload =
@@ -121,6 +149,42 @@ export function useFollow() {
       }
     }
 
+    /**
+     * While pinned, keep half an eye on what the agent is building elsewhere.
+     *
+     * A pinned page follows one file and will never see a build of another, so
+     * an agent that has moved on to the next asset appears, from in here, to
+     * have stopped working. This reads the pointer and says so — and only says
+     * so: it never dispatches a build, because the file on screen is the file
+     * that was asked for. The Open button is what changes that, if you want it.
+     */
+    let pointerAt: string | null = null;
+    async function peek() {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+        return;
+      let pointer: { source?: string; at?: string; name?: string };
+      try {
+        const response = await fetch(POINTER_URL, { cache: 'no-store' });
+        if (!live || !response.ok) return;
+        pointer = (await response.json()) as typeof pointer;
+      } catch {
+        return;
+      }
+      if (!live) return;
+      const source = pointer?.source?.replace(/^\//, '');
+      if (!source || !pointer.at) return;
+      // The first read establishes where things stand; it is not news.
+      const known = pointerAt;
+      pointerAt = pointer.at;
+      if (known === null || known === pointer.at) return;
+      if (source === want.label.replace(/^\//, '')) return;
+      announce.current(`New build from agent: ${pointer.name ?? source}`, {
+        open: source,
+      });
+    }
+    const elsewhere = want.pinned ? setInterval(() => void peek(), 4000) : null;
+    if (want.pinned) void peek();
+
     void pull(true);
     // A missing pointer is a 404, which the browser logs however carefully we
     // catch it. Retry slowly, and give up rather than filling the console.
@@ -139,6 +203,7 @@ export function useFollow() {
       live = false;
       clearInterval(timer);
       clearInterval(waiting);
+      if (elsewhere) clearInterval(elsewhere);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recheck]);
@@ -205,10 +270,11 @@ export function useFollow() {
       if (!response.ok || !result.ok)
         throw Error(result.error ?? `Save failed (${response.status}).`);
     } catch (error) {
-      dispatch({
-        type: 'status',
-        text: `Save failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-      });
+      const why = error instanceof Error ? error.message : 'unknown error';
+      dispatch({ type: 'status', text: `Save failed: ${why}` });
+      // A refused save is the one thing in here that loses work if it goes
+      // unread: the correction stays in this tab and nowhere else.
+      announce.current(`Save failed: ${why}`, { tone: 'bad' });
       return;
     }
     // The endpoint also rewrites the build pointer, so the followed URL has a
@@ -229,6 +295,7 @@ export function useFollow() {
       path: result.path ?? path,
       etag,
     });
+    announce.current(`Saved ${result.path ?? path}`, { tone: 'good' });
   }, [dispatch, ref]);
 
   return { save, reattach, openSpec };

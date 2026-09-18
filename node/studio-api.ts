@@ -2,7 +2,8 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
-import { markActive } from './active-spec';
+import { z } from 'zod';
+import { BUILD_LOG, markActive } from './active-spec';
 
 /**
  * The studio's dev-server API: save-back, and reading the specs folder.
@@ -27,6 +28,20 @@ export const SAVE_ROUTE = '/__oddlings/save';
 export const SPECS_ROUTE = '/__oddlings/specs';
 /** One spec file by path, with an ETag so a poll can skip an unchanged read. */
 export const SPEC_ROUTE = '/__oddlings/spec';
+/** The review notes beside one spec: `GET ?path=`, and `PUT` to replace them. */
+export const NOTES_ROUTE = '/__oddlings/notes';
+/** What the CLI has built, from the log it appends to. */
+export const BUILDS_ROUTE = '/__oddlings/builds';
+
+/**
+ * Where the CLI writes one line per build or audit.
+ *
+ * Read rather than written here, and named by the module that writes it so the
+ * two cannot drift: the studio is this file's only reader and the agent side
+ * its only writer, so a half-appended last line is the normal case — which is
+ * what `parseBuildsTail` is written to expect.
+ */
+const BUILDS_FILE = BUILD_LOG;
 
 /** Where the listing looks. Relative to the project, never configurable. */
 const SPECS_DIR = 'specs';
@@ -52,6 +67,131 @@ export type SpecRow = {
 };
 
 export type SpecListing = { specs: SpecRow[]; at: string };
+
+/**
+ * One thing a reviewer said about one part, kept beside the spec it is about.
+ *
+ * Deliberately a second file rather than a field in the spec: a note is not
+ * geometry, and putting it in the spec would mean every note is an edit — the
+ * studio would detach from the file it is following, the agent's next build
+ * would diff against it, and a reviewer could not ask a question without
+ * changing the asset. `specs/foo.spec.json` is answered by
+ * `specs/foo.review.json`, which the CLI reads and resolves from the other end.
+ */
+export type ReviewNote = {
+  id: string;
+  /** The authored part path this is about, or null for the asset as a whole. */
+  part: number[] | null;
+  /** What that part was called when the note was written, for a stale path. */
+  partName: string | null;
+  text: string;
+  status: 'open' | 'resolved';
+  by: 'human' | 'agent';
+  at: string;
+  resolvedAt: string | null;
+  /** What the agent said when it resolved this. */
+  reply: string | null;
+};
+
+export type ReviewDoc = { version: 1; spec: string; notes: ReviewNote[] };
+
+/** One line of `.oddlings/builds.jsonl`, as the CLI appends it. */
+export type BuildRow = {
+  at: string;
+  name: string;
+  /** The spec that was built, project-relative. */
+  source: string;
+  tris: number;
+  meshes: number;
+  bones: number;
+  ok: boolean;
+  errors: number;
+  warnings: number;
+};
+
+/**
+ * The note schema, loose on purpose.
+ *
+ * `z.looseObject` rather than `z.object`: the agent side owns this file too,
+ * and a strict parse would strip any field it adds on the way through a PUT —
+ * so the studio would silently delete the other half of the conversation every
+ * time somebody typed a note.
+ */
+const noteSchema = z.looseObject({
+  id: z.string().min(1).max(64),
+  part: z.array(z.number().int().min(0)).max(24).nullable(),
+  partName: z.string().max(200).nullable(),
+  // Non-empty, matching the agent side: a blank note is a note the CLI would
+  // refuse to read, and writing one would break the file for both of us.
+  text: z.string().min(1).max(4000),
+  status: z.enum(['open', 'resolved']),
+  by: z.enum(['human', 'agent']),
+  at: z.string().min(1).max(64),
+  resolvedAt: z.string().max(64).nullable(),
+  reply: z.string().max(4000).nullable(),
+});
+
+const reviewSchema = z.looseObject({
+  version: z.literal(1),
+  spec: z.string(),
+  notes: z.array(noteSchema).max(500),
+});
+
+/** An empty review document, which is what a spec with no notes has. */
+export function emptyReview(path: string): ReviewDoc {
+  return { version: 1, spec: path, notes: [] };
+}
+
+/**
+ * The review file beside one spec.
+ *
+ * Derived from the resolved target rather than from the string the caller sent,
+ * so a path the save endpoint would refuse is never a path notes are written to.
+ */
+export function reviewTarget(target: string): string {
+  return target.endsWith('.spec.json')
+    ? `${target.slice(0, -'.spec.json'.length)}.review.json`
+    : `${target.slice(0, -'.json'.length)}.review.json`;
+}
+
+/** The one spelling a path is compared by: project-relative, no leading slash. */
+function normalPath(path: string): string {
+  return path.replace(/^\.?\//, '');
+}
+
+/**
+ * The newest rows of a build log, for one spec.
+ *
+ * Walked backwards from the end, because that is where the newest lines are and
+ * because the last line is routinely half-written — the CLI appends to this
+ * file while the studio is reading it. Every unparsable line is skipped rather
+ * than only the last, since a crashed build can leave one anywhere.
+ */
+export function parseBuildsTail(
+  text: string,
+  source: string | null,
+  limit: number,
+): BuildRow[] {
+  const want = source ? normalPath(source) : null;
+  const lines = text.split('\n');
+  const out: BuildRow[] = [];
+  for (let i = lines.length - 1; i >= 0 && out.length < limit; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let row: BuildRow;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (!parsed || typeof parsed !== 'object') continue;
+      row = parsed as BuildRow;
+    } catch {
+      continue;
+    }
+    if (typeof row.at !== 'string' || typeof row.source !== 'string') continue;
+    if (want && normalPath(row.source) !== want) continue;
+    out.push(row);
+  }
+  return out;
+}
 
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((done, fail) => {
@@ -301,6 +441,100 @@ export function oddlingsStudioApi(): Plugin {
             error: error instanceof Error ? error.message : String(error),
           });
         }
+      });
+
+      server.middlewares.use(NOTES_ROUTE, async (request, response) => {
+        const method = request.method ?? 'GET';
+        if (method !== 'GET' && method !== 'PUT')
+          return reply(response, 405, { error: 'GET or PUT only.' });
+        try {
+          // The path arrives in the query on a read and in the body on a write,
+          // and both go through `specTarget` — notes are only ever written
+          // beside a file this server would have let the studio save to. The
+          // body is read once and held: the stream has one pass in it.
+          const sent =
+            method === 'PUT'
+              ? (JSON.parse(await readBody(request)) as {
+                  path?: unknown;
+                  notes?: unknown;
+                })
+              : null;
+          const asked = sent ? (sent.path ?? null) : queryOf(request).get('path');
+          const target = specTarget(asked);
+          if (!target)
+            return reply(response, 400, {
+              error: 'Not a spec path inside the project.',
+            });
+          const path = projectPath(target);
+          const notesFile = reviewTarget(target);
+          if (method === 'GET') {
+            let body: string;
+            try {
+              body = await readFile(notesFile, 'utf8');
+            } catch {
+              // A spec nobody has reviewed yet has no file, which is an empty
+              // document rather than a 404: the panel wants somewhere to put
+              // the first note, not an error to render.
+              return reply(response, 200, emptyReview(path), {
+                'Cache-Control': 'no-store',
+              });
+            }
+            const parsed = reviewSchema.safeParse(JSON.parse(body));
+            if (!parsed.success)
+              return reply(response, 200, emptyReview(path), {
+                'Cache-Control': 'no-store',
+              });
+            return reply(
+              response,
+              200,
+              { ...parsed.data, spec: path },
+              { 'Cache-Control': 'no-store' },
+            );
+          }
+          // Only the notes are taken from the request: the version and the spec
+          // path this file claims are ours to state, so a document cannot be
+          // written claiming to be about a different spec than the one it sits
+          // beside.
+          const parsed = reviewSchema.parse({
+            version: 1,
+            spec: path,
+            notes: sent!.notes,
+          });
+          await mkdir(dirname(notesFile), { recursive: true });
+          await writeFile(notesFile, JSON.stringify(parsed, null, 2) + '\n');
+          return reply(response, 200, {
+            ok: true,
+            path: projectPath(notesFile),
+            notes: parsed.notes.length,
+            at: new Date().toISOString(),
+          });
+        } catch (error) {
+          return reply(response, 400, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+
+      server.middlewares.use(BUILDS_ROUTE, async (request, response) => {
+        if (request.method !== 'GET')
+          return reply(response, 405, { error: 'GET only.' });
+        const query = queryOf(request);
+        const asked = query.get('path');
+        const limit = Math.min(200, Math.max(1, Number(query.get('limit')) || 50));
+        let text: string;
+        try {
+          text = await readFile(resolve(BUILDS_FILE), 'utf8');
+        } catch {
+          // No log yet is not an error: it means no build has been run since
+          // the CLI learned to write one.
+          return reply(response, 200, { builds: [] }, { 'Cache-Control': 'no-store' });
+        }
+        return reply(
+          response,
+          200,
+          { builds: parseBuildsTail(text, asked, limit) },
+          { 'Cache-Control': 'no-store' },
+        );
       });
     },
   };

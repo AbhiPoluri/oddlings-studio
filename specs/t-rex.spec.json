@@ -1,0 +1,1551 @@
+{
+  "version": 1,
+  "name": "Tyrannosaurus",
+  "kind": "creature",
+  "seed": 66,
+  "scale": 1,
+  "color": "#5d5a44",
+  "surface": {
+    "blend": 0.05,
+    "detail": 320,
+    "budget": 22000,
+    "shading": "smooth"
+  },
+  "joints": [
+    {
+      "name": "Hips",
+      "at": [
+        0,
+        2.4,
+        0
+      ],
+      "binds": [
+        "pelvis",
+        "thigh-l",
+        "thigh-r"
+      ]
+    },
+    {
+      "name": "Spine",
+      "at": [
+        0,
+        2.4,
+        1
+      ],
+      "binds": [
+        "belly",
+        "underbelly",
+        "chest",
+        "scute-1",
+        "scute-2",
+        "scute-3",
+        "scute-4",
+        "scute-5",
+        "scute-6",
+        "scute-7",
+        "scute-8",
+        "scute-9"
+      ],
+      "parent": "Hips"
+    },
+    {
+      "name": "Neck",
+      "at": [
+        0,
+        2.8,
+        2.6
+      ],
+      "binds": [
+        "neck-a",
+        "throat"
+      ],
+      "parent": "Spine"
+    },
+    {
+      "name": "Neck2",
+      "at": [
+        0,
+        3.35,
+        3.35
+      ],
+      "binds": [
+        "neck-b"
+      ],
+      "parent": "Neck"
+    },
+    {
+      "name": "Head",
+      "at": [
+        0,
+        3.7,
+        3.9
+      ],
+      "binds": [
+        "skull",
+        "snout",
+        "snout-ridge",
+        "brow",
+        "lacrimal-horn",
+        "eye",
+        "pupil",
+        "nostril",
+        "cheek",
+        "tooth-upper",
+        "fang",
+        "mouth-dark",
+        "jaw-hinge"
+      ],
+      "parent": "Neck2"
+    },
+    {
+      "name": "Jaw",
+      "at": [
+        0,
+        3.4499999999999997,
+        4.449999999999999
+      ],
+      "binds": [
+        "jaw",
+        "jaw-throat",
+        "tongue",
+        "tooth-lower"
+      ],
+      "parent": "Head",
+      "spin": {
+        "axis": "x",
+        "degrees": 10,
+        "seconds": 2.6,
+        "drift": 0,
+        "clip": "Roar"
+      }
+    },
+    {
+      "name": "Tail1",
+      "at": [
+        0,
+        2.4,
+        -0.6
+      ],
+      "binds": [
+        "tail-a"
+      ],
+      "parent": "Hips",
+      "spin": {
+        "axis": "y",
+        "degrees": 5,
+        "seconds": 4,
+        "drift": 0,
+        "clip": "Idle"
+      }
+    },
+    {
+      "name": "Tail2",
+      "at": [
+        0,
+        2.35,
+        -2.6
+      ],
+      "binds": [
+        "tail-b",
+        "scute-tail-1",
+        "scute-tail-2",
+        "scute-tail-3",
+        "scute-tail-4",
+        "scute-tail-5"
+      ],
+      "parent": "Tail1",
+      "spin": {
+        "axis": "y",
+        "degrees": 7,
+        "seconds": 4,
+        "drift": 0,
+        "clip": "Idle",
+        "phase": 35
+      }
+    },
+    {
+      "name": "Tail3",
+      "at": [
+        0,
+        2.1,
+        -4.9
+      ],
+      "binds": [
+        "tail-c"
+      ],
+      "parent": "Tail2",
+      "spin": {
+        "axis": "y",
+        "degrees": 9,
+        "seconds": 4,
+        "drift": 0,
+        "clip": "Idle",
+        "phase": 70
+      }
+    },
+    {
+      "name": "Thigh_L",
+      "at": [
+        0.62,
+        2.25,
+        0.05
+      ],
+      "binds": [
+        "femur-l",
+        "knee-l"
+      ],
+      "parent": "Hips"
+    },
+    {
+      "name": "Shin_L",
+      "at": [
+        0.72,
+        1.35,
+        0.55
+      ],
+      "binds": [
+        "shin-l"
+      ],
+      "parent": "Thigh_L"
+    },
+    {
+      "name": "Ankle_L",
+      "at": [
+        0.7,
+        0.62,
+        0.05
+      ],
+      "binds": [
+        "metatarsus-l",
+        "foot-l",
+        "toe-claw-l",
+        "dew-claw-l"
+      ],
+      "parent": "Shin_L"
+    },
+    {
+      "name": "Arm_L",
+      "at": [
+        0.5,
+        2.7,
+        2.35
+      ],
+      "binds": [
+        "upper-arm-l"
+      ],
+      "parent": "Neck"
+    },
+    {
+      "name": "Forearm_L",
+      "at": [
+        0.62,
+        2.35,
+        2.75
+      ],
+      "binds": [
+        "forearm-l",
+        "hand-l",
+        "finger-l"
+      ],
+      "parent": "Arm_L"
+    },
+    {
+      "name": "Thigh_R",
+      "at": [
+        -0.62,
+        2.25,
+        0.05
+      ],
+      "binds": [
+        "femur-r",
+        "knee-r"
+      ],
+      "parent": "Hips"
+    },
+    {
+      "name": "Shin_R",
+      "at": [
+        -0.72,
+        1.35,
+        0.55
+      ],
+      "binds": [
+        "shin-r"
+      ],
+      "parent": "Thigh_R"
+    },
+    {
+      "name": "Ankle_R",
+      "at": [
+        -0.7,
+        0.62,
+        0.05
+      ],
+      "binds": [
+        "metatarsus-r",
+        "foot-r",
+        "toe-claw-r",
+        "dew-claw-r"
+      ],
+      "parent": "Shin_R"
+    },
+    {
+      "name": "Arm_R",
+      "at": [
+        -0.5,
+        2.7,
+        2.35
+      ],
+      "binds": [
+        "upper-arm-r"
+      ],
+      "parent": "Neck"
+    },
+    {
+      "name": "Forearm_R",
+      "at": [
+        -0.62,
+        2.35,
+        2.75
+      ],
+      "binds": [
+        "forearm-r",
+        "hand-r",
+        "finger-r"
+      ],
+      "parent": "Arm_R"
+    }
+  ],
+  "parts": [
+    {
+      "name": "pelvis",
+      "shape": "icosahedron",
+      "size": [
+        1.5,
+        1.5,
+        1.9
+      ],
+      "position": [
+        0,
+        2.4,
+        0
+      ],
+      "color": "#5d5a44",
+      "detail": 6,
+      "jitter": 0.28
+    },
+    {
+      "name": "belly",
+      "shape": "capsule",
+      "size": [
+        1.7,
+        1.55,
+        2.6
+      ],
+      "position": [
+        0,
+        2.35,
+        1.1
+      ],
+      "color": "#5d5a44",
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "jitter": 0.28
+    },
+    {
+      "name": "chest",
+      "shape": "icosahedron",
+      "size": [
+        1.55,
+        1.45,
+        1.6
+      ],
+      "position": [
+        0,
+        2.55,
+        2
+      ],
+      "color": "#5d5a44",
+      "detail": 6,
+      "jitter": 0.28
+    },
+    {
+      "name": "underbelly",
+      "shape": "capsule",
+      "size": [
+        1.15,
+        0.8,
+        2.9
+      ],
+      "position": [
+        0,
+        1.85,
+        1.2
+      ],
+      "color": "#8a8567",
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "jitter": 0.15
+    },
+    {
+      "name": "neck-a",
+      "shape": "limb",
+      "from": [
+        0,
+        2.8,
+        2.6
+      ],
+      "to": [
+        0,
+        3.35,
+        3.35
+      ],
+      "radius": 0.5,
+      "color": "#5d5a44",
+      "taper": 0.86,
+      "jitter": 0.2,
+      "via": [
+        0,
+        3.15,
+        2.95
+      ]
+    },
+    {
+      "name": "neck-b",
+      "shape": "limb",
+      "from": [
+        0,
+        3.35,
+        3.35
+      ],
+      "to": [
+        0,
+        3.7,
+        3.9
+      ],
+      "radius": 0.42,
+      "color": "#5d5a44",
+      "taper": 0.9,
+      "jitter": 0.2
+    },
+    {
+      "name": "throat",
+      "shape": "capsule",
+      "size": [
+        0.7,
+        0.6,
+        1.3
+      ],
+      "position": [
+        0,
+        3.05,
+        3.25
+      ],
+      "color": "#8a8567",
+      "rotation": [
+        55,
+        0,
+        0
+      ],
+      "jitter": 0.12
+    },
+    {
+      "name": "skull",
+      "shape": "icosahedron",
+      "size": [
+        0.95,
+        0.85,
+        1.2
+      ],
+      "position": [
+        0,
+        3.8,
+        4.35
+      ],
+      "color": "#5d5a44",
+      "detail": 6,
+      "jitter": 0.14
+    },
+    {
+      "name": "snout",
+      "shape": "box",
+      "size": [
+        0.72,
+        0.62,
+        1.35
+      ],
+      "position": [
+        0,
+        3.6799999999999997,
+        5.3
+      ],
+      "color": "#5d5a44",
+      "bevel": 0.08,
+      "jitter": 0.1
+    },
+    {
+      "name": "snout-ridge",
+      "shape": "box",
+      "size": [
+        0.34,
+        0.14,
+        1.1
+      ],
+      "position": [
+        0,
+        4.02,
+        5.25
+      ],
+      "color": "#4a4838",
+      "bevel": 0.04
+    },
+    {
+      "name": "brow",
+      "shape": "box",
+      "size": [
+        0.32,
+        0.2,
+        0.5
+      ],
+      "position": [
+        0.36,
+        4.08,
+        4.6
+      ],
+      "color": "#4a4838",
+      "rotation": [
+        0,
+        0,
+        -18
+      ],
+      "bevel": 0.03,
+      "mirror": "x"
+    },
+    {
+      "name": "lacrimal-horn",
+      "shape": "cone",
+      "size": [
+        0.16,
+        0.22,
+        0.16
+      ],
+      "position": [
+        0.4,
+        4.2,
+        4.8999999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        -30
+      ],
+      "color": "#4a4838",
+      "mirror": "x"
+    },
+    {
+      "name": "eye",
+      "shape": "sphere",
+      "size": [
+        0.19,
+        0.19,
+        0.19
+      ],
+      "position": [
+        0.42,
+        3.9,
+        4.699999999999999
+      ],
+      "color": "#d7a02c",
+      "detail": 6,
+      "mirror": "x"
+    },
+    {
+      "name": "pupil",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.1,
+        0.08
+      ],
+      "position": [
+        0.51,
+        3.9,
+        4.7299999999999995
+      ],
+      "color": "#2b2823",
+      "detail": 5,
+      "mirror": "x"
+    },
+    {
+      "name": "nostril",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.09,
+        0.13
+      ],
+      "position": [
+        0.22,
+        3.96,
+        5.85
+      ],
+      "color": "#4a4838",
+      "detail": 5,
+      "mirror": "x"
+    },
+    {
+      "name": "cheek",
+      "shape": "box",
+      "size": [
+        0.36,
+        0.42,
+        0.7
+      ],
+      "position": [
+        0.42,
+        3.5999999999999996,
+        4.699999999999999
+      ],
+      "color": "#5d5a44",
+      "rotation": [
+        0,
+        0,
+        8
+      ],
+      "bevel": 0.05,
+      "mirror": "x",
+      "jitter": 0.1
+    },
+    {
+      "name": "jaw",
+      "shape": "box",
+      "size": [
+        0.66,
+        0.34,
+        1.55
+      ],
+      "position": [
+        0,
+        3.1799999999999997,
+        5.199999999999999
+      ],
+      "color": "#5d5a44",
+      "rotation": [
+        22,
+        0,
+        0
+      ],
+      "bevel": 0.06,
+      "jitter": 0.1
+    },
+    {
+      "name": "jaw-hinge",
+      "shape": "limb",
+      "from": [
+        0.4,
+        3.4499999999999997,
+        4.449999999999999
+      ],
+      "to": [
+        0.44,
+        3.25,
+        4.8999999999999995
+      ],
+      "radius": 0.14,
+      "color": "#5d5a44",
+      "mirror": "x"
+    },
+    {
+      "name": "jaw-throat",
+      "shape": "box",
+      "size": [
+        0.5,
+        0.22,
+        0.6
+      ],
+      "position": [
+        0,
+        3.25,
+        4.6
+      ],
+      "color": "#8a8567",
+      "rotation": [
+        22,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "tongue",
+      "shape": "capsule",
+      "size": [
+        0.24,
+        0.12,
+        0.9
+      ],
+      "position": [
+        0,
+        3.36,
+        5.1
+      ],
+      "color": "#8f3a3a",
+      "rotation": [
+        100,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "mouth-dark",
+      "shape": "box",
+      "size": [
+        0.5,
+        0.2,
+        0.8
+      ],
+      "position": [
+        0,
+        3.48,
+        4.8999999999999995
+      ],
+      "color": "#5a2424",
+      "rotation": [
+        8,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "tooth-upper",
+      "shape": "cone",
+      "size": [
+        0.09,
+        0.2,
+        0.09
+      ],
+      "position": [
+        0.27,
+        3.28,
+        5.3
+      ],
+      "color": "#e9e2cf",
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "mirror": "x",
+      "repeat": {
+        "count": 5,
+        "mode": "linear",
+        "offset": [
+          0.004,
+          0,
+          0.12
+        ],
+        "scaleStep": 0.95
+      }
+    },
+    {
+      "name": "tooth-lower",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.17,
+        0.08
+      ],
+      "position": [
+        0.24,
+        3.38,
+        5.38
+      ],
+      "color": "#e9e2cf",
+      "rotation": [
+        10,
+        0,
+        0
+      ],
+      "mirror": "x",
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          0.004,
+          -0.048,
+          0.12
+        ],
+        "scaleStep": 0.96
+      }
+    },
+    {
+      "name": "fang",
+      "shape": "cone",
+      "size": [
+        0.11,
+        0.26,
+        0.11
+      ],
+      "position": [
+        0.24,
+        3.2399999999999998,
+        5.85
+      ],
+      "color": "#e9e2cf",
+      "rotation": [
+        170,
+        0,
+        0
+      ],
+      "mirror": "x"
+    },
+    {
+      "name": "tail-a",
+      "shape": "limb",
+      "from": [
+        0,
+        2.4,
+        -0.6
+      ],
+      "to": [
+        0,
+        2.35,
+        -2.6
+      ],
+      "radius": 0.62,
+      "color": "#5d5a44",
+      "taper": 0.78,
+      "jitter": 0.28,
+      "via": [
+        0,
+        2.55,
+        -1.7
+      ]
+    },
+    {
+      "name": "tail-b",
+      "shape": "limb",
+      "from": [
+        0,
+        2.35,
+        -2.6
+      ],
+      "to": [
+        0,
+        2.1,
+        -4.9
+      ],
+      "radius": 0.47,
+      "color": "#5d5a44",
+      "taper": 0.62,
+      "jitter": 0.28,
+      "via": [
+        0,
+        2.4,
+        -3.8
+      ]
+    },
+    {
+      "name": "tail-c",
+      "shape": "limb",
+      "from": [
+        0,
+        2.1,
+        -4.9
+      ],
+      "to": [
+        0,
+        1.55,
+        -7.4
+      ],
+      "radius": 0.29,
+      "color": "#5d5a44",
+      "taper": 0.22,
+      "jitter": 0.2,
+      "via": [
+        0,
+        1.95,
+        -6.3
+      ]
+    },
+    {
+      "name": "thigh-l",
+      "shape": "icosahedron",
+      "size": [
+        0.95,
+        1.25,
+        1
+      ],
+      "position": [
+        0.66,
+        1.95,
+        0.2
+      ],
+      "color": "#5d5a44",
+      "detail": 6,
+      "jitter": 0.28
+    },
+    {
+      "name": "femur-l",
+      "shape": "limb",
+      "from": [
+        0.62,
+        2.25,
+        0.05
+      ],
+      "to": [
+        0.72,
+        1.35,
+        0.55
+      ],
+      "radius": 0.36,
+      "color": "#5d5a44",
+      "taper": 0.75,
+      "jitter": 0.2
+    },
+    {
+      "name": "shin-l",
+      "shape": "limb",
+      "from": [
+        0.72,
+        1.35,
+        0.55
+      ],
+      "to": [
+        0.7,
+        0.62,
+        0.05
+      ],
+      "radius": 0.27,
+      "color": "#5d5a44",
+      "taper": 0.8,
+      "jitter": 0.2
+    },
+    {
+      "name": "knee-l",
+      "shape": "icosahedron",
+      "size": [
+        0.5,
+        0.5,
+        0.55
+      ],
+      "position": [
+        0.72,
+        1.35,
+        0.55
+      ],
+      "color": "#5d5a44",
+      "detail": 6,
+      "jitter": 0.15
+    },
+    {
+      "name": "metatarsus-l",
+      "shape": "limb",
+      "from": [
+        0.7,
+        0.62,
+        0.05
+      ],
+      "to": [
+        0.7,
+        0.22,
+        0.4
+      ],
+      "radius": 0.24,
+      "color": "#5d5a44",
+      "taper": 0.85
+    },
+    {
+      "name": "foot-l",
+      "shape": "box",
+      "size": [
+        0.62,
+        0.3,
+        0.95
+      ],
+      "position": [
+        0.7,
+        0.2,
+        0.62
+      ],
+      "color": "#5d5a44",
+      "bevel": 0.05,
+      "jitter": 0.12
+    },
+    {
+      "name": "toe-claw-l",
+      "shape": "cone",
+      "size": [
+        0.14,
+        0.3,
+        0.24
+      ],
+      "position": [
+        0.49999999999999994,
+        0.15,
+        1.15
+      ],
+      "color": "#2b2823",
+      "rotation": [
+        -80,
+        0,
+        0
+      ],
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0.2,
+          0,
+          -0.02
+        ]
+      }
+    },
+    {
+      "name": "dew-claw-l",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.18,
+        0.14
+      ],
+      "position": [
+        0.7,
+        0.28,
+        0.1
+      ],
+      "color": "#2b2823",
+      "rotation": [
+        100,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "upper-arm-l",
+      "shape": "limb",
+      "from": [
+        0.5,
+        2.7,
+        2.35
+      ],
+      "to": [
+        0.62,
+        2.35,
+        2.75
+      ],
+      "radius": 0.13,
+      "color": "#5d5a44",
+      "taper": 0.85
+    },
+    {
+      "name": "forearm-l",
+      "shape": "limb",
+      "from": [
+        0.62,
+        2.35,
+        2.75
+      ],
+      "to": [
+        0.58,
+        2.15,
+        3.1
+      ],
+      "radius": 0.1,
+      "color": "#5d5a44",
+      "taper": 0.85
+    },
+    {
+      "name": "hand-l",
+      "shape": "icosahedron",
+      "size": [
+        0.2,
+        0.18,
+        0.24
+      ],
+      "position": [
+        0.58,
+        2.1,
+        3.18
+      ],
+      "color": "#5d5a44",
+      "detail": 6
+    },
+    {
+      "name": "finger-l",
+      "shape": "cone",
+      "size": [
+        0.06,
+        0.17,
+        0.06
+      ],
+      "position": [
+        0.5299999999999999,
+        2.02,
+        3.32
+      ],
+      "color": "#2b2823",
+      "rotation": [
+        125,
+        0,
+        0
+      ],
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0.1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "thigh-r",
+      "shape": "icosahedron",
+      "size": [
+        0.95,
+        1.25,
+        1
+      ],
+      "position": [
+        -0.66,
+        1.95,
+        0.2
+      ],
+      "color": "#5d5a44",
+      "detail": 6,
+      "jitter": 0.28
+    },
+    {
+      "name": "femur-r",
+      "shape": "limb",
+      "from": [
+        -0.62,
+        2.25,
+        0.05
+      ],
+      "to": [
+        -0.72,
+        1.35,
+        0.55
+      ],
+      "radius": 0.36,
+      "color": "#5d5a44",
+      "taper": 0.75,
+      "jitter": 0.2
+    },
+    {
+      "name": "shin-r",
+      "shape": "limb",
+      "from": [
+        -0.72,
+        1.35,
+        0.55
+      ],
+      "to": [
+        -0.7,
+        0.62,
+        0.05
+      ],
+      "radius": 0.27,
+      "color": "#5d5a44",
+      "taper": 0.8,
+      "jitter": 0.2
+    },
+    {
+      "name": "knee-r",
+      "shape": "icosahedron",
+      "size": [
+        0.5,
+        0.5,
+        0.55
+      ],
+      "position": [
+        -0.72,
+        1.35,
+        0.55
+      ],
+      "color": "#5d5a44",
+      "detail": 6,
+      "jitter": 0.15
+    },
+    {
+      "name": "metatarsus-r",
+      "shape": "limb",
+      "from": [
+        -0.7,
+        0.62,
+        0.05
+      ],
+      "to": [
+        -0.7,
+        0.22,
+        0.4
+      ],
+      "radius": 0.24,
+      "color": "#5d5a44",
+      "taper": 0.85
+    },
+    {
+      "name": "foot-r",
+      "shape": "box",
+      "size": [
+        0.62,
+        0.3,
+        0.95
+      ],
+      "position": [
+        -0.7,
+        0.2,
+        0.62
+      ],
+      "color": "#5d5a44",
+      "bevel": 0.05,
+      "jitter": 0.12
+    },
+    {
+      "name": "toe-claw-r",
+      "shape": "cone",
+      "size": [
+        0.14,
+        0.3,
+        0.24
+      ],
+      "position": [
+        -0.8999999999999999,
+        0.15,
+        1.15
+      ],
+      "color": "#2b2823",
+      "rotation": [
+        -80,
+        0,
+        0
+      ],
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0.2,
+          0,
+          -0.02
+        ]
+      }
+    },
+    {
+      "name": "dew-claw-r",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.18,
+        0.14
+      ],
+      "position": [
+        -0.7,
+        0.28,
+        0.1
+      ],
+      "color": "#2b2823",
+      "rotation": [
+        100,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "upper-arm-r",
+      "shape": "limb",
+      "from": [
+        -0.5,
+        2.7,
+        2.35
+      ],
+      "to": [
+        -0.62,
+        2.35,
+        2.75
+      ],
+      "radius": 0.13,
+      "color": "#5d5a44",
+      "taper": 0.85
+    },
+    {
+      "name": "forearm-r",
+      "shape": "limb",
+      "from": [
+        -0.62,
+        2.35,
+        2.75
+      ],
+      "to": [
+        -0.58,
+        2.15,
+        3.1
+      ],
+      "radius": 0.1,
+      "color": "#5d5a44",
+      "taper": 0.85
+    },
+    {
+      "name": "hand-r",
+      "shape": "icosahedron",
+      "size": [
+        0.2,
+        0.18,
+        0.24
+      ],
+      "position": [
+        -0.58,
+        2.1,
+        3.18
+      ],
+      "color": "#5d5a44",
+      "detail": 6
+    },
+    {
+      "name": "finger-r",
+      "shape": "cone",
+      "size": [
+        0.06,
+        0.17,
+        0.06
+      ],
+      "position": [
+        -0.63,
+        2.02,
+        3.32
+      ],
+      "color": "#2b2823",
+      "rotation": [
+        125,
+        0,
+        0
+      ],
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0.1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "scute-1",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        3.228,
+        2
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-2",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        3.549,
+        1.5
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-3",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        3.64,
+        1
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-4",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        3.255,
+        0.5
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-5",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        3.091,
+        0
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-6",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        2.993,
+        -0.5
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-7",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        2.985,
+        -1
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-8",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        2.982,
+        -1.5
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-9",
+      "shape": "octahedron",
+      "size": [
+        0.12,
+        0.24,
+        0.22
+      ],
+      "position": [
+        0,
+        2.917,
+        -2
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-tail-1",
+      "shape": "octahedron",
+      "size": [
+        0.09,
+        0.16,
+        0.16
+      ],
+      "position": [
+        0,
+        2.83,
+        -2.6
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-tail-2",
+      "shape": "octahedron",
+      "size": [
+        0.09,
+        0.16,
+        0.16
+      ],
+      "position": [
+        0,
+        2.762,
+        -3.1
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-tail-3",
+      "shape": "octahedron",
+      "size": [
+        0.09,
+        0.16,
+        0.16
+      ],
+      "position": [
+        0,
+        2.696,
+        -3.6
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-tail-4",
+      "shape": "octahedron",
+      "size": [
+        0.09,
+        0.16,
+        0.16
+      ],
+      "position": [
+        0,
+        2.603,
+        -4.1
+      ],
+      "color": "#3f3d30"
+    },
+    {
+      "name": "scute-tail-5",
+      "shape": "octahedron",
+      "size": [
+        0.09,
+        0.16,
+        0.16
+      ],
+      "position": [
+        0,
+        2.47,
+        -4.6
+      ],
+      "color": "#3f3d30"
+    }
+  ]
+}

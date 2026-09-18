@@ -10,7 +10,15 @@ import {
   type AssetSpecInput,
 } from '../lib/asset-spec';
 import { flatten } from '../lib/spec-edit';
-import { readySurface } from '../lib/asset-surface';
+import {
+  primsOf,
+  readySurface,
+  sampleGrid,
+  surfaceModel,
+  type Grid,
+  type SurfaceSettings,
+} from '../lib/asset-surface';
+import { distanceTo, type Prim } from '../lib/asset-sdf';
 import { stats } from '../lib/asset-build';
 import { toGLB } from '../lib/asset-bundle';
 import { auditModel } from '../lib/asset-audit';
@@ -325,15 +333,23 @@ describe('the worked specs', () => {
     const faceted = buildSpec(parseSpec(base));
     const longest = Math.max(...stats(faceted).size) / (base.scale ?? 1);
     const detail = Math.min(320, Math.max(96, Math.ceil((longest * (base.scale ?? 1)) / 0.1)));
-    for (const surface of [
-      undefined,
-      base.surface ?? {
-        blend: 0.03,
-        detail,
-        budget: 4000,
-        shading: 'flat' as const,
-      },
-    ]) {
+    // Fusing is only a fair test of a spec that could plausibly be fused: a
+    // ship's rigging or a village's fence rails are one cell thick at any
+    // sane resolution and would shatter into shells, and thickening every
+    // rope in every scene to please this test would be backwards. So the
+    // fallback pass runs only when the thinnest authored feature spans a few
+    // cells; a spec that asked for surface mode is always tested in it.
+    const voxel = (longest * (base.scale ?? 1)) / detail;
+    const thinnest = Math.min(
+      ...flatten(parseSpec(base)).map(({ part }) =>
+        part.shape === 'limb' ? 2 * (part.radius ?? 0.1) : Math.min(...(part.size ?? [1, 1, 1])),
+      ),
+    );
+    const passes: (typeof base.surface | undefined)[] = [undefined];
+    if (base.surface) passes.push(base.surface);
+    else if (thinnest >= 2.5 * voxel)
+      passes.push({ blend: 0.03, detail, budget: 4000, shading: 'flat' as const });
+    for (const surface of passes) {
       const spec = parseSpec({ ...base, surface });
       const model = buildSpec(spec);
       const audit = auditModel(model, {
@@ -415,5 +431,172 @@ describe('surface rigging', () => {
     const glb = await toGLB(buildSpec(rigged), rigClips());
     expect(glb.byteLength).toBeGreaterThan(1000);
     expect(stats(buildSpec(rigged)).bones).toBe(14);
+  });
+});
+
+/**
+ * The hierarchical sampler against the scan it replaced.
+ *
+ * The fast path settles most of the grid from one sample per block, so the two
+ * value arrays are deliberately *not* equal: a rejected block gets a constant
+ * of the right sign rather than a distance nobody reads. What has to match is
+ * everything the extractor can actually see — the sign at every point, and the
+ * exact value at every point that takes part in a crossing — and, in the end,
+ * the mesh itself.
+ */
+describe('the block sampler matches a full scan', () => {
+  /** The primitives a spec's surface is blended from, without building one. */
+  function primsFor(spec: AssetSpecInput): { prims: Prim[]; settings: SurfaceSettings } {
+    const parsed = parseSpec(spec);
+    const faceted = buildSpec({ ...parsed, surface: undefined });
+    return {
+      prims: primsOf(faceted, new T.Color(parsed.color)),
+      settings: parsed.surface!,
+    };
+  }
+
+  function compare(grid: Grid, full: Grid) {
+    expect([grid.nx, grid.ny, grid.nz]).toStrictEqual([full.nx, full.ny, full.nz]);
+    expect(grid.step).toBe(full.step);
+    const { nx, ny, nz } = grid;
+    const at = (i: number, j: number, k: number) => (k * ny + j) * nx + i;
+    let crossings = 0;
+    for (let k = 0; k < nz; k++)
+      for (let j = 0; j < ny; j++)
+        for (let i = 0; i < nx; i++) {
+          const index = at(i, j, k);
+          const mine = grid.values[index];
+          const theirs = full.values[index];
+          if (mine < 0 !== theirs < 0)
+            throw Error(`sign differs at ${i},${j},${k}: ${mine} vs ${theirs}`);
+          // A value is read for its magnitude only when an axis neighbour sits
+          // on the other side of the surface, so that is where it has to be
+          // exact.
+          let edge = false;
+          if (i + 1 < nx && theirs < 0 !== full.values[at(i + 1, j, k)] < 0) edge = true;
+          if (j + 1 < ny && theirs < 0 !== full.values[at(i, j + 1, k)] < 0) edge = true;
+          if (k + 1 < nz && theirs < 0 !== full.values[at(i, j, k + 1)] < 0) edge = true;
+          if (i > 0 && theirs < 0 !== full.values[at(i - 1, j, k)] < 0) edge = true;
+          if (j > 0 && theirs < 0 !== full.values[at(i, j - 1, k)] < 0) edge = true;
+          if (k > 0 && theirs < 0 !== full.values[at(i, j, k - 1)] < 0) edge = true;
+          if (!edge) continue;
+          crossings++;
+          if (mine !== theirs)
+            throw Error(`value differs at a crossing ${i},${j},${k}: ${mine} vs ${theirs}`);
+        }
+    // A comparison that found no crossings would pass for the wrong reason.
+    expect(crossings).toBeGreaterThan(0);
+  }
+
+  const files = readdirSync('specs').filter((f) => f.endsWith('.spec.json'));
+
+  test.each(files)('%s samples identically where it counts', (file) => {
+    const base = JSON.parse(readFileSync(`specs/${file}`, 'utf8'));
+    // Coarse on purpose: the brute-force scan is what this measures against,
+    // and at the studio's detail it takes seconds per spec.
+    const spec = {
+      ...base,
+      surface: { blend: 0.03, detail: 72, budget: 4000, shading: 'flat' as const },
+    };
+    const { prims, settings } = primsFor(spec);
+    compare(sampleGrid(prims, settings), sampleGrid(prims, settings, { brute: true }));
+  });
+
+  test('and produces the same mesh, vertex for vertex', () => {
+    for (const file of ['wizard.spec.json', 'octopod-walker.spec.json']) {
+      const base = JSON.parse(readFileSync(`specs/${file}`, 'utf8'));
+      const parsed = parseSpec({
+        ...base,
+        surface: { blend: 0.03, detail: 72, budget: 100000, shading: 'flat' as const },
+      });
+      const source = buildSpec({ ...parsed, surface: undefined });
+      const fallback = new T.Color(parsed.color);
+      const fast = meshOf(surfaceModel(source, parsed.surface!, fallback)).geometry;
+      const slow = meshOf(
+        surfaceModel(source, parsed.surface!, fallback, 'surface', { brute: true }),
+      ).geometry;
+      const attribute = (geometry: T.BufferGeometry, name: string) =>
+        Array.from((geometry.attributes[name] as T.BufferAttribute).array);
+      expect(attribute(fast, 'position')).toStrictEqual(attribute(slow, 'position'));
+      expect(attribute(fast, 'color')).toStrictEqual(attribute(slow, 'color'));
+      expect(Array.from((fast.index as T.BufferAttribute).array)).toStrictEqual(
+        Array.from((slow.index as T.BufferAttribute).array),
+      );
+    }
+  });
+
+  test('jitter does not escape the amplitude the block test assumes', () => {
+    // The block test bounds the noise by its amplitude rather than its slope,
+    // which is only sound if `fieldAt` never scales it by more than this.
+    const { prims } = primsFor({
+      version: 1,
+      name: 'Rough',
+      kind: 'prop',
+      surface: { blend: 0, detail: 32, budget: 4000, shading: 'flat' },
+      parts: [{ shape: 'box', size: [0.6, 0.4, 0.5], jitter: 0.8 }],
+    });
+    const prim = prims[0];
+    expect(prim.jitter).toBe(0.8);
+    expect(Math.abs(prim.jitter) * 0.06 * Math.max(0.01, prim.lipschitz)).toBeGreaterThan(0);
+  });
+});
+
+describe('every distance function is 1-Lipschitz', () => {
+  // The block test rejects a region by walking one sample outward by the
+  // region's radius, which is only sound if no primitive's field can move
+  // faster than the point does. A shape that broke this would not fail any
+  // other test here — it would quietly cut a hole in a rejected block.
+  type Probe = Record<string, unknown>;
+  const variants: [string, Probe][] = SHAPES.flatMap(
+    (shape): [string, Probe][] =>
+      shape === 'limb'
+        ? [
+            ['limb', { shape, from: [-0.3, 0, 0], to: [0.3, 0.2, 0.1], radius: 0.2, taper: 0.4 }],
+            ['limb via', { shape, from: [-0.3, 0, 0], via: [0, 0.4, 0.2], to: [0.3, 0, 0], radius: 0.15 }],
+          ]
+        : [
+            [shape, { shape, size: [0.6, 0.4, 0.5], taper: 0.6 }],
+            [`${shape} squashed`, { shape, size: [1.4, 0.12, 0.7], taper: 1.6 }],
+            // Only a box and an extrude accept a chamfer, and only they reach
+            // `sdRoundBox`, which is the one measured in metres rather than in
+            // canonical space.
+            ...(shape === 'box' || shape === 'extrude'
+              ? ([[`${shape} bevelled`, { shape, size: [0.6, 0.5, 0.5], bevel: 0.08 }]] as [
+                  string,
+                  Probe,
+                ][])
+              : []),
+          ],
+  );
+
+  test.each(variants)('%s', (_label, part) => {
+    const faceted = buildSpec({
+      version: 1,
+      name: 'Probe',
+      kind: 'prop',
+      parts: [{ ...part, rotation: [17, 23, 41], position: [0.1, -0.2, 0.3] }],
+    });
+    const prims = primsOf(faceted, new T.Color('#888888'));
+    expect(prims.length).toBe(1);
+    const prim = prims[0];
+    // Deterministic pseudo-random probes across the primitive's neighbourhood.
+    let seed = 12345;
+    const next = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    const point = () =>
+      [next() * 3 - 1.5, next() * 3 - 1.5, next() * 3 - 1.5] as const;
+    let worst = 0;
+    for (let i = 0; i < 4000; i++) {
+      const a = point();
+      const b = point();
+      const moved = Math.abs(
+        distanceTo(prim, a[0], a[1], a[2]) - distanceTo(prim, b[0], b[1], b[2]),
+      );
+      const apart = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      worst = Math.max(worst, moved / apart);
+    }
+    expect(worst).toBeLessThanOrEqual(1 + 1e-6);
   });
 });

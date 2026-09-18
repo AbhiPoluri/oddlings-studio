@@ -2,7 +2,8 @@ import * as T from 'three';
 import { z } from 'zod';
 import { random } from './world';
 import { finishModel } from './asset-build';
-import { surfaceModel } from './asset-surface';
+import { surfaceModel, type SurfaceOptions } from './asset-surface';
+import { mark, measure } from './perf';
 import { disposeScene } from './three-world';
 import { JOINTS, rigCreature } from './asset-rig';
 import { jointBinder, rigJoints } from './asset-joints';
@@ -1428,8 +1429,15 @@ function walk(
 /**
  * Build a spec into a finished three.js model, rigged when the spec asks for it.
  * Deterministic: the same spec always produces the same geometry.
+ *
+ * `options` reaches surface mode only. `{ uv: false }` skips planning the
+ * texture atlas, which is what every preview path passes — the geometry is
+ * identical either way, so a model built without it can still be audited,
+ * measured and drawn. Only the exporters need the layout, and they take the
+ * default.
  */
-export function buildSpec(input: unknown) {
+export function buildSpec(input: unknown, options: SurfaceOptions = {}) {
+  const whole = mark();
   const spec = parseSpec(input);
   let model = new T.Group();
   model.name = spec.name;
@@ -1442,8 +1450,11 @@ export function buildSpec(input: unknown) {
   // One stream for the whole expansion pass: walk visits parts in a fixed
   // order, so the same spec always draws the same numbers.
   const placement = random(spec.seed + 104729);
+  options.onPhase?.('parts');
+  const parts = mark();
   for (const part of walk(spec.parts, placement))
     buildPart(part, model, context, undefined, 0);
+  measure('build.parts', parts);
   model.userData = { generator: 'Oddlings Studio', spec };
   if (spec.surface) {
     const blended = surfaceModel(
@@ -1451,6 +1462,7 @@ export function buildSpec(input: unknown) {
       spec.surface,
       new T.Color(spec.color),
       `${spec.kind}_surface`,
+      options,
     );
     disposeScene(model);
     model = blended;
@@ -1459,11 +1471,15 @@ export function buildSpec(input: unknown) {
   } else {
     finishModel(model, spec.kind);
   }
+  if (spec.rig || spec.joints?.length) options.onPhase?.('skinning');
+  const skin = mark();
   if (spec.rig) model = rigCreature(model, spec.rig);
   else if (spec.joints?.length)
     model = rigJoints(model, spec.joints, jointBinder(spec));
+  measure('build.rig', skin);
   model.scale.setScalar(spec.scale);
   model.updateMatrixWorld(true);
+  measure('build', whole);
   return model;
 }
 

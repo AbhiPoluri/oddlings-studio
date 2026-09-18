@@ -10,6 +10,7 @@
  * does not pretend to own something it cannot read.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import type * as T from 'three';
 import { ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
@@ -23,7 +24,11 @@ import {
   type ViewHandle,
   type ViewName,
 } from '@/components/asset-viewport';
+import type { AssetSpec } from '@/lib/asset-spec';
 import { runCommand, type ActionContext } from './actions';
+import { clockAt, setClock } from './clock';
+import { BootScreen } from './loading';
+import { EmptyState } from './empty-state';
 import type { Overlays } from './reducer';
 import { useStudio } from './store';
 import { useDocument } from './use-document';
@@ -49,9 +54,21 @@ const OVERLAYS: { key: keyof Overlays; id: string; label: string }[] = [
 export function ViewportPanel({
   view,
   context,
+  ghost,
+  onModel,
 }: {
   view: RefObject<ViewHandle | null>;
   context: ActionContext;
+  /** The previous agent build, drawn through when Compare is on. */
+  ghost?: AssetSpec | null;
+  /**
+   * The model the viewport just built, passed up for the shell to audit.
+   *
+   * Null while a build is in flight. The shell used to build its own copy of
+   * every spec for the findings panel, which meant every edit was built twice
+   * on the main thread; this is the same model, lent rather than duplicated.
+   */
+  onModel: (model: T.Object3D | null) => void;
 }) {
   const { state, dispatch } = useStudio();
   const { transformPart, moveBoneTo, removeSelected, duplicateSelected } =
@@ -74,10 +91,53 @@ export function ViewportPanel({
   }, [triangles, doc, dispatch]);
 
   const spec = state.doc.spec;
-  // A surface spec re-meshes through a WebAssembly decimator; building one
-  // before it has loaded throws. The viewport guards too, but the audit in the
-  // shell reads the same document, so the gate belongs above both.
-  const ready = !spec?.surface || state.surfaceReady;
+
+  /**
+   * Park the playhead in the store when a clip stops.
+   *
+   * While a clip runs the live time lives in `clock.ts` and never reaches the
+   * store, which is what keeps the shell from committing ten times a second.
+   * The store's own `playback.time` is the seek the viewport obeys once it is
+   * paused — so on the way from playing to paused, one dispatch hands the live
+   * reading over and the model stays exactly where it stopped.
+   */
+  /**
+   * The start-up line, or null once a model has been drawn.
+   *
+   * Assembled here rather than dispatched step by step, because every input is
+   * already in the store: what the decimator is doing, what the follow poll is
+   * doing, and whether a build is in flight. A reducer case per step would be
+   * three more actions saying what three booleans already say.
+   */
+  const step = !state.loading.booted
+    ? state.loading.build
+      ? `building ${state.doc.spec?.name ?? 'the asset'}…`
+      : !state.surfaceReady && state.doc.spec?.surface
+        ? 'loading the decimator…'
+        : state.doc.spec || state.doc.origin !== 'agent'
+          ? 'starting the build worker…'
+          : state.follow.status === 'waiting'
+            ? 'reading .oddlings/active.json…'
+            : state.follow.status === 'off'
+              ? null
+              : 'waiting for a build…'
+    : null;
+  // Through the store rather than straight into the markup, so what start-up
+  // is waiting on is state anything can read and `tests/studio.test.ts` can
+  // assert on — and so the "booted once, booted for good" rule lives in one
+  // place instead of in a condition here.
+  useEffect(() => {
+    dispatch({ type: 'bootStep', step });
+  }, [step, dispatch]);
+  const boot = state.loading.boot;
+
+  const playing = state.playback.playing;
+  const wasPlaying = useRef(playing);
+  useEffect(() => {
+    if (wasPlaying.current && !playing)
+      dispatch({ type: 'time', time: clockAt() });
+    wasPlaying.current = playing;
+  }, [playing, dispatch]);
 
   return (
     <section className="viewport-column" aria-label="Viewport">
@@ -172,6 +232,11 @@ export function ViewportPanel({
         </dl>
       </div>
       <div className="viewport-host">
+        {/* Nothing followed and nothing loaded: the stage would otherwise be
+            an empty grey box, which reads as broken rather than as waiting. */}
+        {!spec && state.follow.status === 'gaveup' && (
+          <EmptyState context={context} />
+        )}
         <AssetViewport
           ref={view}
           // Supplying `isolate` takes the state over from the viewport, so
@@ -181,7 +246,7 @@ export function ViewportPanel({
           isolate={state.isolate}
           onIsolate={(selection) => dispatch({ type: 'isolate', selection })}
           recipe={state.doc.recipe}
-          spec={ready ? spec : null}
+          spec={spec}
           selected={state.selection}
           hover={state.hover}
           onSelect={(selection) => dispatch({ type: 'select', selection })}
@@ -195,17 +260,32 @@ export function ViewportPanel({
           grid={state.overlays.grid}
           rotate={state.overlays.rotate}
           skeleton={state.overlays.skeleton}
+          // Held behind the toggle rather than passed always: building a second
+          // model costs what building the first one did, and nobody who is not
+          // comparing should pay it.
+          ghost={state.overlays.compare ? (ghost ?? null) : null}
+          ghostWire={state.overlays.wireframe}
           animation={state.playback.clip}
           speed={state.playback.speed}
           playing={state.playback.playing}
           time={state.playback.time}
-          onTime={(time) => dispatch({ type: 'time', time })}
+          onTime={setClock}
           onClips={(clips) => dispatch({ type: 'clips', clips })}
           onPlayToggle={() =>
             dispatch({ type: 'playing', playing: !state.playback.playing })
           }
           onStats={setStats}
+          lastEdit={state.lastEdit}
+          onModel={onModel}
+          onBuild={(event) =>
+            dispatch(
+              'done' in event
+                ? { type: 'built', id: event.id }
+                : { type: 'building', id: event.id, since: event.since },
+            )
+          }
         />
+        {boot && <BootScreen step={boot} />}
       </div>
     </section>
   );

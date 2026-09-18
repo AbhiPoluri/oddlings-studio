@@ -450,6 +450,9 @@ button.bar-button {
   display: flex;
   flex-direction: column;
   background: #161b1c;
+  /* The start-up placeholder is positioned against this cell, so that it never
+     covers the chrome around it. */
+  position: relative;
 }
 .view-bar {
   flex: none;
@@ -642,6 +645,126 @@ button.bar-button {
   text-align: center;
   color: #eed2ae;
   line-height: 1.7;
+}
+
+/* The "still working" chip, bottom-right of the canvas, deliberately small
+   enough to be ignorable while the previous model stays usable underneath. */
+.viewport-building {
+  position: absolute;
+  right: 10px;
+  bottom: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 7px;
+  border-radius: var(--radius);
+  border: 1px solid #2b3335;
+  background: #11161788;
+  backdrop-filter: blur(4px);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8fa3a4;
+  pointer-events: none;
+}
+.viewport-building-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: oddlings-pulse 1.1s ease-in-out infinite;
+}
+.viewport-building .tabular {
+  color: #5f7274;
+}
+@keyframes oddlings-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The start-up placeholder. It covers the viewport cell and nothing else: the
+   chrome around it is usable while this is up. */
+.boot {
+  /* `output` so a screen reader announces the step; laid out as a block. */
+  display: flex;
+  position: absolute;
+  inset: 30px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #161b1c;
+  z-index: 2;
+}
+.boot-mark {
+  font-size: 22px;
+  color: var(--primary);
+  opacity: 0.7;
+}
+.boot-step {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #8fa3a4;
+}
+.boot-bar {
+  width: 128px;
+  height: 2px;
+  border-radius: 1px;
+  background: #222a2b;
+  overflow: hidden;
+}
+.boot-bar span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--primary);
+  opacity: 0.7;
+  animation: oddlings-slide 1.4s ease-in-out infinite;
+}
+@keyframes oddlings-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+/* Placeholder rows, at the height of the ones they stand in for so the panel
+   does not jump when the real list lands. */
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+.skeleton-row {
+  height: 22px;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, #1b2122 0%, #232b2c 50%, #1b2122 100%);
+  background-size: 200% 100%;
+  animation: oddlings-sheen 1.6s linear infinite;
+}
+@keyframes oddlings-sheen {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .viewport-building-dot,
+  .boot-bar span,
+  .skeleton-row {
+    animation: none;
+  }
 }
 
 /* ── Outliner ──────────────────────────────────────────────────────────── */
@@ -1663,6 +1786,10 @@ button.bar-button {
   display: flex;
   align-items: center;
   gap: 5px;
+  /* Four controls in a 260px column: they wrap onto a second line rather than
+     squeezing the search box to nothing, which is what a single row does the
+     moment anything is added to it. */
+  flex-wrap: wrap;
 }
 .projects-controls [data-slot='input'],
 .projects-controls input {
@@ -1670,6 +1797,10 @@ button.bar-button {
   border-radius: var(--radius);
   background: var(--sunken);
   font-size: 12px;
+}
+/* The search box takes the first line on its own and the rest share the next. */
+.projects-controls > :first-child {
+  flex: 1 1 100%;
 }
 .projects-list {
   display: flex;
@@ -1984,4 +2115,466 @@ button.bar-button.overlay-menu {
   .viewport-hint {
     display: none;
   }
+}
+
+/* ── Review notes ──────────────────────────────────────────────────────────
+   A conversation, not a form. Open notes read as work and resolved ones as
+   history, which is one rule drawn twice: open sit above resolved, and
+   resolved are dimmed to the weight of the panel's own furniture.
+   ─────────────────────────────────────────────────────────────────────────── */
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.notes-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 10px var(--mono);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.notes-save {
+  margin-left: auto;
+}
+/* Only the states that are not "everything is fine" get a colour: a panel that
+   lights up to say "saved" trains a reader to ignore the light. */
+.notes-save[data-state='unsaved'],
+.notes-save[data-state='saving'] {
+  color: var(--dim);
+}
+.notes-save[data-state='failed'] {
+  color: #d98b7a;
+}
+.notes-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.notes-input {
+  width: 100%;
+  padding: 6px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--sunken);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.notes-input:focus {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+.notes-compose-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notes-target {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.note {
+  padding: 6px 7px;
+  border: 1px solid var(--line);
+  border-left-width: 2px;
+  border-left-color: var(--selected-line);
+  border-radius: var(--radius);
+  background: var(--sunken);
+}
+.note[data-status='resolved'] {
+  border-left-color: var(--line-strong);
+  opacity: 0.55;
+}
+.note-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.note[data-status='resolved'] .note-text {
+  text-decoration: line-through;
+  text-decoration-color: var(--line-strong);
+}
+.note-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font: 10px var(--mono);
+  color: var(--faint);
+}
+.note-part {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim);
+  text-decoration: underline dotted var(--line-strong);
+}
+.note-part:hover {
+  color: var(--primary);
+}
+.note-part-asset {
+  text-decoration: none;
+}
+.note-time {
+  flex: none;
+}
+.note-by {
+  flex: none;
+  padding: 0 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+}
+.note-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.icon-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--faint);
+}
+.icon-button:hover {
+  border-color: var(--line-strong);
+  background: var(--accent);
+  color: var(--foreground);
+}
+/* The agent's answer, indented under the question it answers. */
+.note-reply {
+  margin: 5px 0 0;
+  padding-left: 7px;
+  border-left: 1px solid var(--line-strong);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* A part somebody has said something about, marked in the tree where the work
+   is, not only in the panel that lists it. */
+.outliner-badge.outliner-notes {
+  color: #dcecbb;
+  border-color: var(--selected-line);
+}
+
+/* ── A finding that knows the fix ──────────────────────────────────────── */
+.findings-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.findings-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 7px 0 20px;
+}
+.findings-fix {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 10.5px var(--mono);
+  color: var(--dim);
+}
+.bar-button.findings-apply {
+  height: 20px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+/* ── Builds ───────────────────────────────────────────────────────────── */
+.builds-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.builds-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.builds-bar .bar-button {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+.builds-bar .bar-button[aria-pressed='true'] {
+  background: var(--selected);
+  border-color: var(--selected-line);
+  color: #dcecbb;
+}
+.builds-spark {
+  flex: none;
+  width: 88px;
+  height: 14px;
+}
+.builds-spark polyline {
+  fill: none;
+  stroke: var(--selected-line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.builds-summary {
+  margin-left: auto;
+  font: 10px var(--mono);
+  color: var(--faint);
+}
+/* A row read out of the log on disk: a record of a build, not a copy of one.
+   Drawn dimmer and inert, because there is no document behind it to restore. */
+.builds-row[data-disk='true'] {
+  opacity: 0.6;
+}
+.builds-row[data-disk='true'] .builds-origin {
+  font-style: italic;
+}
+
+/* ── Projects: pictures, and a grid of them ───────────────────────────── */
+/* In the list the picture is a stamp at the head of the row; in the grid it is
+   the card. One element, two sizes, so a row never reflows when one lands. */
+.project-thumb {
+  flex: none;
+  width: 26px;
+  height: 17px;
+  border-radius: 2px;
+  background: var(--sunken);
+  object-fit: cover;
+}
+.project-thumb-blank {
+  border: 1px solid var(--line);
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    var(--line) 3px 4px
+  );
+  opacity: 0.4;
+}
+.projects-render:not([data-slot]) {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+.projects-list[data-view='grid'] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 6px;
+}
+.projects-list[data-view='grid'] .project-row {
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  gap: 3px;
+  padding: 5px;
+  border-color: var(--line);
+  background: var(--sunken);
+}
+.projects-list[data-view='grid'] .project-thumb {
+  width: 100%;
+  height: 62px;
+}
+.projects-list[data-view='grid'] .project-dot,
+.projects-list[data-view='grid'] .project-tag,
+.projects-list[data-view='grid'] .project-parts,
+.projects-list[data-view='grid'] .project-kind {
+  display: none;
+}
+.projects-list[data-view='grid'] .project-name {
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.projects-list[data-view='grid'] .project-time {
+  margin-left: 0;
+}
+
+/* ── The empty stage ──────────────────────────────────────────────────── */
+/* Over the canvas rather than instead of it: the viewport keeps its context,
+   its size and its WebGL surface, and this is a note left on the glass. */
+.viewport-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none;
+}
+.viewport-empty-card {
+  max-width: 440px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  pointer-events: auto;
+}
+.viewport-empty-card h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.viewport-empty-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--dim);
+}
+.viewport-empty-card code {
+  font: 11px var(--mono);
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+.viewport-empty-recent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+.viewport-empty-recent .bar-button {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+/* ── Toasts ───────────────────────────────────────────────────────────── */
+/* Bottom right, over everything, and never in the way: nothing here takes
+   focus, and the stack is capped in the reducer rather than by scrolling. */
+.toasts {
+  position: fixed;
+  right: 10px;
+  bottom: 34px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(360px, calc(100vw - 20px));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-left-width: 2px;
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--foreground);
+  pointer-events: auto;
+}
+.toast[data-tone='good'] {
+  border-left-color: var(--selected-line);
+}
+.toast[data-tone='bad'] {
+  border-left-color: #d98b7a;
+}
+.toast[data-tone='info'] {
+  border-left-color: var(--line-strong);
+}
+.toast-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast .pill-button {
+  flex: none;
+}
+.toast-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius);
+  color: var(--faint);
+}
+.toast-close:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+/* ── ?perf=1 overlay ───────────────────────────────────────────────────── */
+/* Deliberately ugly and deliberately in the corner: it is a measuring tool,
+   not part of the studio, and it should never be mistaken for one. */
+.perf {
+  position: fixed;
+  right: 8px;
+  bottom: 28px;
+  z-index: 60;
+  width: 216px;
+  padding: 6px 8px;
+  border: 1px solid #2b3335;
+  border-radius: var(--radius);
+  background: #0d1112ee;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #8fa3a4;
+}
+.perf header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.perf header button {
+  margin-left: auto;
+  color: #5f7274;
+  text-decoration: underline;
+}
+.perf dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 8px;
+}
+.perf dd {
+  text-align: right;
+  color: #d6e2e2;
+}
+.perf table {
+  width: 100%;
+  margin-top: 5px;
+  border-top: 1px solid #1d2426;
+  padding-top: 4px;
+}
+.perf td:nth-child(2),
+.perf td:nth-child(3) {
+  text-align: right;
+  width: 40px;
+  color: #d6e2e2;
+}
+.perf td:nth-child(3) {
+  color: #5f7274;
 }

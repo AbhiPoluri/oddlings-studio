@@ -10,14 +10,21 @@ import {
   canSave,
   canUndo,
   changedPaths,
+  ghostDoc,
   initialState,
   isDirty,
   reducer,
   savePath,
+  type BuildEntry,
   type Doc,
   type StudioAction,
   type StudioState,
 } from '../components/studio/reducer';
+import {
+  mergeBuilds,
+  sparkPoints,
+  type BuildRow,
+} from '../components/studio/builds';
 import { COMMANDS, COMMAND_BY_ID } from '../components/studio/actions';
 import {
   chordOf,
@@ -580,7 +587,9 @@ describe('the action registry', () => {
     for (const id of [
       'panel.projects',
       'panel.json',
+      'panel.notes',
       'view.isolate',
+      'view.compare',
       'help.shortcuts',
     ])
       expect(COMMAND_BY_ID.get(id)).toBeDefined();
@@ -616,5 +625,211 @@ describe('the action registry', () => {
     expect(commandFor('Mod+Z', initialState)).toBeNull();
     expect(commandFor('Escape', initialState)).toBeNull();
     expect(commandFor('Mod+S', initialState)).toBeNull();
+  });
+});
+
+/**
+ * Comparing against the previous build.
+ *
+ * The rule has the same shape as `changedPaths` and for the same reason: what
+ * you want behind your edit is the thing the agent wrote, whether you are
+ * looking at that build or at a correction of it.
+ */
+describe('the compare ghost', () => {
+  test('nothing to compare against until a second build lands', () => {
+    expect(ghostDoc(initialState)).toBeNull();
+    expect(ghostDoc(following())).toBeNull();
+  });
+
+  test('is the build before the one on screen', () => {
+    const first = following();
+    const second = run(first, {
+      type: 'build',
+      doc: doc(wizard),
+      source: 'specs/wizard.spec.json',
+      at: '2026-09-18T00:00:02.000Z',
+      etag: 'w/"2"',
+      first: false,
+    });
+    expect(ghostDoc(second)?.spec).toBe(rifle);
+    // Walking back to the earlier build makes the ghost the one before *it*,
+    // which is nothing — rather than the newer build it was replaced by.
+    expect(ghostDoc(run(second, { type: 'restoreBuild', index: 0 }))).toBeNull();
+  });
+
+  test('is the newest build once the document has been edited away from it', () => {
+    const edited = run(following(), {
+      type: 'commit',
+      doc: doc(wizard, 'human'),
+    });
+    expect(ghostDoc(edited)?.spec).toBe(rifle);
+  });
+
+  test('skips this studio’s own saves, which are not a second opinion', () => {
+    const saved = run(following(), {
+      type: 'saved',
+      at: '2026-09-18T00:00:05.000Z',
+      path: 'specs/sniper-rifle.spec.json',
+      etag: 'w/"3"',
+    });
+    // One agent build and one save of it: there is still only one author.
+    expect(ghostDoc(saved)).toBeNull();
+  });
+});
+
+describe('the build log, live and on disk', () => {
+  const entry = (at: string, over: Partial<BuildEntry> = {}): BuildEntry => ({
+    at,
+    name: 'Octopod Walker',
+    origin: 'agent',
+    doc: doc(rifle),
+    ...over,
+  });
+  const disk = (at: string, over: Partial<BuildRow> = {}): BuildRow => ({
+    at,
+    name: 'Octopod Walker',
+    source: 'specs/octopod-walker.spec.json',
+    tris: 9000,
+    meshes: 40,
+    bones: 0,
+    ok: true,
+    errors: 0,
+    warnings: 0,
+    ...over,
+  });
+
+  test('shows both logs as one, newest first', () => {
+    const rows = mergeBuilds(
+      [entry('2026-09-18T00:00:10.000Z')],
+      [disk('2026-09-18T00:00:05.000Z'), disk('2026-09-18T00:00:01.000Z')],
+    );
+    expect(rows.map((row) => row.kind)).toEqual(['live', 'disk', 'disk']);
+    expect(rows.map((row) => row.at)).toEqual([
+      '2026-09-18T00:00:10.000Z',
+      '2026-09-18T00:00:05.000Z',
+      '2026-09-18T00:00:01.000Z',
+    ]);
+  });
+
+  test('one build is one row, even when the two sides timed it differently', () => {
+    // The first payload the studio followed *is* the CLI's last write.
+    const rows = mergeBuilds(
+      [entry('2026-09-18T00:00:10.000Z')],
+      [disk('2026-09-18T00:00:09.300Z'), disk('2026-09-18T00:00:01.000Z')],
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0].kind).toBe('live');
+  });
+
+  test('a live row keeps the index the restore action needs', () => {
+    const rows = mergeBuilds(
+      [entry('2026-09-18T00:00:01.000Z'), entry('2026-09-18T00:00:09.000Z')],
+      [],
+    );
+    expect(rows.map((row) => (row.kind === 'live' ? row.index : -1))).toEqual([1, 0]);
+  });
+
+  test('a flat series is drawn flat rather than stretched to the box', () => {
+    expect(sparkPoints([9000, 9000, 9000], 60, 12)).toBe('0.0,6.0 30.0,6.0 60.0,6.0');
+    expect(sparkPoints([0, 10], 10, 10)).toBe('0.0,10.0 10.0,0.0');
+    expect(sparkPoints([9000], 60, 12)).toBe('');
+  });
+});
+
+describe('toasts', () => {
+  const say = (id: string): StudioAction => ({
+    type: 'toast',
+    toast: { id, text: id, tone: 'info' },
+  });
+
+  test('stack, and the oldest falls off the end', () => {
+    const state = run(initialState, say('a'), say('b'), say('c'), say('d'), say('e'));
+    expect(state.toasts.map((toast) => toast.id)).toEqual(['b', 'c', 'd', 'e']);
+  });
+
+  test('dismissing one that is already gone changes nothing at all', () => {
+    const state = run(initialState, say('a'));
+    expect(reducer(state, { type: 'untoast', id: 'a' }).toasts).toEqual([]);
+    expect(reducer(state, { type: 'untoast', id: 'zz' })).toBe(state);
+  });
+});
+
+/**
+ * Loading is state, not a spinner.
+ *
+ * The chrome has to stay usable while the studio boots, the chip has to
+ * disappear when the build it belongs to lands and not when some other one
+ * does, and the boot screen must never come back once the studio has drawn
+ * something. All three are rules about the store, so all three are testable
+ * without a browser — which is the point of keeping them here.
+ */
+describe('loading', () => {
+  test('starts booting and names the step', () => {
+    expect(initialState.loading.boot).toBeTruthy();
+    expect(initialState.loading.booted).toBe(false);
+    const state = run(initialState, { type: 'bootStep', step: 'loading the decimator…' });
+    expect(state.loading.boot).toBe('loading the decimator…');
+  });
+
+  test('the first model ends the boot for good', () => {
+    const state = run(
+      initialState,
+      { type: 'building', id: 1, since: 0 },
+      { type: 'built', id: 1 },
+    );
+    expect(state.loading.boot).toBe(null);
+    expect(state.loading.booted).toBe(true);
+    expect(state.loading.build).toBe(null);
+    // A later step is ordinary work; covering the studio again would be a
+    // regression dressed up as feedback.
+    const after = run(state, { type: 'bootStep', step: 'loading the decimator…' });
+    expect(after.loading.boot).toBe(null);
+  });
+
+  test('a build in flight is remembered while the old model stays on screen', () => {
+    const state = run(initialState, { type: 'building', id: 7, since: 1234 });
+    expect(state.loading.build).toStrictEqual({ id: 7, since: 1234 });
+  });
+
+  test('a superseded build leaves no trace when it finally lands', () => {
+    const state = run(
+      initialState,
+      { type: 'building', id: 1, since: 0 },
+      { type: 'building', id: 2, since: 5 },
+      // The first one finishing must not clear the chip belonging to the
+      // second, which is the one still running.
+      { type: 'built', id: 1 },
+    );
+    expect(state.loading.build).toStrictEqual({ id: 2, since: 5 });
+    expect(run(state, { type: 'built', id: 2 }).loading.build).toBe(null);
+  });
+});
+
+/**
+ * How the last edit arrived, which is what tells the viewport whether to wait
+ * before asking the worker for a build.
+ */
+describe('edit pace', () => {
+  const spec = wizard;
+  const edited = (state: StudioState): StudioState =>
+    reducer(state, {
+      type: 'live',
+      doc: { ...doc(spec), origin: 'human' },
+    });
+
+  test('a live edit is a typed one and waits', () => {
+    expect(edited(following()).lastEdit).toBe('typed');
+  });
+
+  test('a committed edit does not', () => {
+    const state = run(following(), {
+      type: 'commit',
+      doc: { ...doc(updatePart(spec, [0], { position: [0, 1, 0] })), origin: 'human' },
+    });
+    expect(state.lastEdit).toBe('commit');
+  });
+
+  test('and neither does a freshly loaded document', () => {
+    expect(following(rifle).lastEdit).toBe('load');
   });
 });

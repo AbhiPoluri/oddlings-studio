@@ -1,0 +1,2074 @@
+{
+  "version": 1,
+  "name": "Village Lane",
+  "kind": "environment",
+  "seed": 21,
+  "scale": 1,
+  "color": "#b9855a",
+  "parts": [
+    {
+      "name": "ground",
+      "shape": "box",
+      "size": [
+        70,
+        0.4,
+        70
+      ],
+      "position": [
+        0,
+        0.2,
+        0
+      ],
+      "color": "#a88a5e"
+    },
+    {
+      "name": "path",
+      "shape": "box",
+      "size": [
+        4,
+        0.06,
+        60
+      ],
+      "position": [
+        0,
+        0.42,
+        0
+      ],
+      "color": "#c7ad84"
+    },
+    {
+      "name": "path-cross",
+      "shape": "box",
+      "size": [
+        36,
+        0.06,
+        3.5
+      ],
+      "position": [
+        0,
+        0.42,
+        2
+      ],
+      "color": "#c7ad84"
+    },
+    {
+      "name": "hut-a",
+      "shape": "cylinder",
+      "size": [
+        5.6000000000000005,
+        0.3,
+        5.6000000000000005
+      ],
+      "position": [
+        -12,
+        0.15,
+        -14
+      ],
+      "rotation": [
+        0,
+        20,
+        0
+      ],
+      "color": "#9a6b46",
+      "detail": 14,
+      "children": [
+        {
+          "name": "wall",
+          "shape": "cylinder",
+          "size": [
+            4.4,
+            2.1,
+            4.4
+          ],
+          "position": [
+            0,
+            1.35,
+            0
+          ],
+          "color": "#b9855a",
+          "detail": 12
+        },
+        {
+          "name": "door",
+          "shape": "box",
+          "size": [
+            0.8,
+            1.4,
+            0.3
+          ],
+          "position": [
+            0,
+            1.0,
+            2.1500000000000004
+          ],
+          "color": "#3a2e24"
+        },
+        {
+          "name": "door-frame",
+          "shape": "box",
+          "size": [
+            1.0,
+            1.6,
+            0.16
+          ],
+          "position": [
+            0,
+            1.1,
+            2.25
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "thatch",
+          "shape": "cone",
+          "size": [
+            6.0,
+            1.9,
+            6.0
+          ],
+          "position": [
+            0,
+            3.3499999999999996,
+            0
+          ],
+          "color": "#c9a25b",
+          "detail": 14
+        },
+        {
+          "name": "thatch-top",
+          "shape": "cone",
+          "size": [
+            2.4200000000000004,
+            1.1,
+            2.4200000000000004
+          ],
+          "position": [
+            0,
+            4.6499999999999995,
+            0
+          ],
+          "color": "#a98545",
+          "detail": 10
+        },
+        {
+          "name": "thatch-band",
+          "shape": "torus",
+          "size": [
+            5.9,
+            5.9,
+            0.35
+          ],
+          "position": [
+            0,
+            2.48,
+            0
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "color": "#a98545",
+          "detail": 14
+        },
+        {
+          "name": "lime-band",
+          "shape": "box",
+          "size": [
+            4.5,
+            0.35,
+            4.5
+          ],
+          "position": [
+            0,
+            0.8,
+            0
+          ],
+          "color": "#ece1cf"
+        },
+        {
+          "name": "pot",
+          "shape": "cylinder",
+          "size": [
+            0.5,
+            0.45,
+            0.5
+          ],
+          "position": [
+            1.7600000000000002,
+            0.52,
+            1.4300000000000002
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        }
+      ]
+    },
+    {
+      "name": "hut-b",
+      "shape": "cylinder",
+      "size": [
+        5.0,
+        0.3,
+        5.0
+      ],
+      "position": [
+        13,
+        0.15,
+        -10
+      ],
+      "rotation": [
+        0,
+        -35,
+        0
+      ],
+      "color": "#9a6b46",
+      "detail": 14,
+      "children": [
+        {
+          "name": "wall",
+          "shape": "cylinder",
+          "size": [
+            3.8,
+            2.1,
+            3.8
+          ],
+          "position": [
+            0,
+            1.35,
+            0
+          ],
+          "color": "#ece1cf",
+          "detail": 12
+        },
+        {
+          "name": "door",
+          "shape": "box",
+          "size": [
+            0.8,
+            1.4,
+            0.3
+          ],
+          "position": [
+            0,
+            1.0,
+            1.8499999999999999
+          ],
+          "color": "#3a2e24"
+        },
+        {
+          "name": "door-frame",
+          "shape": "box",
+          "size": [
+            1.0,
+            1.6,
+            0.16
+          ],
+          "position": [
+            0,
+            1.1,
+            1.95
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "thatch",
+          "shape": "cone",
+          "size": [
+            5.4,
+            1.9,
+            5.4
+          ],
+          "position": [
+            0,
+            3.3499999999999996,
+            0
+          ],
+          "color": "#c9a25b",
+          "detail": 14
+        },
+        {
+          "name": "thatch-top",
+          "shape": "cone",
+          "size": [
+            2.09,
+            1.1,
+            2.09
+          ],
+          "position": [
+            0,
+            4.6499999999999995,
+            0
+          ],
+          "color": "#a98545",
+          "detail": 10
+        },
+        {
+          "name": "thatch-band",
+          "shape": "torus",
+          "size": [
+            5.3,
+            5.3,
+            0.35
+          ],
+          "position": [
+            0,
+            2.48,
+            0
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "color": "#a98545",
+          "detail": 14
+        },
+        {
+          "name": "mud-band",
+          "shape": "box",
+          "size": [
+            3.9,
+            0.35,
+            3.9
+          ],
+          "position": [
+            0,
+            0.8,
+            0
+          ],
+          "color": "#9a6b46"
+        },
+        {
+          "name": "pot",
+          "shape": "cylinder",
+          "size": [
+            0.5,
+            0.45,
+            0.5
+          ],
+          "position": [
+            1.52,
+            0.52,
+            1.2349999999999999
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        }
+      ]
+    },
+    {
+      "name": "hut-c",
+      "shape": "box",
+      "size": [
+        5.9,
+        0.3,
+        9.0
+      ],
+      "position": [
+        -13,
+        0.15,
+        6
+      ],
+      "color": "#9a6b46",
+      "rotation": [
+        0,
+        95,
+        0
+      ],
+      "children": [
+        {
+          "name": "walls",
+          "shape": "box",
+          "size": [
+            4.5,
+            2.3,
+            6.0
+          ],
+          "position": [
+            0,
+            1.45,
+            0
+          ],
+          "color": "#b9855a",
+          "bevel": 0.03
+        },
+        {
+          "name": "door",
+          "shape": "box",
+          "size": [
+            0.9,
+            1.5,
+            0.3
+          ],
+          "position": [
+            0,
+            1.05,
+            2.95
+          ],
+          "color": "#3a2e24"
+        },
+        {
+          "name": "door-frame",
+          "shape": "box",
+          "size": [
+            1.1,
+            1.7,
+            0.16
+          ],
+          "position": [
+            0,
+            1.15,
+            3.05
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "window",
+          "shape": "box",
+          "size": [
+            0.7,
+            0.6,
+            0.3
+          ],
+          "position": [
+            2.2,
+            1.7,
+            -1.2000000000000002
+          ],
+          "color": "#3a2e24",
+          "mirror": "x"
+        },
+        {
+          "name": "window-bars",
+          "shape": "box",
+          "size": [
+            0.06,
+            0.6,
+            0.06
+          ],
+          "position": [
+            2.33,
+            1.7,
+            -1.4000000000000001
+          ],
+          "color": "#6d4b2e",
+          "mirror": "x",
+          "repeat": {
+            "count": 3,
+            "mode": "linear",
+            "offset": [
+              0,
+              0,
+              0.2
+            ]
+          }
+        },
+        {
+          "name": "thatch",
+          "shape": "extrude",
+          "size": [
+            6.7,
+            1.8,
+            8.0
+          ],
+          "position": [
+            0,
+            3.4999999999999996,
+            0
+          ],
+          "profile": [
+            [
+              -1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "color": "#c9a25b"
+        },
+        {
+          "name": "ridge",
+          "shape": "box",
+          "size": [
+            0.25,
+            0.25,
+            8.2
+          ],
+          "position": [
+            0,
+            4.3999999999999995,
+            0
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "verandah-floor",
+          "shape": "box",
+          "size": [
+            4.5,
+            0.15,
+            1.6
+          ],
+          "position": [
+            0,
+            0.375,
+            3.8
+          ],
+          "color": "#9a6b46"
+        },
+        {
+          "name": "post",
+          "shape": "cylinder",
+          "size": [
+            0.18,
+            2.2,
+            0.18
+          ],
+          "position": [
+            -1.95,
+            1.4000000000000001,
+            4.35
+          ],
+          "color": "#6d4b2e",
+          "detail": 6,
+          "repeat": {
+            "count": 3,
+            "mode": "linear",
+            "offset": [
+              1.95,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "name": "verandah-roof",
+          "shape": "extrude",
+          "size": [
+            5.1,
+            0.7,
+            2.0
+          ],
+          "position": [
+            0,
+            2.65,
+            4.1
+          ],
+          "profile": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0.35
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "color": "#a98545",
+          "rotation": [
+            0,
+            90,
+            0
+          ]
+        },
+        {
+          "name": "lime-band",
+          "shape": "box",
+          "size": [
+            4.6,
+            0.35,
+            6.1
+          ],
+          "position": [
+            0,
+            0.8,
+            0
+          ],
+          "color": "#ece1cf"
+        },
+        {
+          "name": "pot",
+          "shape": "cylinder",
+          "size": [
+            0.5,
+            0.45,
+            0.5
+          ],
+          "position": [
+            1.75,
+            0.52,
+            3.5
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        },
+        {
+          "name": "pot-2",
+          "shape": "cylinder",
+          "size": [
+            0.4,
+            0.38,
+            0.4
+          ],
+          "position": [
+            1.15,
+            0.49,
+            3.6
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        }
+      ]
+    },
+    {
+      "name": "hut-d",
+      "shape": "box",
+      "size": [
+        5.4,
+        0.3,
+        8.0
+      ],
+      "position": [
+        14,
+        0.15,
+        8
+      ],
+      "color": "#9a6b46",
+      "rotation": [
+        0,
+        -80,
+        0
+      ],
+      "children": [
+        {
+          "name": "walls",
+          "shape": "box",
+          "size": [
+            4,
+            2.3,
+            5
+          ],
+          "position": [
+            0,
+            1.45,
+            0
+          ],
+          "color": "#ece1cf",
+          "bevel": 0.03
+        },
+        {
+          "name": "door",
+          "shape": "box",
+          "size": [
+            0.9,
+            1.5,
+            0.3
+          ],
+          "position": [
+            0,
+            1.05,
+            2.45
+          ],
+          "color": "#3a2e24"
+        },
+        {
+          "name": "door-frame",
+          "shape": "box",
+          "size": [
+            1.1,
+            1.7,
+            0.16
+          ],
+          "position": [
+            0,
+            1.15,
+            2.55
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "window",
+          "shape": "box",
+          "size": [
+            0.7,
+            0.6,
+            0.3
+          ],
+          "position": [
+            1.95,
+            1.7,
+            -1.0
+          ],
+          "color": "#3a2e24",
+          "mirror": "x"
+        },
+        {
+          "name": "window-bars",
+          "shape": "box",
+          "size": [
+            0.06,
+            0.6,
+            0.06
+          ],
+          "position": [
+            2.08,
+            1.7,
+            -1.2
+          ],
+          "color": "#6d4b2e",
+          "mirror": "x",
+          "repeat": {
+            "count": 3,
+            "mode": "linear",
+            "offset": [
+              0,
+              0,
+              0.2
+            ]
+          }
+        },
+        {
+          "name": "thatch",
+          "shape": "extrude",
+          "size": [
+            6.2,
+            1.8,
+            7.0
+          ],
+          "position": [
+            0,
+            3.4999999999999996,
+            0
+          ],
+          "profile": [
+            [
+              -1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "color": "#c9a25b"
+        },
+        {
+          "name": "ridge",
+          "shape": "box",
+          "size": [
+            0.25,
+            0.25,
+            7.2
+          ],
+          "position": [
+            0,
+            4.3999999999999995,
+            0
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "verandah-floor",
+          "shape": "box",
+          "size": [
+            4,
+            0.15,
+            1.6
+          ],
+          "position": [
+            0,
+            0.375,
+            3.3
+          ],
+          "color": "#9a6b46"
+        },
+        {
+          "name": "post",
+          "shape": "cylinder",
+          "size": [
+            0.18,
+            2.2,
+            0.18
+          ],
+          "position": [
+            -1.7,
+            1.4000000000000001,
+            3.85
+          ],
+          "color": "#6d4b2e",
+          "detail": 6,
+          "repeat": {
+            "count": 3,
+            "mode": "linear",
+            "offset": [
+              1.7,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "name": "verandah-roof",
+          "shape": "extrude",
+          "size": [
+            4.6,
+            0.7,
+            2.0
+          ],
+          "position": [
+            0,
+            2.65,
+            3.6
+          ],
+          "profile": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0.35
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "color": "#a98545",
+          "rotation": [
+            0,
+            90,
+            0
+          ]
+        },
+        {
+          "name": "mud-band",
+          "shape": "box",
+          "size": [
+            4.1,
+            0.35,
+            5.1
+          ],
+          "position": [
+            0,
+            0.8,
+            0
+          ],
+          "color": "#9a6b46"
+        },
+        {
+          "name": "pot",
+          "shape": "cylinder",
+          "size": [
+            0.5,
+            0.45,
+            0.5
+          ],
+          "position": [
+            1.5,
+            0.52,
+            3.0
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        },
+        {
+          "name": "pot-2",
+          "shape": "cylinder",
+          "size": [
+            0.4,
+            0.38,
+            0.4
+          ],
+          "position": [
+            0.8999999999999999,
+            0.49,
+            3.1
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        }
+      ]
+    },
+    {
+      "name": "hut-e",
+      "shape": "cylinder",
+      "size": [
+        6.0,
+        0.3,
+        6.0
+      ],
+      "position": [
+        -9,
+        0.15,
+        20
+      ],
+      "rotation": [
+        0,
+        160,
+        0
+      ],
+      "color": "#9a6b46",
+      "detail": 14,
+      "children": [
+        {
+          "name": "wall",
+          "shape": "cylinder",
+          "size": [
+            4.8,
+            2.1,
+            4.8
+          ],
+          "position": [
+            0,
+            1.35,
+            0
+          ],
+          "color": "#b9855a",
+          "detail": 12
+        },
+        {
+          "name": "door",
+          "shape": "box",
+          "size": [
+            0.8,
+            1.4,
+            0.3
+          ],
+          "position": [
+            0,
+            1.0,
+            2.35
+          ],
+          "color": "#3a2e24"
+        },
+        {
+          "name": "door-frame",
+          "shape": "box",
+          "size": [
+            1.0,
+            1.6,
+            0.16
+          ],
+          "position": [
+            0,
+            1.1,
+            2.4499999999999997
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "thatch",
+          "shape": "cone",
+          "size": [
+            6.4,
+            1.9,
+            6.4
+          ],
+          "position": [
+            0,
+            3.3499999999999996,
+            0
+          ],
+          "color": "#c9a25b",
+          "detail": 14
+        },
+        {
+          "name": "thatch-top",
+          "shape": "cone",
+          "size": [
+            2.64,
+            1.1,
+            2.64
+          ],
+          "position": [
+            0,
+            4.6499999999999995,
+            0
+          ],
+          "color": "#a98545",
+          "detail": 10
+        },
+        {
+          "name": "thatch-band",
+          "shape": "torus",
+          "size": [
+            6.3,
+            6.3,
+            0.35
+          ],
+          "position": [
+            0,
+            2.48,
+            0
+          ],
+          "rotation": [
+            90,
+            0,
+            0
+          ],
+          "color": "#a98545",
+          "detail": 14
+        },
+        {
+          "name": "lime-band",
+          "shape": "box",
+          "size": [
+            4.8999999999999995,
+            0.35,
+            4.8999999999999995
+          ],
+          "position": [
+            0,
+            0.8,
+            0
+          ],
+          "color": "#ece1cf"
+        },
+        {
+          "name": "pot",
+          "shape": "cylinder",
+          "size": [
+            0.5,
+            0.45,
+            0.5
+          ],
+          "position": [
+            1.92,
+            0.52,
+            1.56
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        }
+      ]
+    },
+    {
+      "name": "hut-f",
+      "shape": "box",
+      "size": [
+        6.4,
+        0.3,
+        9.5
+      ],
+      "position": [
+        12,
+        0.15,
+        -24
+      ],
+      "color": "#9a6b46",
+      "rotation": [
+        0,
+        10,
+        0
+      ],
+      "children": [
+        {
+          "name": "walls",
+          "shape": "box",
+          "size": [
+            5,
+            2.3,
+            6.5
+          ],
+          "position": [
+            0,
+            1.45,
+            0
+          ],
+          "color": "#b9855a",
+          "bevel": 0.03
+        },
+        {
+          "name": "door",
+          "shape": "box",
+          "size": [
+            0.9,
+            1.5,
+            0.3
+          ],
+          "position": [
+            0,
+            1.05,
+            3.2
+          ],
+          "color": "#3a2e24"
+        },
+        {
+          "name": "door-frame",
+          "shape": "box",
+          "size": [
+            1.1,
+            1.7,
+            0.16
+          ],
+          "position": [
+            0,
+            1.15,
+            3.3
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "window",
+          "shape": "box",
+          "size": [
+            0.7,
+            0.6,
+            0.3
+          ],
+          "position": [
+            2.45,
+            1.7,
+            -1.3
+          ],
+          "color": "#3a2e24",
+          "mirror": "x"
+        },
+        {
+          "name": "window-bars",
+          "shape": "box",
+          "size": [
+            0.06,
+            0.6,
+            0.06
+          ],
+          "position": [
+            2.58,
+            1.7,
+            -1.5
+          ],
+          "color": "#6d4b2e",
+          "mirror": "x",
+          "repeat": {
+            "count": 3,
+            "mode": "linear",
+            "offset": [
+              0,
+              0,
+              0.2
+            ]
+          }
+        },
+        {
+          "name": "thatch",
+          "shape": "extrude",
+          "size": [
+            7.2,
+            1.8,
+            8.5
+          ],
+          "position": [
+            0,
+            3.4999999999999996,
+            0
+          ],
+          "profile": [
+            [
+              -1,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "color": "#c9a25b"
+        },
+        {
+          "name": "ridge",
+          "shape": "box",
+          "size": [
+            0.25,
+            0.25,
+            8.7
+          ],
+          "position": [
+            0,
+            4.3999999999999995,
+            0
+          ],
+          "color": "#6d4b2e"
+        },
+        {
+          "name": "verandah-floor",
+          "shape": "box",
+          "size": [
+            5,
+            0.15,
+            1.6
+          ],
+          "position": [
+            0,
+            0.375,
+            4.05
+          ],
+          "color": "#9a6b46"
+        },
+        {
+          "name": "post",
+          "shape": "cylinder",
+          "size": [
+            0.18,
+            2.2,
+            0.18
+          ],
+          "position": [
+            -2.2,
+            1.4000000000000001,
+            4.6
+          ],
+          "color": "#6d4b2e",
+          "detail": 6,
+          "repeat": {
+            "count": 3,
+            "mode": "linear",
+            "offset": [
+              2.2,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "name": "verandah-roof",
+          "shape": "extrude",
+          "size": [
+            5.6,
+            0.7,
+            2.0
+          ],
+          "position": [
+            0,
+            2.65,
+            4.35
+          ],
+          "profile": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              0.35
+            ],
+            [
+              0,
+              1
+            ]
+          ],
+          "color": "#a98545",
+          "rotation": [
+            0,
+            90,
+            0
+          ]
+        },
+        {
+          "name": "lime-band",
+          "shape": "box",
+          "size": [
+            5.1,
+            0.35,
+            6.6
+          ],
+          "position": [
+            0,
+            0.8,
+            0
+          ],
+          "color": "#ece1cf"
+        },
+        {
+          "name": "pot",
+          "shape": "cylinder",
+          "size": [
+            0.5,
+            0.45,
+            0.5
+          ],
+          "position": [
+            2.0,
+            0.52,
+            3.75
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        },
+        {
+          "name": "pot-2",
+          "shape": "cylinder",
+          "size": [
+            0.4,
+            0.38,
+            0.4
+          ],
+          "position": [
+            1.4,
+            0.49,
+            3.85
+          ],
+          "color": "#b3623a",
+          "detail": 8
+        }
+      ]
+    },
+    {
+      "name": "well-ring",
+      "shape": "cylinder",
+      "size": [
+        3.2,
+        1.0,
+        3.2
+      ],
+      "position": [
+        3,
+        0.9,
+        -2
+      ],
+      "color": "#8c8578",
+      "detail": 14
+    },
+    {
+      "name": "well-water",
+      "shape": "cylinder",
+      "size": [
+        2.6,
+        0.2,
+        2.6
+      ],
+      "position": [
+        3,
+        1.0,
+        -2
+      ],
+      "color": "#4f7f8f",
+      "detail": 14
+    },
+    {
+      "name": "well-post",
+      "shape": "cylinder",
+      "size": [
+        0.2,
+        3.0,
+        0.2
+      ],
+      "position": [
+        3,
+        1.9,
+        -3.7
+      ],
+      "color": "#6d4b2e",
+      "detail": 6
+    },
+    {
+      "name": "well-post-2",
+      "shape": "cylinder",
+      "size": [
+        0.2,
+        3.0,
+        0.2
+      ],
+      "position": [
+        3,
+        1.9,
+        -0.30000000000000004
+      ],
+      "color": "#6d4b2e",
+      "detail": 6
+    },
+    {
+      "name": "well-beam",
+      "shape": "box",
+      "size": [
+        0.18,
+        0.18,
+        3.6
+      ],
+      "position": [
+        3,
+        3.35,
+        -2
+      ],
+      "color": "#6d4b2e"
+    },
+    {
+      "name": "pulley",
+      "shape": "cylinder",
+      "size": [
+        0.5,
+        0.14,
+        0.5
+      ],
+      "position": [
+        3,
+        3.15,
+        -2
+      ],
+      "color": "#6d4b2e",
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "detail": 10
+    },
+    {
+      "name": "rope",
+      "shape": "box",
+      "size": [
+        0.04,
+        1.9,
+        0.04
+      ],
+      "position": [
+        3,
+        2.2,
+        -2.1
+      ],
+      "color": "#d9b86a"
+    },
+    {
+      "name": "bucket",
+      "shape": "cylinder",
+      "size": [
+        0.45,
+        0.4,
+        0.45
+      ],
+      "position": [
+        3,
+        1.25,
+        -2.1
+      ],
+      "color": "#6d4b2e",
+      "detail": 8,
+      "taper": 0.8
+    },
+    {
+      "name": "trunk",
+      "shape": "limb",
+      "from": [
+        -2,
+        0.3,
+        -8
+      ],
+      "to": [
+        -2.6,
+        4.2,
+        -8.6
+      ],
+      "radius": 0.9,
+      "taper": 0.7,
+      "color": "#6d4b2e",
+      "jitter": 0.2,
+      "via": [
+        -2.8,
+        2.4,
+        -8.0
+      ]
+    },
+    {
+      "name": "bough",
+      "shape": "limb",
+      "from": [
+        -2.6,
+        4.0,
+        -8.6
+      ],
+      "to": [
+        1.2,
+        6.4,
+        -6.4
+      ],
+      "radius": 0.42,
+      "taper": 0.5,
+      "color": "#6d4b2e",
+      "via": [
+        -0.6,
+        5.8,
+        -8.0
+      ]
+    },
+    {
+      "name": "bough-2",
+      "shape": "limb",
+      "from": [
+        -2.6,
+        4.0,
+        -8.6
+      ],
+      "to": [
+        -6.4,
+        6.8,
+        -9.8
+      ],
+      "radius": 0.42,
+      "taper": 0.5,
+      "color": "#6d4b2e",
+      "via": [
+        -4.6,
+        5.6,
+        -8.4
+      ]
+    },
+    {
+      "name": "bough-3",
+      "shape": "limb",
+      "from": [
+        -2.6,
+        4.1,
+        -8.6
+      ],
+      "to": [
+        -2.2,
+        7.4,
+        -12.2
+      ],
+      "radius": 0.36,
+      "taper": 0.5,
+      "color": "#6d4b2e",
+      "via": [
+        -2.0,
+        6.0,
+        -10.4
+      ]
+    },
+    {
+      "name": "canopy",
+      "shape": "icosahedron",
+      "size": [
+        9.5,
+        8.075,
+        9.5
+      ],
+      "position": [
+        -2.4,
+        7.6,
+        -8.8
+      ],
+      "color": "#5f8f3f",
+      "detail": 5,
+      "jitter": 0.25
+    },
+    {
+      "name": "canopy-2",
+      "shape": "icosahedron",
+      "size": [
+        7.5,
+        6.375,
+        7.5
+      ],
+      "position": [
+        1.6,
+        7.2,
+        -6.2
+      ],
+      "color": "#4f7a3a",
+      "detail": 5,
+      "jitter": 0.25
+    },
+    {
+      "name": "canopy-3",
+      "shape": "icosahedron",
+      "size": [
+        7.0,
+        5.95,
+        7.0
+      ],
+      "position": [
+        -6.6,
+        7.4,
+        -10.0
+      ],
+      "color": "#4f7a3a",
+      "detail": 5,
+      "jitter": 0.25
+    },
+    {
+      "name": "canopy-4",
+      "shape": "icosahedron",
+      "size": [
+        6.5,
+        5.5249999999999995,
+        6.5
+      ],
+      "position": [
+        -2.2,
+        8.4,
+        -12.4
+      ],
+      "color": "#5f8f3f",
+      "detail": 5,
+      "jitter": 0.25
+    },
+    {
+      "name": "hanging-root",
+      "shape": "limb",
+      "from": [
+        0.5,
+        6.4,
+        -6.6
+      ],
+      "to": [
+        0.7,
+        0.4,
+        -6.4
+      ],
+      "radius": 0.09,
+      "taper": 0.6,
+      "color": "#6d4b2e",
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          -1.6,
+          0,
+          -1.0
+        ]
+      }
+    },
+    {
+      "name": "tree-platform",
+      "shape": "cylinder",
+      "size": [
+        5.2,
+        0.6,
+        5.2
+      ],
+      "position": [
+        -2.2,
+        0.7,
+        -8.2
+      ],
+      "color": "#8c8578",
+      "detail": 12
+    },
+    {
+      "name": "fence-post",
+      "shape": "cylinder",
+      "size": [
+        0.14,
+        1.2,
+        0.14
+      ],
+      "position": [
+        -19,
+        1.0,
+        -18
+      ],
+      "color": "#6d4b2e",
+      "detail": 5,
+      "repeat": {
+        "count": 9,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          2.2
+        ]
+      }
+    },
+    {
+      "name": "fence-rail",
+      "shape": "box",
+      "size": [
+        0.08,
+        0.08,
+        18
+      ],
+      "position": [
+        -19,
+        1.4,
+        -9.2
+      ],
+      "color": "#6d4b2e"
+    },
+    {
+      "name": "fence-rail-2",
+      "shape": "box",
+      "size": [
+        0.08,
+        0.08,
+        18
+      ],
+      "position": [
+        -19,
+        0.9500000000000001,
+        -9.2
+      ],
+      "color": "#6d4b2e"
+    },
+    {
+      "name": "haystack",
+      "shape": "cone",
+      "size": [
+        3.6,
+        3.2,
+        3.6
+      ],
+      "position": [
+        19,
+        2.0,
+        16
+      ],
+      "color": "#d9b86a",
+      "detail": 10,
+      "jitter": 0.15
+    },
+    {
+      "name": "haystack-2",
+      "shape": "cone",
+      "size": [
+        2.8,
+        2.5,
+        2.8
+      ],
+      "position": [
+        22,
+        1.65,
+        18.5
+      ],
+      "color": "#d9b86a",
+      "detail": 10,
+      "jitter": 0.15
+    },
+    {
+      "name": "cart-bed",
+      "shape": "box",
+      "size": [
+        1.8,
+        0.25,
+        3.2
+      ],
+      "position": [
+        -16,
+        1.25,
+        20
+      ],
+      "color": "#6d4b2e"
+    },
+    {
+      "name": "cart-side",
+      "shape": "box",
+      "size": [
+        0.08,
+        0.5,
+        3.0
+      ],
+      "position": [
+        -16.9,
+        1.6,
+        20
+      ],
+      "color": "#6d4b2e"
+    },
+    {
+      "name": "cart-side-2",
+      "shape": "box",
+      "size": [
+        0.08,
+        0.5,
+        3.0
+      ],
+      "position": [
+        -15.1,
+        1.6,
+        20
+      ],
+      "color": "#6d4b2e"
+    },
+    {
+      "name": "cart-wheel",
+      "shape": "cylinder",
+      "size": [
+        1.5,
+        0.16,
+        1.5
+      ],
+      "position": [
+        -17.05,
+        1.15,
+        20
+      ],
+      "color": "#6d4b2e",
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "detail": 12
+    },
+    {
+      "name": "cart-wheel-2",
+      "shape": "cylinder",
+      "size": [
+        1.5,
+        0.16,
+        1.5
+      ],
+      "position": [
+        -14.95,
+        1.15,
+        20
+      ],
+      "color": "#6d4b2e",
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "detail": 12
+    },
+    {
+      "name": "cart-shaft",
+      "shape": "box",
+      "size": [
+        0.1,
+        0.1,
+        2.6
+      ],
+      "position": [
+        -16.5,
+        1.1,
+        22.6
+      ],
+      "color": "#6d4b2e",
+      "rotation": [
+        8,
+        0,
+        0
+      ],
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          1.0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "shrine",
+      "shape": "box",
+      "size": [
+        1.4,
+        1.6,
+        1.2
+      ],
+      "position": [
+        6,
+        1.2000000000000002,
+        14
+      ],
+      "color": "#ece1cf",
+      "bevel": 0.03
+    },
+    {
+      "name": "shrine-door",
+      "shape": "box",
+      "size": [
+        0.6,
+        0.9,
+        0.2
+      ],
+      "position": [
+        6,
+        1.0,
+        14.6
+      ],
+      "color": "#3a2e24"
+    },
+    {
+      "name": "shrine-dome",
+      "shape": "lathe",
+      "size": [
+        1.3,
+        1.0,
+        1.3
+      ],
+      "position": [
+        6,
+        2.5,
+        14
+      ],
+      "profile": [
+        [
+          0.5,
+          0
+        ],
+        [
+          0.62,
+          0.2
+        ],
+        [
+          0.55,
+          0.5
+        ],
+        [
+          0.3,
+          0.8
+        ],
+        [
+          0.06,
+          1.0
+        ]
+      ],
+      "color": "#b3623a",
+      "detail": 10
+    },
+    {
+      "name": "shrine-flag",
+      "shape": "box",
+      "size": [
+        0.03,
+        1.2,
+        0.03
+      ],
+      "position": [
+        6,
+        3.35,
+        14
+      ],
+      "color": "#6d4b2e"
+    },
+    {
+      "name": "flag",
+      "shape": "box",
+      "size": [
+        0.35,
+        0.25,
+        0.02
+      ],
+      "position": [
+        6.18,
+        3.85,
+        14
+      ],
+      "color": "#c8402a"
+    },
+    {
+      "name": "tulsi-stand",
+      "shape": "box",
+      "size": [
+        0.6,
+        0.9,
+        0.6
+      ],
+      "position": [
+        -6,
+        0.8500000000000001,
+        14
+      ],
+      "color": "#b3623a",
+      "bevel": 0.03
+    },
+    {
+      "name": "tulsi",
+      "shape": "icosahedron",
+      "size": [
+        0.9,
+        0.765,
+        0.9
+      ],
+      "position": [
+        -6,
+        1.7000000000000002,
+        14
+      ],
+      "color": "#4f7a3a",
+      "detail": 5,
+      "jitter": 0.25
+    },
+    {
+      "name": "water-pots",
+      "shape": "cylinder",
+      "size": [
+        0.55,
+        0.5,
+        0.55
+      ],
+      "position": [
+        1.6,
+        0.65,
+        -4.6
+      ],
+      "color": "#b3623a",
+      "detail": 8,
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0.7,
+          0,
+          0.2
+        ]
+      }
+    },
+    {
+      "name": "neem",
+      "shape": "cone",
+      "size": [
+        5.5,
+        6,
+        5.5
+      ],
+      "position": [
+        20,
+        3.4,
+        -14
+      ],
+      "color": "#4f7a3a",
+      "detail": 9,
+      "jitter": 0.2
+    },
+    {
+      "name": "neem-trunk",
+      "shape": "cylinder",
+      "size": [
+        0.5,
+        2.4,
+        0.5
+      ],
+      "position": [
+        20,
+        1.6,
+        -14
+      ],
+      "color": "#6d4b2e",
+      "detail": 6
+    }
+  ]
+}

@@ -23,6 +23,7 @@ import {
 } from '@/lib/spec-edit';
 import type { Doc, Origin } from './reducer';
 import { useStudio } from './store';
+import { useToaster } from './toasts';
 
 /**
  * Turn an unknown parsed payload into a document.
@@ -42,15 +43,28 @@ export function docFrom(parsed: unknown, recipe: Recipe, origin: Origin): Doc {
 
 export function useDocument() {
   const { state, dispatch, ref } = useStudio();
+  const say = useToaster();
 
   const status = useCallback(
     (text: string) => dispatch({ type: 'status', text }),
     [dispatch],
   );
 
+  /**
+   * An edit the schema refused, said twice on purpose.
+   *
+   * The status line is where the studio's running commentary goes and it is
+   * overwritten by the next thing to happen — which for a rejected edit is
+   * usually the next mouse move. A refusal is the one message here that is
+   * worth keeping on screen until it has been read.
+   */
   const fail = useCallback(
-    (error: unknown, fallback: string) =>
-      status(error instanceof Error ? error.message : fallback),
+    (error: unknown, fallback: string) => {
+      const text = error instanceof Error ? error.message : fallback;
+      status(text);
+      say(text, { tone: 'bad' });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [status],
   );
 

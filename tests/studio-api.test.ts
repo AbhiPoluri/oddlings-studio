@@ -4,7 +4,10 @@ import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
+  BUILDS_ROUTE,
+  NOTES_ROUTE,
   oddlingsStudioApi,
+  parseBuildsTail,
   SAVE_ROUTE,
   SPEC_ROUTE,
   SPECS_ROUTE,
@@ -372,5 +375,158 @@ describe('reading one spec', () => {
       (await call(SPEC_ROUTE, { method: 'POST', url: '?path=specs/flower-bush.spec.json' }))
         .status,
     ).toBe(405);
+  });
+});
+
+/**
+ * Review notes, from the studio's end.
+ *
+ * The other half of this conversation is the CLI, which reads and resolves the
+ * same file — so these assert the contract rather than the implementation: a
+ * spec nobody has reviewed answers with an empty document, a PUT writes JSON a
+ * person could read in a diff, and a field the studio does not know about
+ * survives the round trip instead of being quietly deleted.
+ */
+describe('review notes', () => {
+  const note = (over: Record<string, unknown> = {}) => ({
+    id: 'n1',
+    part: [0],
+    partName: 'body',
+    text: 'The barrel floats.',
+    status: 'open',
+    by: 'human',
+    at: '2026-09-18T00:00:00.000Z',
+    resolvedAt: null,
+    reply: null,
+    ...over,
+  });
+
+  test('a spec nobody has reviewed answers with an empty document', async () => {
+    const path = scratchPath('fresh.spec.json');
+    await writeFile(join(scratch, 'fresh.spec.json'), JSON.stringify(rifle));
+    const { status, json } = await call(NOTES_ROUTE, { url: `?path=${path}` });
+    expect(status).toBe(200);
+    expect(json).toEqual({ version: 1, spec: path, notes: [] });
+  });
+
+  test('a PUT writes a .review.json beside the spec, pretty-printed', async () => {
+    const path = scratchPath('noted.spec.json');
+    await writeFile(join(scratch, 'noted.spec.json'), JSON.stringify(rifle));
+    const put = await call(NOTES_ROUTE, {
+      method: 'PUT',
+      body: { path, notes: [note()] },
+    });
+    expect(put.status).toBe(200);
+    expect(put.json!.ok).toBe(true);
+    expect(put.json!.path).toBe(scratchPath('noted.review.json'));
+    const written = await readFile(join(scratch, 'noted.review.json'), 'utf8');
+    expect(written.split('\n').length).toBeGreaterThan(5);
+    expect(JSON.parse(written)).toEqual({
+      version: 1,
+      spec: path,
+      notes: [note()],
+    });
+    // And reading it back is what the panel does on the next page load.
+    const { json } = await call(NOTES_ROUTE, { url: `?path=${path}` });
+    expect((json as unknown as { notes: unknown[] }).notes).toHaveLength(1);
+  });
+
+  test('keeps a field the studio does not know about', async () => {
+    const path = scratchPath('extra.spec.json');
+    await writeFile(join(scratch, 'extra.spec.json'), JSON.stringify(rifle));
+    await call(NOTES_ROUTE, {
+      method: 'PUT',
+      body: { path, notes: [note({ agentRun: 'run-7' })] },
+    });
+    const { json } = await call(NOTES_ROUTE, { url: `?path=${path}` });
+    const [kept] = (json as unknown as { notes: Record<string, unknown>[] }).notes;
+    expect(kept.agentRun).toBe('run-7');
+  });
+
+  test('refuses a path outside the project and a note of the wrong shape', async () => {
+    expect(
+      (await call(NOTES_ROUTE, { url: '?path=../outside.json' })).status,
+    ).toBe(400);
+    expect(
+      (await call(NOTES_ROUTE, { method: 'PUT', body: { path: '../out.json', notes: [] } }))
+        .status,
+    ).toBe(400);
+    const path = scratchPath('bad.spec.json');
+    await writeFile(join(scratch, 'bad.spec.json'), JSON.stringify(rifle));
+    const bad = await call(NOTES_ROUTE, {
+      method: 'PUT',
+      body: { path, notes: [note({ status: 'maybe' })] },
+    });
+    expect(bad.status).toBe(400);
+    await expect(readFile(join(scratch, 'bad.review.json'))).rejects.toThrow();
+  });
+
+  test('is GET or PUT only', async () => {
+    expect((await call(NOTES_ROUTE, { method: 'DELETE' })).status).toBe(405);
+  });
+});
+
+describe('build history', () => {
+  const line = (over: Record<string, unknown>) =>
+    JSON.stringify({
+      at: '2026-09-18T00:00:00.000Z',
+      name: 'Octopod Walker',
+      source: 'specs/octopod-walker.spec.json',
+      tris: 9000,
+      meshes: 40,
+      bones: 0,
+      ok: true,
+      errors: 0,
+      warnings: 1,
+      ...over,
+    });
+
+  test('reads newest first and stops at the limit', () => {
+    const text = [
+      line({ at: '2026-09-18T00:00:01.000Z' }),
+      line({ at: '2026-09-18T00:00:02.000Z' }),
+      line({ at: '2026-09-18T00:00:03.000Z' }),
+    ].join('\n');
+    const rows = parseBuildsTail(text, null, 2);
+    expect(rows.map((row) => row.at)).toEqual([
+      '2026-09-18T00:00:03.000Z',
+      '2026-09-18T00:00:02.000Z',
+    ]);
+  });
+
+  test('skips a half-written line wherever it is, rather than giving up', () => {
+    const text = [
+      line({ at: '2026-09-18T00:00:01.000Z' }),
+      '{"at":"2026-09-18T00:00:0',
+      line({ at: '2026-09-18T00:00:03.000Z' }),
+      '{"at":"2026-09',
+    ].join('\n');
+    expect(parseBuildsTail(text, null, 50).map((row) => row.at)).toEqual([
+      '2026-09-18T00:00:03.000Z',
+      '2026-09-18T00:00:01.000Z',
+    ]);
+  });
+
+  test('filters by source, however the leading slash is spelled', () => {
+    const text = [
+      line({ source: 'specs/wizard.spec.json' }),
+      line({ source: './specs/octopod-walker.spec.json', at: '2026-09-18T00:00:09.000Z' }),
+    ].join('\n');
+    expect(parseBuildsTail(text, 'specs/octopod-walker.spec.json', 50)).toHaveLength(1);
+    expect(parseBuildsTail(text, '/specs/wizard.spec.json', 50)).toHaveLength(1);
+    expect(parseBuildsTail(text, 'specs/nothing.spec.json', 50)).toHaveLength(0);
+    expect(parseBuildsTail(text, null, 50)).toHaveLength(2);
+  });
+
+  test('a log that is not there yet is an empty list, not an error', async () => {
+    const { status, json } = await call(BUILDS_ROUTE, {
+      url: '?path=specs/octopod-walker.spec.json&limit=5',
+    });
+    expect(status).toBe(200);
+    expect(Array.isArray((json as unknown as { builds: unknown[] }).builds)).toBe(true);
+  });
+
+  test('is GET only', async () => {
+    expect((await call(BUILDS_ROUTE, { method: 'POST' })).status).toBe(405);
   });
 });

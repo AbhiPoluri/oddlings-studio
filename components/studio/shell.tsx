@@ -27,8 +27,9 @@ import { Outliner } from '@/components/outliner';
 import { FindingsPanel } from '@/components/findings-panel';
 import { SpecEditor } from '@/components/spec-editor';
 import { Timeline } from '@/components/timeline';
+import type * as T from 'three';
 import { auditModel, type Audit } from '@/lib/asset-audit';
-import { buildSpec, parseSpec } from '@/lib/asset-spec';
+import { buildSpec, parseSpec, type AssetSpec } from '@/lib/asset-spec';
 import { fileName } from '@/lib/asset-recipe';
 import {
   buildAsset,
@@ -40,13 +41,20 @@ import {
 import { readySurface } from '@/lib/asset-surface';
 import { disposeScene } from '@/lib/three-world';
 import { registerStudioTools } from '@/lib/studio-tools';
-import { flatten, pathKey, type Path } from '@/lib/spec-edit';
+import { flatten, partAt, pathKey, updatePart, type Path } from '@/lib/spec-edit';
 import {
   runCommand,
   type ActionContext,
   type ExportFormat,
   type NewKind,
 } from './actions';
+import { planHint, type Hint } from './hints';
+import { openCounts } from './notes';
+import { NotesPanel } from './notes-panel';
+import { Toasts, useToaster } from './toasts';
+import { putThumb, shrink, thumbKey, thumbOf } from './thumbs';
+import { useNotes } from './use-notes';
+import { useProjects } from './use-projects';
 import { handleKey } from './keymap';
 import { BuildsPanel } from './builds-panel';
 import { BlueprintDialog } from './blueprint-dialog';
@@ -59,7 +67,8 @@ import { ShortcutsDialog } from './shortcuts-dialog';
 import { Splitter } from './splitter';
 import { TopBar } from './top-bar';
 import { ViewportPanel } from './viewport-panel';
-import { changedPaths, DEFAULT_LAYOUT, isDirty, MIN } from './reducer';
+import { changedPaths, DEFAULT_LAYOUT, ghostDoc, isDirty, MIN } from './reducer';
+import { PerfOverlay, usePerf } from './perf-overlay';
 import { useStudio } from './store';
 import { useDocument } from './use-document';
 import { useFollow } from './use-follow';
@@ -105,9 +114,19 @@ function Tabs<T extends string>({
 }
 
 export function StudioShell() {
+  // `?perf=1`. Counts this component's own commits, which is the number the
+  // playback work was aiming at — measured anywhere else it would be a
+  // different, less interesting number.
+  const perf = usePerf();
   const { state, dispatch, ref } = useStudio();
   const docOps = useDocument();
   const { save, reattach, openSpec } = useFollow();
+  // The specs listing is polled once for the whole studio: the empty state,
+  // the thumbnail cache and the "a spec appeared" toast all read it, and two
+  // of those are true whether or not the Projects tab is the one on screen.
+  const projects = useProjects();
+  const notes = useNotes();
+  const say = useToaster();
   const view = useRef<ViewHandle | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState('');
@@ -128,27 +147,51 @@ export function StudioShell() {
 
   const ready = !spec?.surface || state.surfaceReady;
 
-  /** Re-checked on every spec change, so the panel describes what is on screen. */
-  const audit = useMemo<Audit | null>(() => {
-    if (!spec || !ready) return null;
-    try {
-      const model = buildSpec(spec);
-      const result = auditModel(model, {
-        rigged: Boolean(spec.rig),
-        scale: spec.scale,
-        labels: new Map(
-          flatten(spec).map((row) => [
-            pathKey(row.path),
-            row.part.name ?? row.part.shape,
-          ]),
-        ),
-      });
-      disposeScene(model);
-      return result;
-    } catch {
-      return null;
-    }
-  }, [spec, ready]);
+  /**
+   * The findings, run on the model the viewport actually drew.
+   *
+   * This used to call `buildSpec` itself, which meant every edit built the
+   * asset twice on the main thread — once to show and once to check — for two
+   * identical results. The audit is a read-only traversal, so the viewport
+   * lends its model instead and nothing is built for the panel at all.
+   *
+   * Kept across an edit. The previous model is still what is on screen and
+   * still what the findings describe, so blanking the panel for the second and
+   * a half a surface build takes would remove information rather than add it;
+   * the "building…" chip in the viewport is what says a newer answer is on the
+   * way.
+   */
+  const [audit, setAudit] = useState<Audit | null>(null);
+  const onModel = useCallback(
+    (model: T.Object3D | null) => {
+      if (!model) {
+        setAudit(null);
+        return;
+      }
+      const built = model.userData.spec as AssetSpec | undefined;
+      if (!built) {
+        setAudit(null);
+        return;
+      }
+      try {
+        setAudit(
+          auditModel(model, {
+            rigged: Boolean(built.rig),
+            scale: built.scale,
+            labels: new Map(
+              flatten(built).map((row) => [
+                pathKey(row.path),
+                row.part.name ?? row.part.shape,
+              ]),
+            ),
+          }),
+        );
+      } catch {
+        setAudit(null);
+      }
+    },
+    [],
+  );
 
   const labels = useMemo(
     () =>
@@ -167,6 +210,75 @@ export function StudioShell() {
   useEffect(() => {
     if (audit) dispatch({ type: 'buildStats', ok: audit.ok });
   }, [audit, dispatch]);
+
+  /**
+   * Say so when the agent lands a build.
+   *
+   * Announced from here rather than from the poll because the sentence wants
+   * the triangle count and the verdict, and neither of those exists until the
+   * viewport has drawn the thing and the checks have run. Waiting for both is
+   * what makes this one line rather than three that correct each other.
+   *
+   * The session's first build is not news: it is the file you opened.
+   */
+  const announced = useRef(new Set<string>());
+  const firstBuild = useRef(true);
+  useEffect(() => {
+    const last = state.builds[state.builds.length - 1];
+    if (!last || last.origin !== 'agent') return;
+    if (last.tris === undefined || last.ok === undefined || !ready) return;
+    // Keyed on the build rather than on what it measured: a surface spec is
+    // drawn once before its decimator has loaded and once after, which is two
+    // triangle counts for one build — and two toasts saying the same thing.
+    if (announced.current.has(last.at)) return;
+    announced.current.add(last.at);
+    if (firstBuild.current) {
+      firstBuild.current = false;
+      return;
+    }
+    say(
+      `New build from agent: ${last.name} · ${last.tris.toLocaleString()} tris · ${
+        last.ok ? 'passes' : 'fails'
+      }`,
+      { tone: last.ok ? 'good' : 'bad' },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.builds, ready]);
+
+  /**
+   * A picture of whatever file is open, for the Projects list.
+   *
+   * Taken from the viewport rather than built a second time, because the
+   * viewport is already holding the model — and taken once per version of a
+   * file, keyed on the modification time the listing reports, so a spec the
+   * agent has rebuilt is photographed again rather than shown as it was.
+   */
+  const captured = useRef(new Set<string>());
+  const followedPath = state.follow.source?.replace(/^\//, '') ?? null;
+  const tris = audit ? state.builds.length : 0;
+  useEffect(() => {
+    if (!spec || !followedPath || !ready) return;
+    const row = state.specs?.find((entry) => entry.path === followedPath);
+    if (!row) return;
+    const key = thumbKey(row.path, row.modified);
+    if (captured.current.has(key) || thumbOf(key)) return;
+    captured.current.add(key);
+    // One frame late on purpose: the capture reads the drawing buffer, and on
+    // the render that mounts a new model there is not one yet.
+    const timer = setTimeout(() => {
+      let shot = '';
+      try {
+        shot = view.current?.capture() ?? '';
+      } catch {
+        shot = '';
+      }
+      if (!shot) return void captured.current.delete(key);
+      void shrink(shot).then((small) => {
+        if (small) void putThumb(key, small);
+      });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [spec, followedPath, ready, state.specs, tris]);
 
   // Keyed on what the answer actually depends on: a hover dispatch arrives
   // twenty times a second, and re-diffing two whole specs for each one is a
@@ -365,6 +477,45 @@ export function StudioShell() {
     view.current?.frame({ kind: 'part', path });
   };
 
+  /**
+   * Perform a finding's suggested fix.
+   *
+   * One `updatePart` and therefore one undo entry, whether the hint asks for a
+   * move, a scale or both — a fix you have to press ⌘Z twice to take back is a
+   * fix nobody trusts.
+   */
+  const applyHint = (path: Path, finding: { code: string; hint?: Hint }) => {
+    const current = ref.current.doc.spec;
+    const part = current ? partAt(current, path) : undefined;
+    if (!current || !part) return;
+    const plan = planHint(finding, part);
+    if (!plan) return docOps.status('That suggestion asks for no change.');
+    try {
+      // Chained onto one document and committed once: a fix that takes two ⌘Z
+      // to take back is a fix nobody presses twice.
+      let next = plan.patch ? updatePart(current, path, plan.patch) : current;
+      if (plan.blend !== undefined && next.surface)
+        next = { ...next, surface: { ...next.surface, blend: plan.blend } };
+      if (next === current)
+        return docOps.status('That suggestion asks for no change here.');
+      docOps.editSpec(next);
+      dispatch({ type: 'select', selection: { kind: 'part', path } });
+      docOps.status(
+        `Applied the suggested fix to ${part.name ?? part.shape}. Undo puts it back.`,
+      );
+    } catch (error) {
+      say(
+        error instanceof Error ? error.message : 'That fix could not be applied.',
+        { tone: 'bad' },
+      );
+    }
+  };
+
+  /** Open notes per part, for the outliner's badge. */
+  const noteCounts = useMemo(() => openCounts(notes.notes), [notes.notes]);
+  /** The previous agent build, held by reference so the ghost is built once. */
+  const ghost = useMemo(() => ghostDoc(state)?.spec ?? null, [state]);
+
   return (
     <main
       className="studio"
@@ -424,7 +575,7 @@ export function StudioShell() {
             </Tabs>
             <div className="panel-body">
               {state.leftTab === 'projects' ? (
-                <ProjectsPanel context={context} />
+                <ProjectsPanel context={context} trouble={projects.trouble} />
               ) : state.leftTab === 'outliner' ? (
                 spec ? (
                   <Outliner
@@ -441,6 +592,7 @@ export function StudioShell() {
                       dispatch({ type: 'isolate', selection: { kind: 'part', path } })
                     }
                     changed={changed as Set<string>}
+                    notes={noteCounts}
                     bones
                   />
                 ) : (
@@ -470,7 +622,12 @@ export function StudioShell() {
           />
         )}
 
-        <ViewportPanel view={view} context={context} />
+        <ViewportPanel
+          view={view}
+          context={context}
+          ghost={ghost}
+          onModel={onModel}
+        />
 
         {layout.rightOpen && (
           <Splitter
@@ -494,6 +651,12 @@ export function StudioShell() {
               tabs={[
                 { id: 'properties', label: 'Properties' },
                 { id: 'checks', label: 'Checks' },
+                {
+                  id: 'notes',
+                  label: noteCounts.size || notes.notes.length
+                    ? `Notes ${notes.notes.filter((note) => note.status === 'open').length || ''}`.trim()
+                    : 'Notes',
+                },
                 { id: 'asset', label: 'Asset' },
                 { id: 'json', label: 'JSON' },
               ]}
@@ -531,6 +694,14 @@ export function StudioShell() {
                   onSelectPart={(path) =>
                     dispatch({ type: 'select', selection: { kind: 'part', path } })
                   }
+                  onFrame={frameFinding}
+                  onApplyHint={applyHint}
+                />
+              ) : state.rightTab === 'notes' ? (
+                <NotesPanel
+                  notes={notes}
+                  selection={state.selection}
+                  labels={labels}
                   onFrame={frameFinding}
                 />
               ) : spec ? (
@@ -597,7 +768,7 @@ export function StudioShell() {
                 onSpeed={(speed) => dispatch({ type: 'speed', speed })}
               />
             ) : (
-              <BuildsPanel />
+              <BuildsPanel context={context} />
             )}
           </div>
         </section>
@@ -678,6 +849,8 @@ export function StudioShell() {
       <BlueprintDialog />
       <ShortcutsDialog />
       <CommandPalette context={context} />
+      <Toasts context={context} />
+      {perf && <PerfOverlay />}
       {dropping && (
         <div className="drop-veil" role="status">
           Drop a spec or recipe JSON to open it

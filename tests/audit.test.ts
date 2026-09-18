@@ -165,3 +165,109 @@ describe('scope and cost', () => {
     expect(audit.findings[0].code).toBe('empty');
   });
 });
+
+describe('fix hints', () => {
+  // A finding says what is wrong; a hint says which way and how far. These
+  // cover the three that carry one. The first is asserted end to end: apply
+  // the vector the audit handed back, rebuild, and the error is gone.
+  const floater = (scale: number, at: [number, number, number]): AssetSpecInput => ({
+    version: 1,
+    name: 'Floater',
+    kind: 'prop',
+    scale,
+    parts: [
+      { name: 'hull', shape: 'box', size: [1, 1, 1] },
+      { name: 'ghost', shape: 'sphere', size: [0.2, 0.2, 0.2], position: at },
+    ],
+  });
+  const named = (...names: string[]) =>
+    new Map(names.map((name, index) => [String(index), name]));
+
+  test('a floating part gets a move that actually fixes it', () => {
+    for (const scale of [1, 2]) {
+      const start: [number, number, number] = [0, 1.2, 0];
+      const audit = auditModel(buildSpec(floater(scale, start)), {
+        scale,
+        labels: named('hull', 'ghost'),
+      });
+      const hint = audit.findings.find((f) => f.code === 'detached-part')!.hint!;
+      expect(hint.toward).toBe('hull');
+      // Straight down onto the top of the box, and in spec units: the same
+      // move whatever the display scale, because scale is not geometry.
+      expect(hint.move![1]).toBeLessThan(0);
+      expect(hint.move![1]).toBeCloseTo(-0.6, 2);
+
+      const moved = floater(scale, [
+        start[0] + hint.move![0],
+        start[1] + hint.move![1],
+        start[2] + hint.move![2],
+      ]);
+      expect(auditModel(buildSpec(moved), { scale }).ok).toBe(true);
+    }
+  });
+
+  test('a part sideways off the body is moved sideways, not down', () => {
+    const audit = auditModel(buildSpec(floater(1, [1.4, 0, 0])), {
+      labels: named('hull', 'ghost'),
+    });
+    const hint = audit.findings.find((f) => f.code === 'detached-part')!.hint!;
+    expect(hint.move![0]).toBeLessThan(0);
+    expect(Math.abs(hint.move![1])).toBeLessThan(0.01);
+  });
+
+  test('a buried part is pushed out along its neighbour', async () => {
+    await (await import('../lib/asset-surface')).readySurface();
+    const spec: AssetSpecInput = {
+      version: 1,
+      name: 'Buried',
+      kind: 'prop',
+      surface: { blend: 0.02, detail: 64, budget: 1500, shading: 'flat' },
+      parts: [
+        { name: 'body', shape: 'sphere', size: [0.6, 0.6, 0.6], position: [0, 0.3, 0] },
+        { name: 'gem', shape: 'sphere', size: [0.1, 0.1, 0.1], position: [0, 0.3, 0.2] },
+      ],
+    };
+    const audit = auditModel(buildSpec(spec), { labels: named('body', 'gem') });
+    const hint = audit.findings.find((f) => f.code === 'no-surface')!.hint!;
+    expect(hint.toward).toBe('body');
+    // Out through the front of the sphere, far enough to clear the shell plus
+    // one grid cell, and not sideways.
+    expect(hint.move![2]).toBeGreaterThan(0.05);
+    expect(Math.abs(hint.move![0])).toBeLessThan(0.01);
+    expect(Math.abs(hint.move![1])).toBeLessThan(0.01);
+  });
+
+  test('a detached shell names what to fuse with and the blend that would do it', async () => {
+    await (await import('../lib/asset-surface')).readySurface();
+    const spec: AssetSpecInput = {
+      version: 1,
+      name: 'Split',
+      kind: 'prop',
+      surface: { blend: 0.01, detail: 64, budget: 2000, shading: 'flat' },
+      parts: [
+        { name: 'body', shape: 'box', size: [0.5, 0.5, 0.5] },
+        { name: 'lump', shape: 'box', size: [0.2, 0.2, 0.2], position: [0, 0.5, 0] },
+      ],
+    };
+    const audit = auditModel(buildSpec(spec), { labels: named('body', 'lump') });
+    const finding = audit.findings.find((f) => f.code === 'detached-shell')!;
+    expect(finding.hint!.toward).toBe('body');
+    // The lump floats 0.15 above the body, and blend closes half its width.
+    expect(finding.threshold).toBeCloseTo(0.15, 2);
+    expect(finding.hint!.grow).toBeCloseTo(0.3, 2);
+    expect(finding.hint!.move).toBeUndefined();
+  });
+
+  test('a clean model carries no hints at all', () => {
+    const audit = auditModel(
+      buildSpec({
+        ...base,
+        parts: [
+          { shape: 'box', size: [1, 1, 1] },
+          { shape: 'sphere', size: [0.4, 0.4, 0.4], position: [0.5, 0, 0] },
+        ],
+      }),
+    );
+    expect(audit.findings.every((f) => f.hint === undefined)).toBe(true);
+  });
+});

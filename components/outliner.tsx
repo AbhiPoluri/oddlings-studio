@@ -101,6 +101,7 @@ export function Outliner({
   onFrame,
   onIsolate,
   changed,
+  notes,
   bones = false,
   filter: initialFilter = '',
 }: {
@@ -122,6 +123,14 @@ export function Outliner({
   onIsolate?: (path: Path) => void;
   /** Path keys to mark as changed since the last build. */
   changed?: Set<string>;
+  /**
+   * Open review notes per path key, for the badge.
+   *
+   * A note is a piece of work with a place in the tree, and the tree is where
+   * you go looking for work — a panel that only lists them somewhere else makes
+   * "which parts has anyone said anything about" a thing you have to remember.
+   */
+  notes?: Map<string, number>;
   /** Show the resolved skeleton below the parts. */
   bones?: boolean;
   /** Seeds the filter box. The box owns the text from then on. */
@@ -248,6 +257,7 @@ export function Outliner({
       {visible.map(({ path, part, depth, copies }) => {
         const key = `part:${pathKey(path)}`;
         const joint = bindings.get(pathKey(path));
+        const open = notes?.get(pathKey(path)) ?? 0;
 
         if (onRename && renaming === key)
           return (
@@ -306,6 +316,7 @@ export function Outliner({
             data-path={pathKey(path)}
             data-depth={depth}
             data-changed={changed?.has(pathKey(path)) ? 'true' : undefined}
+            data-notes={open || undefined}
             data-hover={lit === key ? 'true' : undefined}
             aria-level={depth + 1}
             aria-selected={chosen === key}
@@ -359,6 +370,15 @@ export function Outliner({
                 title={`Carried by the joint ${joint}`}
               >
                 {joint}
+              </Badge>
+            )}
+            {open > 0 && (
+              <Badge
+                className="outliner-badge outliner-notes"
+                variant="outline"
+                title={`${open} open review note${open === 1 ? '' : 's'}`}
+              >
+                {`✎${open}`}
               </Badge>
             )}
           </button>

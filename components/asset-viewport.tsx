@@ -10,9 +10,11 @@ import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { Move3d, Rotate3d, Scale3d } from 'lucide-react';
-import { buildAsset, stats } from '@/lib/asset-export';
-import { buildSpec, type AssetSpec } from '@/lib/asset-spec';
-import { readySurface } from '@/lib/asset-surface';
+import { stats } from '@/lib/asset-export';
+import type { AssetSpec } from '@/lib/asset-spec';
+import type { BuildPhase } from '@/lib/asset-surface';
+import { gauge } from '@/lib/perf';
+import { createBuildClient, type BuildClient } from '@/lib/build-client';
 import {
   frameIsExact,
   frameOf,
@@ -103,7 +105,45 @@ type Props = {
   isolate?: Selection | null;
   /** `/` asks for isolation to flip; the owner of `isolate` decides. */
   onIsolate?: (selection: Selection) => void;
+  /**
+   * A second asset drawn behind this one, transparent and unpickable.
+   *
+   * What it is for is comparison: the build the agent made before the one on
+   * screen, so a part that moved reads as a part that moved rather than as a
+   * part you have to remember. Deliberately a whole spec rather than a diff —
+   * the studio already knows how to build one of these, and a ghost assembled
+   * out of the parts that changed would be a second, subtly different builder.
+   *
+   * Pass a stable reference. This is rebuilt whenever the value changes, and a
+   * fresh object every render would rebuild every frame.
+   */
+  ghost?: AssetSpec | Recipe | null;
+  /** Draw the ghost as wireframe, for reading a silhouette through a solid. */
+  ghostWire?: boolean;
   onStats: (s: AssetStats) => void;
+  /**
+   * The model this viewport just built, handed over for anyone else to read.
+   *
+   * The shell used to build a second copy of every spec to run the audit on,
+   * which doubled the cost of every edit for a result identical to the one
+   * already standing in the scene. Auditing is a read-only traversal, so the
+   * viewport lends its model instead. Null while a build is in flight and the
+   * spec on screen is the previous one.
+   */
+  onModel?: (model: T.Object3D | null) => void;
+  /** A build was asked for, or the one in flight finished. */
+  onBuild?: (
+    event: { id: number; since: number } | { id: number; done: true },
+  ) => void;
+  /**
+   * How the current document last changed, which decides whether to wait.
+   *
+   * Typing in a number field produces an edit per keystroke, and a surface
+   * spec takes a second to build; without a pause the worker spends the whole
+   * sentence building prefixes of it. A gizmo drag or a file load is already
+   * one edit, and waiting on those would only add lag.
+   */
+  lastEdit?: 'typed' | 'commit' | 'load';
 };
 
 /**
@@ -186,10 +226,22 @@ type Runtime = {
   /** The last measured build, kept so the frame rate can ride along with it. */
   metrics: AssetStats | null;
   helper: T.SkeletonHelper | null;
+  /**
+   * The previous build, drawn through. Never inside `model`, which is what
+   * keeps it out of the picker, the framing and the statistics for free.
+   */
+  ghost: T.Group | null;
   grid: T.GridHelper;
   floor: T.Mesh;
   fit: () => void;
   resize: () => void;
+  /**
+   * Ask the render loop for a few more frames.
+   *
+   * The loop idles when nothing is moving, so anything that changes what the
+   * scene looks like without moving the camera or the clock has to say so.
+   */
+  wake: () => void;
   place: (selection: Selection) => void;
   /** Fit the camera to one selection, or to the whole model with `null`. */
   frame: (selection: Selection) => void;
@@ -208,6 +260,15 @@ type Runtime = {
   /** Bind pose while a bone is selected; the chosen clip otherwise. */
   pose: () => void;
 };
+
+/**
+ * The ghost's ink.
+ *
+ * Cool and cold on purpose: `--primary` is the studio's lime, reserved for
+ * what is selected and what is live, and a ghost in that colour would read as
+ * a selection. This one reads as "not the thing you are editing".
+ */
+const GHOST_TINT = '#7fb0d8';
 
 /** How far the orbit may tip before it would look up from under the floor. */
 const ORBIT_CEILING = Math.PI * 0.49;
@@ -283,8 +344,39 @@ function boneHolds(index: Slot, weight: Slot | undefined, i: number, bone: numbe
 }
 
 /** The world box of every mesh an authored part became. */
+/**
+ * Which vertices of a fused surface mesh belong to which authored part.
+ *
+ * Read once per model instead of once per hover. The owner table is a parallel
+ * array over every vertex, so answering "where is this part" by scanning it
+ * meant walking twelve thousand vertices every time the pointer crossed a
+ * different part — thirty times a second while the pointer is moving, for an
+ * outline. Grouping is the same walk done once; the box is then measured from
+ * the part's own vertices, so it still follows the model as a clip poses it.
+ *
+ * Weak, so a model thrown away by a rebuild takes its table with it.
+ */
+const owned = new WeakMap<T.BufferGeometry, Map<string, number[]>>();
+
+function ownedVertices(geometry: T.BufferGeometry, owners: SurfaceOwners) {
+  let table = owned.get(geometry);
+  if (table) return table;
+  table = new Map<string, number[]>();
+  for (let i = 0; i < owners.index.length; i++) {
+    const path = owners.paths[owners.index[i]];
+    if (!path) continue;
+    const key = path.join('.');
+    const list = table.get(key);
+    if (list) list.push(i);
+    else table.set(key, [i]);
+  }
+  owned.set(geometry, table);
+  return table;
+}
+
 function worldBounds(model: T.Object3D, path: Path) {
   const box = new T.Box3();
+  const key = path.join('.');
   model.traverse((object) => {
     if (!(object instanceof T.Mesh)) return;
     if (samePath((object.userData.specPath as Path | undefined) ?? null, path)) {
@@ -297,14 +389,15 @@ function worldBounds(model: T.Object3D, path: Path) {
       | SurfaceOwners
       | undefined;
     if (!owners) return;
+    const mine = ownedVertices(object.geometry, owners).get(key);
+    if (!mine) return;
     const position = object.geometry.attributes.position;
     const point = new T.Vector3();
     object.updateMatrixWorld();
-    for (let i = 0; i < position.count; i++)
-      if (samePath(owners.paths[owners.index[i]] ?? null, path))
-        box.expandByPoint(
-          point.fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld),
-        );
+    for (const i of mine)
+      box.expandByPoint(
+        point.fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld),
+      );
   });
   return box;
 }
@@ -519,6 +612,60 @@ function typing(target: EventTarget | null) {
   );
 }
 
+/**
+ * How long a typed edit waits before the worker is asked to build it.
+ *
+ * Long enough that a two-digit number is one build rather than two, short
+ * enough that it reads as immediate. Only typing waits; a committed gizmo drag
+ * and a file load go straight out.
+ */
+const TYPING_PAUSE = 150;
+
+/**
+ * The quiet "still working" chip in the viewport's corner.
+ *
+ * Two rules it exists to keep. It does not appear for a build that finishes
+ * quickly, because a label that flashes on every keystroke is worse than no
+ * label. And the elapsed clock ticks in here, on a local interval, rather than
+ * in the store: a studio that dispatched ten times a second to animate a
+ * counter would re-render every panel to do it, which is the exact cost this
+ * whole change is about removing.
+ */
+function BuildingChip({
+  since,
+  phase,
+}: {
+  since: number;
+  phase?: BuildPhase;
+}) {
+  const [elapsed, setElapsed] = useState(() => performance.now() - since);
+  useEffect(() => {
+    const tick = setInterval(() => setElapsed(performance.now() - since), 100);
+    return () => clearInterval(tick);
+  }, [since]);
+  if (elapsed < CHIP_DELAY) return null;
+  return (
+    <p className="viewport-building" role="status">
+      <span className="viewport-building-dot" aria-hidden />
+      {phase ? PHASE_LABEL[phase] : 'building'}
+      {elapsed >= 300 ? <span className="tabular">{Math.round(elapsed)} ms</span> : null}
+    </p>
+  );
+}
+
+/** What each build stage is called in the chip. */
+const PHASE_LABEL: Record<BuildPhase, string> = {
+  parts: 'placing parts',
+  sampling: 'sampling',
+  meshing: 'meshing',
+  decimating: 'decimating',
+  painting: 'painting',
+  skinning: 'skinning',
+};
+
+/** Below this, a build is fast enough that saying so would only flicker. */
+const CHIP_DELAY = 120;
+
 /** A clip time folded back into [0, duration). */
 function wrapTime(at: number, duration: number) {
   if (!(duration > 0)) return 0;
@@ -535,7 +682,24 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
     live.current = props;
     const runtime = useRef<Runtime | null>(null);
     const drag = useRef<Drag | null>(null);
+    // Any render of this component may have changed what the scene looks like —
+    // isolation, wireframe, the selection outline, a freshly applied model. The
+    // render loop idles when nothing moves, so one catch-all beats hunting down
+    // every setter and is impossible to forget from a new one.
+    useEffect(() => {
+      runtime.current?.wake();
+    });
     const [error, setError] = useState('');
+    /**
+     * Bumped every time a build lands.
+     *
+     * The effects that dress the model — isolation, the gizmo, the bone
+     * handles — used to watch the spec, because the spec changing and the model
+     * changing were the same React pass. They are not any more: a build arrives
+     * a beat later, from the worker. This is the "the model changed" signal
+     * those effects watch instead.
+     */
+    const [built, setBuilt] = useState(0);
     const [mode, setMode] = useState<Mode>('translate');
     // Isolation is a controlled value with a fallback: `isolate` wins when the
     // page supplies it, and this stands in when it does not, so `/` is never a
@@ -564,6 +728,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
             h = v.handles.visible,
             b = v.bound.visible,
             o = v.hoverBox.visible,
+            // A comparison is a thing you are doing, not a property of the
+            // asset — a thumbnail with last build's silhouette baked into it
+            // would be wrong in the list for as long as it was cached.
+            w = v.ghost?.visible ?? false,
             t = v.transform.getHelper().visible;
           v.scene.background = null;
           v.grid.visible = false;
@@ -574,6 +742,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           v.handles.visible = false;
           v.bound.visible = false;
           v.hoverBox.visible = false;
+          if (v.ghost) v.ghost.visible = false;
           v.transform.getHelper().visible = false;
           v.renderer.render(v.scene, v.camera);
           const output = v.renderer.domElement.toDataURL('image/png');
@@ -584,6 +753,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           v.handles.visible = h;
           v.bound.visible = b;
           v.hoverBox.visible = o;
+          if (v.ghost) v.ghost.visible = w;
           v.transform.getHelper().visible = t;
           v.renderer.render(v.scene, v.camera);
           return output;
@@ -730,11 +900,16 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         handles,
         bound,
         handleSize: 0.02,
+        // Replaced by the render loop below, which is the only thing that can
+        // actually grant frames; until then a wake is a no-op, and the loop
+        // starts owing a few anyway.
+        wake: () => {},
         model: null,
         mixer: null,
         action: null,
         metrics: null,
         helper: null,
+        ghost: null,
         grid,
         floor,
         fit() {
@@ -1539,13 +1714,26 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
        * lie behind an arrow is not what aiming at that arrow meant.
        */
       let hovered: Selection = null,
-        looked = 0;
+        looked = 0,
+        lookedX = NaN,
+        lookedY = NaN;
       function pointerMove(event: PointerEvent) {
+        // Unconditionally, and before every early return below: the gizmo
+        // lights its own axis up from an internal hover test that fires no
+        // event, so a still camera over a still model would keep the highlight
+        // from ever being drawn.
+        wake();
         if (!live.current.onHover) return;
         if (event.buttons !== 0 || transform.dragging || transform.axis !== null)
           return;
         if (event.timeStamp - looked < 50) return;
+        // A pointer resting on the canvas still produces move events — a
+        // trackpad reports sub-pixel drift, and a scroll fires one per notch.
+        // Raycasting from a point already raycast cannot find anything new.
+        if (event.clientX === lookedX && event.clientY === lookedY) return;
         looked = event.timeStamp;
+        lookedX = event.clientX;
+        lookedY = event.clientY;
         const found = pickAt(event.clientX, event.clientY);
         if (sameSelection(found, hovered)) return;
         hovered = found;
@@ -1621,7 +1809,12 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
       el.addEventListener('dblclick', doubleClick);
       el.addEventListener('keydown', key);
 
-      const ro = new ResizeObserver(v.resize);
+      const ro = new ResizeObserver(() => {
+        v.resize();
+        // A resized drawing buffer holds a stretched copy of the last frame
+        // until something redraws it.
+        v.wake();
+      });
       ro.observe(wrap.current ?? canvas.current);
       v.resize();
       let frame = 0;
@@ -1632,11 +1825,53 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
       let drawn = 0,
         second = 0,
         told = 0;
+      /**
+       * Frames still owed after something changed.
+       *
+       * A viewport of a still model with a still camera was redrawing sixty
+       * times a second to produce sixty identical images — a whole core of a
+       * laptop's budget spent on nothing, next to a worker that would like to
+       * have it. So it draws only when something moved.
+       *
+       * A counter rather than a boolean, because several of these settle over
+       * more than one frame: `OrbitControls` damps to a stop after the pointer
+       * has let go, and `TransformControls` re-places its helper on the frame
+       * after it is told to. Owing a handful of frames costs nothing and is
+       * the difference between "cheap" and "sometimes a frame behind".
+       */
+      let owed = 4;
+      const wake = () => {
+        owed = 4;
+      };
+      controls.addEventListener('change', wake);
+      transform.addEventListener('change', wake);
+      // Any React pass may have changed the scene — isolation, wireframe, the
+      // gizmo's target, a rebuild. Rather than hunt down each one, the effect
+      // below wakes the loop after every render of this component.
+      v.wake = wake;
       function render(now: number) {
         frame = requestAnimationFrame(render);
         if (document.hidden || now - previous < 30) return;
         const delta = previous ? Math.min(0.1, (now - previous) / 1000) : 0;
         previous = now;
+        // Anything that animates itself keeps the loop awake on its own.
+        const moving =
+          (v.mixer !== null && live.current.playing !== false) ||
+          (live.current.rotate && !transform.dragging);
+        if (moving) owed = 2;
+        if (owed <= 0) {
+          // The window still rolls, so the next busy second measures itself
+          // rather than the idle one before it. What is deliberately *not*
+          // reported is a rate of zero: an idle viewport drawing no frames is
+          // the point, not a fault, and saying so would cost a commit of the
+          // whole panel — which would wake the loop, which would draw a frame.
+          if (second && now - second >= 1000) {
+            second = now;
+            drawn = 0;
+          }
+          return;
+        }
+        owed--;
         if (v.mixer) {
           v.mixer.timeScale = live.current.speed;
           const action = v.action;
@@ -1668,6 +1903,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           // The frame rate belongs beside the mesh counts, and those only
           // change on a rebuild — so it rides along with the last ones rather
           // than becoming a second channel the layout has to join up.
+          gauge('fps', fps);
           if (v.metrics && v.metrics.fps !== fps) {
             v.metrics = { ...v.metrics, fps };
             live.current.onStats(v.metrics);
@@ -1678,6 +1914,8 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
       return () => {
         cancelAnimationFrame(frame);
         ro.disconnect();
+        controls.removeEventListener('change', wake);
+        transform.removeEventListener('change', wake);
         el.removeEventListener('pointerdown', pointerDown);
         el.removeEventListener('pointerup', pointerUp);
         el.removeEventListener('pointermove', pointerMove);
@@ -1695,6 +1933,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         scene.remove(transform.getHelper());
         transform.dispose();
         v.mixer?.stopAllAction();
+        if (v.ghost) skeletonOf(v.ghost)?.dispose();
         if (v.model) skeletonOf(v.model)?.dispose();
         v.helper?.dispose();
         outline.dispose();
@@ -1718,110 +1957,259 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         runtime.current = null;
       };
     }, []);
-    const [surfaceReady, setSurfaceReady] = useState(false);
+    /**
+     * The build worker, one per mounted viewport.
+     *
+     * Created in an effect rather than at module scope so a server render never
+     * reaches `new Worker`, and so a remounted viewport gets a clean one rather
+     * than inheriting a lane full of a dead component's requests.
+     */
+    const builder = useRef<BuildClient | null>(null);
+    const [building, setBuilding] = useState<{
+      since: number;
+      phase?: BuildPhase;
+    } | null>(null);
     useEffect(() => {
-      readySurface().then(() => setSurfaceReady(true));
+      builder.current = createBuildClient();
+      return () => {
+        builder.current?.dispose();
+        builder.current = null;
+      };
     }, []);
     useEffect(() => {
       const v = runtime.current;
-      if (!v) return;
-      // A surface spec cannot be built until its decimator is in memory, and
-      // rendering the faceted fallback in the meantime would show the user a
-      // model that is not the one they authored.
-      if (props.spec?.surface && !surfaceReady) return;
-      const old = v.model;
-      // A rebuild throws the objects a drag is holding on to away with the old
-      // model, so let go of them first.
-      drag.current = null;
-      // And hand every dimmed mesh its own material back before the model
-      // carrying it is disposed. The isolate effect below re-applies it to
-      // whatever is built here, since it watches the same spec.
-      v.unisolate();
-      let model: T.Group;
-      try {
-        model = props.spec ? buildSpec(props.spec) : buildAsset(props.recipe);
-      } catch (error) {
-        // Hot reloading `asset-surface` gives it a fresh, unloaded module while
-        // this component's `surfaceReady` state survives the refresh. Rather
-        // than crash the tree, go back to waiting and let the effect re-run.
-        if (error instanceof Error && /decimator/.test(error.message)) {
-          setSurfaceReady(false);
-          void readySurface().then(() => setSurfaceReady(true));
-          return;
+      const client = builder.current;
+      if (!v || !client) return;
+      const source = props.spec
+        ? { spec: props.spec }
+        : { recipe: props.recipe };
+
+      /** Everything that used to follow `buildSpec` in this effect. */
+      const apply = (model: T.Object3D) => {
+        const old = v.model;
+        // A rebuild throws the objects a drag is holding on to away with the
+        // old model, so let go of them first.
+        drag.current = null;
+        // And hand every dimmed mesh its own material back before the model
+        // carrying it is disposed. The isolate effect below re-applies it to
+        // whatever is built here, since it watches the same spec.
+        v.unisolate();
+        const rigged = props.spec
+          ? Boolean(props.spec.rig || props.spec.joints?.length)
+          : (props.recipe.kind === 'creature' ||
+              props.recipe.kind === 'person') &&
+            props.recipe.rigged;
+        v.scene.add(model);
+        v.model = model as T.Group;
+        if (v.mixer) {
+          v.mixer.stopAllAction();
+          if (old) v.mixer.uncacheRoot(old);
         }
-        throw error;
+        if (v.helper) {
+          v.scene.remove(v.helper);
+          v.helper.dispose();
+          v.helper = null;
+        }
+        v.mixer = null;
+        v.action = null;
+        if (rigged) {
+          v.mixer = new T.AnimationMixer(model);
+          // Through `pose`, so a rebuild that follows a bone edit does not
+          // start the clip up again under the handle that is being placed.
+          v.pose();
+          v.helper = new T.SkeletonHelper(model);
+          v.helper.visible = live.current.skeleton;
+          (v.helper.material as T.LineBasicMaterial).depthTest = false;
+          v.helper.renderOrder = 100;
+          v.scene.add(v.helper);
+        }
+        if (old) {
+          v.scene.remove(old);
+          skeletonOf(old)?.dispose();
+          disposeScene(old);
+        }
+        const previous = old?.userData.recipe ?? old?.userData.spec;
+        const next = props.spec ?? props.recipe;
+        // Recipes and specs sit at wildly different sizes, so switching between
+        // them always deserves a refit even when the kind happens to match.
+        const swapped = Boolean(old?.userData.spec) !== Boolean(props.spec);
+        if (
+          !previous ||
+          swapped ||
+          previous.kind !== next.kind ||
+          previous.scale !== next.scale
+        )
+          v.fit();
+        model.traverse((o) => {
+          if (o instanceof T.Mesh)
+            (o.material as T.MeshStandardMaterial).wireframe =
+              live.current.wireframe;
+        });
+        // Handles are sized off the model, so a 4-metre swing and a 40-metre
+        // kaiju both get a grabbable pivot rather than a dot or a boulder.
+        const span = new T.Box3().setFromObject(model).getSize(new T.Vector3());
+        v.handleSize = Math.max(0.004, span.length() * 0.012);
+        v.rig();
+        // The hovered thing was meshes that have just been thrown away; measure
+        // it again on the ones that replaced them.
+        v.hint();
+        v.metrics = stats(model);
+        props.onStats(v.metrics);
+        // Reported from here because this is the only place that knows the
+        // asset really built: a timeline can have the names and the durations
+        // without rebuilding the clips, or importing three to ask.
+        live.current.onClips?.(
+          clipsOf(props.spec, props.recipe).map((clip) => ({
+            name: clip.name,
+            duration: clip.duration,
+          })),
+        );
+        // Last, so whoever audits this is reading a model that is fully wired
+        // up — skinned, posed and measured.
+        live.current.onModel?.(model);
+        // The isolate and gizmo effects below watch the same spec, but React
+        // ran them when the spec changed rather than when the model landed.
+        // Asking for one more pass is how they get to see what arrived.
+        setBuilt((n) => n + 1);
+      };
+
+      let waiting = true;
+      const start = () => {
+        if (!waiting) return;
+        // Deliberately not `onModel(null)`: the previous model is still on
+        // screen and still the truth about it, so the findings panel keeps
+        // describing it rather than blanking for a second and a half on every
+        // edit. The chip in the corner is what says a newer one is coming.
+        const since = performance.now();
+        setBuilding({ since });
+        const id = client.build('model', source, {
+          onPhase: (phase) =>
+            setBuilding((at) => (at ? { ...at, phase } : at)),
+          onFailed: (message) => {
+            setBuilding(null);
+            live.current.onBuild?.({ id, done: true });
+            setError(message);
+          },
+          onModel: (model) => {
+            setBuilding(null);
+            setError('');
+            apply(model);
+            live.current.onBuild?.({ id, done: true });
+          },
+        });
+        live.current.onBuild?.({ id, since });
+      };
+      // A typed edit waits; a committed drag, a file load or a fresh mount does
+      // not, because each of those is already exactly one edit.
+      const timer =
+        props.lastEdit === 'typed' ? setTimeout(start, TYPING_PAUSE) : 0;
+      if (!timer) start();
+      return () => {
+        waiting = false;
+        if (timer) clearTimeout(timer);
+      };
+    }, [props.recipe, props.spec, props.lastEdit]);
+    /**
+     * The comparison ghost: the previous build, drawn through this one.
+     *
+     * Built by exactly the same call the real model is, because a ghost made
+     * any other way would be a second builder to keep honest — and a
+     * comparison you cannot trust is worse than none. Everything that makes it
+     * a ghost rather than a model is done afterwards, to clones of its own
+     * materials: transparent, no depth writing so the solid model in front of
+     * it still sorts correctly, and a cool tint that cannot be mistaken for
+     * the accent the studio uses for what is selected.
+     *
+     * It is added to the scene and never to `v.model`, which is the whole
+     * trick: the picker raycasts `v.model`, framing and the statistics measure
+     * `v.model`, and isolation walks `v.model`. None of them can see this, so
+     * none of them needed a special case for it.
+     */
+    const ghostSource = props.ghost ?? null;
+    useEffect(() => {
+      const v = runtime.current;
+      const client = builder.current;
+      if (!v || !client) return;
+      if (v.ghost) {
+        v.scene.remove(v.ghost);
+        skeletonOf(v.ghost)?.dispose();
+        disposeScene(v.ghost);
+        v.ghost = null;
       }
-      const rigged = props.spec
-        ? Boolean(props.spec.rig || props.spec.joints?.length)
-        : (props.recipe.kind === 'creature' ||
-            props.recipe.kind === 'person') &&
-          props.recipe.rigged;
-      v.scene.add(model);
-      v.model = model;
-      if (v.mixer) {
-        v.mixer.stopAllAction();
-        if (old) v.mixer.uncacheRoot(old);
+      if (!ghostSource) {
+        client.cancel('ghost');
+        return;
       }
-      if (v.helper) {
-        v.scene.remove(v.helper);
-        v.helper.dispose();
-        v.helper = null;
-      }
-      v.mixer = null;
-      v.action = null;
-      if (rigged) {
-        v.mixer = new T.AnimationMixer(model);
-        // Through `pose`, so a rebuild that follows a bone edit does not start
-        // the clip up again under the handle that is being placed.
-        v.pose();
-        v.helper = new T.SkeletonHelper(model);
-        v.helper.visible = live.current.skeleton;
-        (v.helper.material as T.LineBasicMaterial).depthTest = false;
-        v.helper.renderOrder = 100;
-        v.scene.add(v.helper);
-      }
-      if (old) {
-        v.scene.remove(old);
-        skeletonOf(old)?.dispose();
-        disposeScene(old);
-      }
-      const previous = old?.userData.recipe ?? old?.userData.spec;
-      const next = props.spec ?? props.recipe;
-      // Recipes and specs sit at wildly different sizes, so switching between
-      // them always deserves a refit even when the kind happens to match.
-      const swapped = Boolean(old?.userData.spec) !== Boolean(props.spec);
-      if (
-        !previous ||
-        swapped ||
-        previous.kind !== next.kind ||
-        previous.scale !== next.scale
-      )
-        v.fit();
-      model.traverse((o) => {
-        if (o instanceof T.Mesh)
-          (o.material as T.MeshStandardMaterial).wireframe =
-            live.current.wireframe;
-      });
-      // Handles are sized off the model, so a 4-metre swing and a 40-metre
-      // kaiju both get a grabbable pivot rather than a dot or a boulder.
-      const span = new T.Box3().setFromObject(model).getSize(new T.Vector3());
-      v.handleSize = Math.max(0.004, span.length() * 0.012);
-      v.rig();
-      // The hovered thing was meshes that have just been thrown away; measure
-      // it again on the ones that replaced them.
-      v.hint();
-      v.metrics = stats(model);
-      props.onStats(v.metrics);
-      // Reported from here because this is the only place that knows the asset
-      // really built: a timeline can have the names and the durations without
-      // rebuilding the clips, or importing three to ask.
-      live.current.onClips?.(
-        clipsOf(props.spec, props.recipe).map((clip) => ({
-          name: clip.name,
-          duration: clip.duration,
-        })),
+      // A spec and a recipe are told apart the way they are everywhere else in
+      // this studio: by whether there is a `parts` array.
+      const asSpec = Array.isArray((ghostSource as AssetSpec).parts)
+        ? (ghostSource as AssetSpec)
+        : null;
+      // Its own lane, so a ghost nobody has looked at yet never delays the
+      // model that is being edited.
+      client.build(
+        'ghost',
+        asSpec ? { spec: asSpec } : { recipe: ghostSource as Recipe },
+        {
+          // A previous build that no longer parses is not worth taking the
+          // viewport down for; the comparison simply has nothing to show.
+          onFailed: () => {},
+          onModel: (model) => {
+            const at = runtime.current;
+            if (!at) return;
+            model.name = 'Ghost';
+            const wire = Boolean(live.current.ghostWire);
+            model.traverse((o) => {
+              o.castShadow = false;
+              o.receiveShadow = false;
+              // Belt and braces: nothing raycasts the whole scene today, and
+              // this is what keeps that true for whatever is added next.
+              o.raycast = () => {};
+              if (!(o instanceof T.Mesh)) return;
+              const many = Array.isArray(o.material);
+              const worn = many
+                ? (o.material as T.Material[])
+                : [o.material as T.Material];
+              const made = worn.map((material) => {
+                const copy = (material as T.MeshStandardMaterial).clone();
+                copy.transparent = true;
+                copy.opacity = 0.25;
+                // Without this the ghost would punch holes in the model
+                // standing in front of it, wherever it was drawn first.
+                copy.depthWrite = false;
+                copy.wireframe = wire;
+                copy.color = new T.Color(GHOST_TINT);
+                if (copy.emissive) {
+                  copy.emissive = new T.Color(GHOST_TINT);
+                  copy.emissiveIntensity = 0.3;
+                }
+                return copy;
+              });
+              o.material = many ? made : made[0];
+              // Drawn before the solid model, so the transparency reads as
+              // "behind".
+              o.renderOrder = -1;
+            });
+            at.ghost = model as T.Group;
+            at.scene.add(model);
+            // Added straight to the scene, outside React: nothing else here
+            // will ask the idle loop for the frame that draws it.
+            at.wake();
+          },
+        },
       );
-    }, [props.recipe, props.spec, surfaceReady]);
+    }, [ghostSource]);
+    // Wireframe on the ghost alone: rebuilding it to change one boolean would
+    // throw away a few thousand triangles for a checkbox.
+    useEffect(() => {
+      const ghost = runtime.current?.ghost;
+      if (!ghost) return;
+      ghost.traverse((o) => {
+        if (!(o instanceof T.Mesh)) return;
+        for (const material of Array.isArray(o.material) ? o.material : [o.material])
+          (material as T.MeshStandardMaterial).wireframe = Boolean(props.ghostWire);
+      });
+    }, [props.ghostWire, ghostSource]);
     // Declared after the rebuild so it runs after it, and watching the same
     // inputs: the rebuild drops isolation to give the old meshes their
     // materials back, and this puts it on the meshes that replaced them.
@@ -1833,7 +2221,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
       // rebuild, or every edit made while isolated would yank the camera.
       if (isolated && !sameSelection(framed.current, isolated)) v.frame(isolated);
       framed.current = isolated;
-    }, [isolated, props.spec, props.recipe, surfaceReady]);
+    }, [isolated, built]);
     // Declared after the rebuild, so it runs after it: the gizmo re-attaches to
     // a proxy placed on the freshly built meshes every time the model changes.
     useEffect(() => {
@@ -1846,12 +2234,12 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
       // Redrawn here as well as on rebuild, because which handle is lit is a
       // function of the selection and nothing else changed.
       v.rig();
-    }, [props.selected, props.spec, props.recipe, surfaceReady, mode]);
+    }, [props.selected, built, mode]);
     // Declared after the rebuild for the same reason the gizmo effect is: the
     // box is measured off meshes that only exist once the model has been built.
     useEffect(() => {
       runtime.current?.hint();
-    }, [props.hover, props.selected, props.spec, props.recipe, surfaceReady]);
+    }, [props.hover, props.selected, built]);
     useEffect(() => {
       const v = runtime.current;
       if (!v) return;
@@ -1928,6 +2316,9 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           <p className="viewport-error" role="alert">
             {error}
           </p>
+        )}
+        {building && (
+          <BuildingChip since={building.since} phase={building.phase} />
         )}
         <div className="viewport-hint">
           {readout || snapHint ? (

@@ -436,6 +436,15 @@ export type Prim = {
   /** World-space endpoints for `limb`, which ignores `inverse`. */
   segment?: number[];
   box: T.Box3;
+  /**
+   * `box` grown by the blend's reach: the region this primitive can influence.
+   *
+   * Filled in by the sampler, which is the only thing that needs it, and kept
+   * here rather than in a parallel array because the hierarchical walk hands
+   * primitive lists down through several levels and would otherwise allocate a
+   * wrapper per level per block.
+   */
+  padded?: T.Box3;
   color: T.Color;
   rigPart?: string;
   specPath?: number[];

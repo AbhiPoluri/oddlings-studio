@@ -17,6 +17,7 @@ import type { AssetSpec } from '@/lib/asset-spec';
 import { clipsOf } from '@/lib/asset-joints';
 import { diffSpecs, sameSelection, type Selection } from '@/lib/spec-edit';
 import { BIND_POSE } from '@/components/timeline';
+import type { SpecRow } from '@/node/studio-api';
 
 /** Where the document on screen came from. Shown, and used to label builds. */
 export type Origin = 'agent' | 'human' | 'library' | 'blueprint' | 'import';
@@ -73,6 +74,25 @@ export type Overlays = {
   skeleton: boolean;
   pixel: boolean;
   rotate: boolean;
+  /** Draw the previous agent build behind this one, as a ghost. */
+  compare: boolean;
+};
+
+/**
+ * One line of passing news, bottom right.
+ *
+ * In the state rather than in a component because the things worth saying —
+ * a build landed, a spec appeared, a save failed — are noticed by hooks and
+ * effects scattered across the shell, and a ref-counted portal would be a
+ * second place for them to disagree with the status line. The id is supplied
+ * by the caller so the reducer stays a pure function of its arguments.
+ */
+export type Toast = {
+  id: string;
+  text: string;
+  tone: 'info' | 'good' | 'bad';
+  /** A spec path this offers to open, for news about a file you are not on. */
+  open?: string;
 };
 
 export type Playback = {
@@ -89,7 +109,7 @@ export type GizmoMode = 'translate' | 'rotate' | 'scale';
 export type Saved = { id: string; recipe: Recipe; thumbnail: string };
 
 export type LeftTab = 'projects' | 'outliner' | 'library';
-export type RightTab = 'properties' | 'checks' | 'asset' | 'json';
+export type RightTab = 'properties' | 'checks' | 'notes' | 'asset' | 'json';
 export type DockTab = 'timeline' | 'builds';
 /** Which modal is up. One at a time, because they are all full-attention. */
 export type Modal = 'blueprint' | 'url' | 'shortcuts' | null;
@@ -114,6 +134,16 @@ export type StudioState = {
   playback: Playback;
   follow: Follow;
   builds: BuildEntry[];
+  /**
+   * The `specs/` listing, polled once for the whole studio.
+   *
+   * Above the Projects panel because three other things read it: the empty
+   * state offers the most recent files, the thumbnail cache keys on a file's
+   * modification time, and the toast for a spec that has just appeared has to
+   * be noticed whether or not anybody is looking at the list.
+   */
+  specs: SpecRow[] | null;
+  toasts: Toast[];
   layout: Layout;
   library: Saved[];
   status: string;
@@ -135,6 +165,41 @@ export type StudioState = {
   busy: boolean;
   /** The WebAssembly decimator surface specs re-mesh through. */
   surfaceReady: boolean;
+  loading: Loading;
+  /**
+   * How the document on screen last changed.
+   *
+   * The viewport reads it to decide whether to wait before building. A slider
+   * being dragged produces an edit per frame and a surface spec takes a second
+   * to build, so those coalesce; a committed edit, an undo or a freshly loaded
+   * file is already one event and goes straight out.
+   */
+  lastEdit: EditKind;
+};
+
+export type EditKind = 'typed' | 'commit' | 'load';
+
+/**
+ * What the studio is waiting for, as data rather than as spinners.
+ *
+ * Two quite different waits, and conflating them is how a studio ends up
+ * showing "loading" over a document it already has. `boot` is the one-time
+ * start-up — the decimator, the worker, the pointer file, the first build —
+ * and it is over for good once a model has been drawn. `build` is the ordinary
+ * per-edit wait, during which the previous model is still on screen and still
+ * usable.
+ *
+ * The elapsed clock is deliberately absent: a chip that counts milliseconds
+ * keeps its own interval, because dispatching one of those ten times a second
+ * is the problem `clock.ts` exists to avoid.
+ */
+export type Loading = {
+  /** What start-up is doing, or null once the studio is usable. */
+  boot: string | null;
+  /** True once a model has been drawn; `bootStep` is ignored afterwards. */
+  booted: boolean;
+  /** The build in flight for the current document, if any. */
+  build: { id: number; since: number } | null;
 };
 
 export const DEFAULT_LAYOUT: Layout = {
@@ -174,6 +239,7 @@ export const initialState: StudioState = {
     skeleton: false,
     pixel: true,
     rotate: false,
+    compare: false,
   },
   playback: { clip: BIND_POSE, playing: false, time: 0, speed: 1, clips: [] },
   follow: {
@@ -185,6 +251,8 @@ export const initialState: StudioState = {
     etag: null,
   },
   builds: [],
+  specs: null,
+  toasts: [],
   layout: DEFAULT_LAYOUT,
   library: [],
   status: 'Waiting for a build.',
@@ -196,6 +264,8 @@ export const initialState: StudioState = {
   modal: null,
   busy: false,
   surfaceReady: false,
+  loading: { boot: 'starting', booted: false, build: null },
+  lastEdit: 'load',
 };
 
 export type StudioAction =
@@ -250,6 +320,10 @@ export type StudioAction =
   | { type: 'clips'; clips: { name: string; duration: number }[] }
   | { type: 'layout'; patch: Partial<Layout> }
   | { type: 'library'; items: Saved[] }
+  | { type: 'specs'; specs: SpecRow[] }
+  /** Say one thing, briefly. The id is the caller's, so this stays pure. */
+  | { type: 'toast'; toast: Toast }
+  | { type: 'untoast'; id: string }
   | { type: 'status'; text: string }
   | { type: 'leftTab'; tab: LeftTab }
   | { type: 'rightTab'; tab: RightTab }
@@ -257,7 +331,12 @@ export type StudioAction =
   | { type: 'palette'; open: boolean }
   | { type: 'modal'; modal: Modal }
   | { type: 'busy'; busy: boolean }
-  | { type: 'surfaceReady' };
+  | { type: 'surfaceReady' }
+  /** Name the start-up step in progress. Ignored once the studio has booted. */
+  | { type: 'bootStep'; step: string | null }
+  /** A build was asked for, or the one in flight landed or was superseded. */
+  | { type: 'building'; id: number; since: number }
+  | { type: 'built'; id: number };
 
 /** Undo depth. Long enough to walk back a session, short enough to hold. */
 const HISTORY = 60;
@@ -296,6 +375,7 @@ function openingClip(spec: AssetSpec | null): string {
 /** Everything a load resets, whichever door the document came through. */
 function loaded(doc: Doc, state: StudioState) {
   return {
+    lastEdit: 'load' as const,
     selection: null,
     hover: null,
     // An isolation names a path in the document that was on screen. Carrying it
@@ -440,11 +520,17 @@ export function reducer(
         ...autoTab(state, action.doc),
         follow: detached(state.follow),
         status: action.status ?? state.status,
+        lastEdit: 'commit',
       };
     }
 
     case 'live':
-      return { ...state, doc: action.doc, follow: detached(state.follow) };
+      return {
+        ...state,
+        doc: action.doc,
+        follow: detached(state.follow),
+        lastEdit: 'typed',
+      };
 
     case 'undo':
     case 'redo': {
@@ -459,6 +545,7 @@ export function reducer(
         doc: state.history[next],
         follow: detached(state.follow),
         status: action.type === 'undo' ? 'Previous edit restored.' : 'Edit restored.',
+        lastEdit: 'commit',
       };
     }
 
@@ -580,6 +667,22 @@ export function reducer(
     case 'library':
       return { ...state, library: action.items };
 
+    case 'specs':
+      return { ...state, specs: action.specs };
+
+    case 'toast':
+      // Four is as many as can be read before the first one goes; an agent
+      // writing a folder full of specs should not bury the screen.
+      return {
+        ...state,
+        toasts: [...state.toasts, action.toast].slice(-4),
+      };
+
+    case 'untoast':
+      return state.toasts.some((toast) => toast.id === action.id)
+        ? { ...state, toasts: state.toasts.filter((t) => t.id !== action.id) }
+        : state;
+
     case 'status':
       return { ...state, status: action.text };
 
@@ -608,6 +711,30 @@ export function reducer(
 
     case 'surfaceReady':
       return { ...state, surfaceReady: true };
+
+    case 'bootStep':
+      // Booting happens once. A later step — a second document, a reconnect —
+      // is ordinary work, and covering the studio for it would be a regression
+      // dressed as feedback.
+      if (state.loading.booted || state.loading.boot === action.step) return state;
+      return { ...state, loading: { ...state.loading, boot: action.step } };
+
+    case 'building':
+      return {
+        ...state,
+        loading: {
+          ...state.loading,
+          build: { id: action.id, since: action.since },
+        },
+      };
+
+    case 'built': {
+      // A build that is not the one in flight is a superseded one landing late;
+      // it must not clear the chip belonging to the request that replaced it.
+      const current = state.loading.build;
+      if (current && current.id !== action.id) return state;
+      return { ...state, loading: { boot: null, booted: true, build: null } };
+    }
   }
 }
 
@@ -629,6 +756,28 @@ export function changedPaths(state: StudioState): ReadonlySet<string> {
     at >= 0 ? state.builds[at - 1] : state.builds[state.builds.length - 1];
   if (!previous?.doc.spec) return NO_CHANGES;
   return diffSpecs(previous.doc.spec, spec).changed;
+}
+
+/**
+ * The build the Compare ghost draws: the agent build before this one.
+ *
+ * The same reading of "before this one" that `changedPaths` uses, for the same
+ * reason — when the document on screen is itself a logged build, the ghost is
+ * the build it replaced; once it has been edited away from that, the ghost is
+ * the newest build, so what you see behind your edit is what the agent wrote.
+ * Human saves are skipped: comparing against your own last save would ghost
+ * the thing you are looking at.
+ */
+export function ghostDoc(state: StudioState): Doc | null {
+  const at = state.builds.findIndex((entry) => entry.doc === state.doc);
+  const upto = at >= 0 ? at : state.builds.length;
+  for (let i = upto - 1; i >= 0; i--) {
+    const entry = state.builds[i];
+    if (entry.origin !== 'agent' || !entry.doc.spec) continue;
+    if (entry.doc === state.doc) continue;
+    return entry.doc;
+  }
+  return null;
 }
 
 /**
@@ -666,6 +815,11 @@ export function isDirty(state: StudioState): boolean {
 }
 
 export function canSave(state: StudioState): boolean {
+  // Not while a build is in flight. The spec is already written down, so this
+  // is not about correctness — it is that Save records the triangle count and
+  // the verdict of what was built, and the build that produced those numbers
+  // is the one being replaced.
+  if (state.loading.build) return false;
   if (!savePath(state)) return false;
   const last = state.builds[state.builds.length - 1];
   if (!last?.doc.spec) return true;

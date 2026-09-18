@@ -42,7 +42,19 @@ async function put(path: string, data: Uint8Array | string) {
  */
 export async function writeAsset(
   source: { recipe: Recipe } | { spec: AssetSpec },
-  options: { outDir: string; formats?: Format[] },
+  options: {
+    outDir: string;
+    formats?: Format[];
+    /**
+     * The file this was authored in, for the build history.
+     *
+     * Only the caller knows it: by the time a spec reaches here it is an
+     * object, and the exported `.spec.json` beside the model is a copy, not
+     * the file an agent is editing. Without this the history would point every
+     * build at its own output.
+     */
+    source?: string;
+  },
 ): Promise<WriteResult> {
   // Surface mode re-meshes through a WebAssembly decimator; load it before
   // any building starts so the synchronous builder never has to wait.
@@ -147,12 +159,18 @@ export async function writeAsset(
   }
 
   // Point the studio at this build, so an agent's work shows up in the
-  // preview without anyone importing a file by hand.
-  await markActive(
-    name,
-    isRecipe ? source.recipe : source.spec,
-    files.find((f) => f.endsWith('.json')) ?? name,
-  );
+  // preview without anyone importing a file by hand, and record it in the
+  // history so the studio can show how the asset got here.
+  const written = files.find((f) => f.endsWith('.json')) ?? name;
+  await markActive(name, isRecipe ? source.recipe : source.spec, written, {
+    tris: measured.triangles,
+    meshes: measured.meshes,
+    bones: measured.bones,
+    ok: audit.ok,
+    errors: audit.findings.filter((f) => f.severity === 'error').length,
+    warnings: audit.findings.filter((f) => f.severity === 'warn').length,
+    source: options.source ?? written,
+  });
 
   return { name, files, stats: measured, audit };
 }

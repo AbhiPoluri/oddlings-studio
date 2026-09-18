@@ -1,5 +1,6 @@
 'use client';
 import { Pause, Play } from 'lucide-react';
+import { useClock } from '@/components/studio/clock';
 import { Button } from '@/components/ui/button';
 import {
   NativeSelect,
@@ -11,10 +12,17 @@ import {
  *
  * Time is shared with the viewport in one direction at a time, which is the
  * only arrangement that does not fight itself: while `playing`, the viewport
- * advances its mixer and reports `time` up here, and this strip is a readout;
- * while paused, `time` is authoritative and the viewport seeks to it exactly.
- * Scrubbing therefore pauses first — otherwise the next animation frame would
- * overwrite the position the pointer just asked for.
+ * advances its mixer and reports where it has got to, and this strip is a
+ * readout; while paused, `time` is authoritative and the viewport seeks to it
+ * exactly. Scrubbing therefore pauses first — otherwise the next animation
+ * frame would overwrite the position the pointer just asked for.
+ *
+ * The running reading comes from `clock.ts` rather than from the store, and it
+ * is read *here* rather than passed in. That is the whole point: this strip is
+ * the only thing on screen that changes while a clip plays, so it is the only
+ * thing that should re-render while one does. Handing it down as a prop would
+ * put the subscription in the shell and commit every panel ten times a second
+ * to move one number.
  */
 
 const SPEEDS = [0.25, 0.5, 1, 2];
@@ -48,6 +56,8 @@ export function Timeline({
   const clip = clips.find((c) => c.name === current);
   const duration = clip?.duration ?? 0;
   const bind = !clip;
+  const live = useClock();
+  const at = playing ? live : time;
 
   return (
     <div className="timeline">
@@ -93,7 +103,7 @@ export function Timeline({
         // A sixtieth of a second: finer than that is below one rendered frame,
         // and coarser makes a short clip unscrubbable.
         step={1 / 60}
-        value={Math.min(time, duration)}
+        value={Math.min(at, duration)}
         disabled={bind}
         onChange={(event) => {
           onPlaying(false);
@@ -101,7 +111,7 @@ export function Timeline({
         }}
       />
       <span className="timeline-readout">
-        {time.toFixed(2)} / {duration.toFixed(2)} s
+        {at.toFixed(2)} / {duration.toFixed(2)} s
       </span>
       <NativeSelect
         size="sm"

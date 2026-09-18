@@ -1,0 +1,1003 @@
+{
+  "version": 1,
+  "name": "Old Hindu Temple",
+  "kind": "environment",
+  "seed": 108,
+  "scale": 1,
+  "color": "#c9a27a",
+  "parts": [
+    {
+      "name": "plinth-lower",
+      "shape": "box",
+      "size": [
+        18,
+        1.2,
+        26
+      ],
+      "position": [
+        0,
+        0.6,
+        1
+      ],
+      "color": "#a8825d",
+      "bevel": 0.05
+    },
+    {
+      "name": "plinth-band",
+      "shape": "box",
+      "size": [
+        18.4,
+        0.35,
+        26.4
+      ],
+      "position": [
+        0,
+        1.05,
+        1
+      ],
+      "color": "#8e5b3e"
+    },
+    {
+      "name": "plinth-upper",
+      "shape": "box",
+      "size": [
+        15,
+        0.9,
+        22
+      ],
+      "position": [
+        0,
+        1.65,
+        1
+      ],
+      "color": "#c9a27a",
+      "bevel": 0.05
+    },
+    {
+      "name": "plinth-band-2",
+      "shape": "box",
+      "size": [
+        15.4,
+        0.3,
+        22.4
+      ],
+      "position": [
+        0,
+        1.95,
+        1
+      ],
+      "color": "#8e5b3e"
+    },
+    {
+      "name": "sanctum",
+      "shape": "box",
+      "size": [
+        6.4,
+        6.5,
+        6.4
+      ],
+      "position": [
+        0,
+        5.35,
+        -4
+      ],
+      "color": "#c9a27a",
+      "bevel": 0.06
+    },
+    {
+      "name": "ratha-back",
+      "shape": "box",
+      "size": [
+        2.6,
+        6.5,
+        0.5
+      ],
+      "position": [
+        0,
+        5.35,
+        -7.15
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "ratha-side",
+      "shape": "box",
+      "size": [
+        0.5,
+        6.5,
+        2.6
+      ],
+      "position": [
+        3.25,
+        5.35,
+        -4
+      ],
+      "color": "#a8825d",
+      "mirror": "x"
+    },
+    {
+      "name": "sanctum-cornice",
+      "shape": "box",
+      "size": [
+        7.0,
+        0.5,
+        7.0
+      ],
+      "position": [
+        0,
+        8.8,
+        -4
+      ],
+      "color": "#8e5b3e"
+    },
+    {
+      "name": "shikhara",
+      "shape": "lathe",
+      "size": [
+        8.2,
+        10.5,
+        8.2
+      ],
+      "position": [
+        0,
+        14.25,
+        -4
+      ],
+      "profile": [
+        [
+          1.0,
+          0
+        ],
+        [
+          0.98,
+          0.15
+        ],
+        [
+          0.93,
+          0.32
+        ],
+        [
+          0.85,
+          0.5
+        ],
+        [
+          0.72,
+          0.68
+        ],
+        [
+          0.55,
+          0.84
+        ],
+        [
+          0.33,
+          0.95
+        ],
+        [
+          0.18,
+          1.0
+        ]
+      ],
+      "color": "#c9a27a",
+      "detail": 4,
+      "rotation": [
+        0,
+        45,
+        0
+      ]
+    },
+    {
+      "name": "lata",
+      "shape": "box",
+      "size": [
+        1.8,
+        5.6,
+        0.6
+      ],
+      "position": [
+        0,
+        11.9,
+        -0.35
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "lata-back",
+      "shape": "box",
+      "size": [
+        1.8,
+        5.6,
+        0.6
+      ],
+      "position": [
+        0,
+        11.9,
+        -7.65
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "lata-side",
+      "shape": "box",
+      "size": [
+        0.6,
+        5.6,
+        1.8
+      ],
+      "position": [
+        3.65,
+        11.9,
+        -4
+      ],
+      "color": "#a8825d",
+      "mirror": "x"
+    },
+    {
+      "name": "urushringa1",
+      "shape": "lathe",
+      "size": [
+        2.6,
+        4.0,
+        2.6
+      ],
+      "position": [
+        2.6,
+        10.8,
+        -1.4
+      ],
+      "profile": [
+        [
+          1.0,
+          0
+        ],
+        [
+          0.98,
+          0.15
+        ],
+        [
+          0.93,
+          0.32
+        ],
+        [
+          0.85,
+          0.5
+        ],
+        [
+          0.72,
+          0.68
+        ],
+        [
+          0.55,
+          0.84
+        ],
+        [
+          0.33,
+          0.95
+        ],
+        [
+          0.18,
+          1.0
+        ]
+      ],
+      "color": "#c9a27a",
+      "detail": 4,
+      "rotation": [
+        0,
+        45,
+        0
+      ]
+    },
+    {
+      "name": "urushringa2",
+      "shape": "lathe",
+      "size": [
+        2.6,
+        4.0,
+        2.6
+      ],
+      "position": [
+        -2.6,
+        10.8,
+        -1.4
+      ],
+      "profile": [
+        [
+          1.0,
+          0
+        ],
+        [
+          0.98,
+          0.15
+        ],
+        [
+          0.93,
+          0.32
+        ],
+        [
+          0.85,
+          0.5
+        ],
+        [
+          0.72,
+          0.68
+        ],
+        [
+          0.55,
+          0.84
+        ],
+        [
+          0.33,
+          0.95
+        ],
+        [
+          0.18,
+          1.0
+        ]
+      ],
+      "color": "#c9a27a",
+      "detail": 4,
+      "rotation": [
+        0,
+        45,
+        0
+      ]
+    },
+    {
+      "name": "urushringa3",
+      "shape": "lathe",
+      "size": [
+        2.6,
+        4.0,
+        2.6
+      ],
+      "position": [
+        2.6,
+        10.8,
+        -6.6
+      ],
+      "profile": [
+        [
+          1.0,
+          0
+        ],
+        [
+          0.98,
+          0.15
+        ],
+        [
+          0.93,
+          0.32
+        ],
+        [
+          0.85,
+          0.5
+        ],
+        [
+          0.72,
+          0.68
+        ],
+        [
+          0.55,
+          0.84
+        ],
+        [
+          0.33,
+          0.95
+        ],
+        [
+          0.18,
+          1.0
+        ]
+      ],
+      "color": "#c9a27a",
+      "detail": 4,
+      "rotation": [
+        0,
+        45,
+        0
+      ]
+    },
+    {
+      "name": "urushringa4",
+      "shape": "lathe",
+      "size": [
+        2.6,
+        4.0,
+        2.6
+      ],
+      "position": [
+        -2.6,
+        10.8,
+        -6.6
+      ],
+      "profile": [
+        [
+          1.0,
+          0
+        ],
+        [
+          0.98,
+          0.15
+        ],
+        [
+          0.93,
+          0.32
+        ],
+        [
+          0.85,
+          0.5
+        ],
+        [
+          0.72,
+          0.68
+        ],
+        [
+          0.55,
+          0.84
+        ],
+        [
+          0.33,
+          0.95
+        ],
+        [
+          0.18,
+          1.0
+        ]
+      ],
+      "color": "#c9a27a",
+      "detail": 4,
+      "rotation": [
+        0,
+        45,
+        0
+      ]
+    },
+    {
+      "name": "amalaka",
+      "shape": "cylinder",
+      "size": [
+        3.0,
+        0.7,
+        3.0
+      ],
+      "position": [
+        0,
+        19.85,
+        -4
+      ],
+      "color": "#a8825d",
+      "detail": 16
+    },
+    {
+      "name": "amalaka-rib",
+      "shape": "box",
+      "size": [
+        0.35,
+        0.75,
+        0.5
+      ],
+      "position": [
+        0,
+        19.85,
+        -4
+      ],
+      "color": "#8e5b3e",
+      "repeat": {
+        "count": 16,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 1.45,
+        "arc": 360
+      }
+    },
+    {
+      "name": "kalasha",
+      "shape": "lathe",
+      "size": [
+        1.3,
+        1.9,
+        1.3
+      ],
+      "position": [
+        0,
+        21.150000000000002,
+        -4
+      ],
+      "profile": [
+        [
+          0.25,
+          0
+        ],
+        [
+          0.6,
+          0.2
+        ],
+        [
+          0.65,
+          0.45
+        ],
+        [
+          0.35,
+          0.7
+        ],
+        [
+          0.2,
+          0.85
+        ],
+        [
+          0.45,
+          1.0
+        ]
+      ],
+      "color": "#d4a83a",
+      "detail": 12
+    },
+    {
+      "name": "mandapa-floor",
+      "shape": "box",
+      "size": [
+        9.5,
+        0.6,
+        9.5
+      ],
+      "position": [
+        0,
+        2.4,
+        4
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "pillar",
+      "shape": "box",
+      "size": [
+        0.7,
+        4.6,
+        0.7
+      ],
+      "position": [
+        3.6,
+        5.0,
+        0.4
+      ],
+      "color": "#c9a27a",
+      "bevel": 0.05,
+      "mirror": "x",
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          3.6
+        ]
+      }
+    },
+    {
+      "name": "pillar-capital",
+      "shape": "box",
+      "size": [
+        1.1,
+        0.4,
+        1.1
+      ],
+      "position": [
+        3.6,
+        7.4,
+        0.4
+      ],
+      "color": "#8e5b3e",
+      "mirror": "x",
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          3.6
+        ]
+      }
+    },
+    {
+      "name": "pillar-mid",
+      "shape": "box",
+      "size": [
+        0.7,
+        4.6,
+        0.7
+      ],
+      "position": [
+        0,
+        5.0,
+        0.4
+      ],
+      "color": "#c9a27a",
+      "bevel": 0.05,
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          7.2
+        ]
+      }
+    },
+    {
+      "name": "capital-mid",
+      "shape": "box",
+      "size": [
+        1.1,
+        0.4,
+        1.1
+      ],
+      "position": [
+        0,
+        7.4,
+        0.4
+      ],
+      "color": "#8e5b3e",
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0,
+          0,
+          7.2
+        ]
+      }
+    },
+    {
+      "name": "mandapa-entablature",
+      "shape": "box",
+      "size": [
+        9.8,
+        0.9,
+        9.8
+      ],
+      "position": [
+        0,
+        8.05,
+        4
+      ],
+      "color": "#c9a27a",
+      "bevel": 0.05
+    },
+    {
+      "name": "mandapa-cornice",
+      "shape": "box",
+      "size": [
+        10.4,
+        0.35,
+        10.4
+      ],
+      "position": [
+        0,
+        8.65,
+        4
+      ],
+      "color": "#8e5b3e"
+    },
+    {
+      "name": "roof-tier1",
+      "shape": "cylinder",
+      "size": [
+        9.0,
+        1.4,
+        9.0
+      ],
+      "position": [
+        0,
+        9.5,
+        4
+      ],
+      "color": "#c9a27a",
+      "detail": 4,
+      "taper": 0.72,
+      "rotation": [
+        0,
+        45,
+        0
+      ]
+    },
+    {
+      "name": "roof-tier2",
+      "shape": "cylinder",
+      "size": [
+        6.6,
+        1.3,
+        6.6
+      ],
+      "position": [
+        0,
+        10.850000000000001,
+        4
+      ],
+      "color": "#c9a27a",
+      "detail": 4,
+      "taper": 0.72,
+      "rotation": [
+        0,
+        45,
+        0
+      ]
+    },
+    {
+      "name": "roof-tier3",
+      "shape": "cylinder",
+      "size": [
+        4.2,
+        1.2,
+        4.2
+      ],
+      "position": [
+        0,
+        12.1,
+        4
+      ],
+      "color": "#c9a27a",
+      "detail": 4,
+      "taper": 0.72,
+      "rotation": [
+        0,
+        45,
+        0
+      ]
+    },
+    {
+      "name": "mandapa-kalasha",
+      "shape": "lathe",
+      "size": [
+        1.0,
+        1.4,
+        1.0
+      ],
+      "position": [
+        0,
+        13.4,
+        4
+      ],
+      "profile": [
+        [
+          0.2,
+          0
+        ],
+        [
+          0.45,
+          0.2
+        ],
+        [
+          0.5,
+          0.45
+        ],
+        [
+          0.28,
+          0.7
+        ],
+        [
+          0.15,
+          0.85
+        ],
+        [
+          0.35,
+          1.0
+        ]
+      ],
+      "color": "#d4a83a",
+      "detail": 12
+    },
+    {
+      "name": "porch-floor",
+      "shape": "box",
+      "size": [
+        5.5,
+        0.6,
+        3.6
+      ],
+      "position": [
+        0,
+        2.4,
+        10.3
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "porch-pillar",
+      "shape": "box",
+      "size": [
+        0.6,
+        4.2,
+        0.6
+      ],
+      "position": [
+        2.1,
+        4.800000000000001,
+        10.6
+      ],
+      "color": "#c9a27a",
+      "bevel": 0.04,
+      "mirror": "x"
+    },
+    {
+      "name": "porch-lintel",
+      "shape": "box",
+      "size": [
+        5.6,
+        0.7,
+        1.2
+      ],
+      "position": [
+        0,
+        7.15,
+        10.6
+      ],
+      "color": "#c9a27a"
+    },
+    {
+      "name": "porch-roof",
+      "shape": "box",
+      "size": [
+        6.2,
+        0.5,
+        3.8
+      ],
+      "position": [
+        0,
+        7.75,
+        10.3
+      ],
+      "color": "#8e5b3e"
+    },
+    {
+      "name": "step1",
+      "shape": "box",
+      "size": [
+        5.0,
+        0.5,
+        0.9
+      ],
+      "position": [
+        0,
+        0.25,
+        13.2
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "step2",
+      "shape": "box",
+      "size": [
+        5.0,
+        0.5,
+        0.9
+      ],
+      "position": [
+        0,
+        0.75,
+        12.5
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "step3",
+      "shape": "box",
+      "size": [
+        5.0,
+        0.5,
+        0.9
+      ],
+      "position": [
+        0,
+        1.25,
+        11.799999999999999
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "step4",
+      "shape": "box",
+      "size": [
+        5.0,
+        0.5,
+        0.9
+      ],
+      "position": [
+        0,
+        1.75,
+        11.1
+      ],
+      "color": "#a8825d"
+    },
+    {
+      "name": "dhwaja",
+      "shape": "cylinder",
+      "size": [
+        0.35,
+        9.0,
+        0.35
+      ],
+      "position": [
+        4.6,
+        6.6,
+        12.2
+      ],
+      "color": "#d4a83a",
+      "detail": 8
+    },
+    {
+      "name": "dhwaja-base",
+      "shape": "box",
+      "size": [
+        1.2,
+        0.9,
+        1.2
+      ],
+      "position": [
+        4.6,
+        1.65,
+        12.2
+      ],
+      "color": "#a8825d",
+      "bevel": 0.05
+    },
+    {
+      "name": "doorway",
+      "shape": "box",
+      "size": [
+        1.6,
+        3.0,
+        0.3
+      ],
+      "position": [
+        0,
+        3.6,
+        -0.7
+      ],
+      "color": "#6e5238"
+    },
+    {
+      "name": "door-frame",
+      "shape": "box",
+      "size": [
+        2.2,
+        3.6,
+        0.35
+      ],
+      "position": [
+        0,
+        3.9000000000000004,
+        -0.72
+      ],
+      "color": "#8e5b3e"
+    },
+    {
+      "name": "doorway-open",
+      "shape": "box",
+      "size": [
+        1.6,
+        3.0,
+        0.36
+      ],
+      "position": [
+        0,
+        3.6,
+        -0.72
+      ],
+      "color": "#6e5238"
+    },
+    {
+      "name": "ratha-front",
+      "shape": "box",
+      "size": [
+        2.6,
+        6.5,
+        0.5
+      ],
+      "position": [
+        0,
+        5.35,
+        -0.85
+      ],
+      "color": "#a8825d"
+    }
+  ]
+}

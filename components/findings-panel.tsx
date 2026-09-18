@@ -1,6 +1,7 @@
 'use client';
-import type { Audit, Severity } from '@/lib/asset-audit';
-import { pathKey } from '@/lib/spec-edit';
+import type { Audit, Finding, Severity } from '@/lib/asset-audit';
+import { pathKey, type Path } from '@/lib/spec-edit';
+import { describeHint, type Hint, type Hinted } from './studio/hints';
 
 /**
  * What the checks found, as a place to work from rather than a report to read.
@@ -9,7 +10,15 @@ import { pathKey } from '@/lib/spec-edit';
  * the loop is click, look, fix, re-check. A list you cannot click is a list that
  * gets skimmed once — which is the failure `asset-audit` designs against from
  * the other end, by refusing to report anything not worth acting on.
+ *
+ * A finding that knows the fix goes one further and offers it. `hint` is
+ * optional at both ends: the audit adds it to the checks where it can measure
+ * the answer, and this reads it through a widened type rather than requiring
+ * it, so a finding without one is exactly the row it always was.
  */
+
+/** A finding that may carry a suggested fix, whether or not the audit ships one. */
+type MaybeHinted = Finding & { hint?: Hint };
 
 const MARK: Record<Severity, string> = { error: '✗', warn: '!', info: '·' };
 const HEADING: Record<Severity, string> = {
@@ -27,6 +36,7 @@ export function FindingsPanel({
   labels,
   onSelectPart,
   onFrame,
+  onApplyHint,
 }: {
   /** Null while there is no spec to check — the panel says so rather than lying. */
   audit: Audit | null;
@@ -35,6 +45,11 @@ export function FindingsPanel({
   onSelectPart?: (path: number[]) => void;
   /** Called with the same path, so one click both selects and frames. */
   onFrame?: (path: number[]) => void;
+  /**
+   * Perform a finding's suggested fix, as one undoable edit. Without this the
+   * hint is still described — knowing the number is worth something on its own.
+   */
+  onApplyHint?: (path: Path, finding: Hinted) => void;
 }) {
   if (!audit)
     return (
@@ -79,25 +94,47 @@ export function FindingsPanel({
               const label = finding.part
                 ? (labels?.get(pathKey(finding.part)) ?? pathKey(finding.part))
                 : null;
+              const hint = (finding as MaybeHinted).hint;
+              const said = hint ? describeHint(finding as Hinted) : '';
               return (
-                <button
-                  key={`${finding.code}-${index}`}
-                  type="button"
-                  className={`findings-row audit-${finding.severity}`}
-                  data-code={finding.code}
-                  disabled={!finding.part}
-                  onClick={() => {
-                    if (!finding.part) return;
-                    onSelectPart?.(finding.part);
-                    onFrame?.(finding.part);
-                  }}
-                >
-                  <i className="findings-mark" aria-hidden="true">
-                    {MARK[finding.severity]}
-                  </i>
-                  <span className="findings-message">{finding.message}</span>
-                  {label && <span className="findings-part">{label}</span>}
-                </button>
+                <div className="findings-item" key={`${finding.code}-${index}`}>
+                  <button
+                    type="button"
+                    className={`findings-row audit-${finding.severity}`}
+                    data-code={finding.code}
+                    disabled={!finding.part}
+                    onClick={() => {
+                      if (!finding.part) return;
+                      onSelectPart?.(finding.part);
+                      onFrame?.(finding.part);
+                    }}
+                  >
+                    <i className="findings-mark" aria-hidden="true">
+                      {MARK[finding.severity]}
+                    </i>
+                    <span className="findings-message">{finding.message}</span>
+                    {label && <span className="findings-part">{label}</span>}
+                  </button>
+                  {/* A sibling of the row rather than a child of it: a button
+                      inside a button is markup no browser agrees about. */}
+                  {said && (
+                    <div className="findings-hint" data-code={finding.code}>
+                      <span className="findings-fix">{said}</span>
+                      <button
+                        type="button"
+                        className="bar-button findings-apply"
+                        disabled={!finding.part || !onApplyHint}
+                        title="Make this change, as one undo step"
+                        onClick={() =>
+                          finding.part &&
+                          onApplyHint?.(finding.part, finding as Hinted)
+                        }
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
         </div>

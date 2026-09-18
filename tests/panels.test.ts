@@ -348,6 +348,30 @@ describe('Timeline', () => {
   ];
 
   test('reads the time out against the current clip length', () => {
+    // Paused, because paused is when `time` is the authority. While a clip
+    // runs the readout follows `clock.ts` instead, which is the whole reason
+    // the shell no longer re-renders ten times a second — and which a server
+    // render cannot observe, since a clip has not started running during one.
+    const html = renderToStaticMarkup(
+      h(Timeline, {
+        clips,
+        current: 'Swing',
+        playing: false,
+        time: 1.234,
+        speed: 1,
+        onClip: noop,
+        onPlaying: noop,
+        onTime: noop,
+        onSpeed: noop,
+      }),
+    );
+    expect(html).toContain('1.23 / 3.20 s');
+    expect(html).toContain('Bind pose');
+    expect(html).toContain('max="3.2"');
+    expect(html).not.toMatch(/<input[^>]*type="range"[^>]*disabled/);
+  });
+
+  test('a running clip reads the playhead, not the last seek', () => {
     const html = renderToStaticMarkup(
       h(Timeline, {
         clips,
@@ -361,10 +385,10 @@ describe('Timeline', () => {
         onSpeed: noop,
       }),
     );
-    expect(html).toContain('1.23 / 3.20 s');
-    expect(html).toContain('Bind pose');
-    expect(html).toContain('max="3.2"');
-    expect(html).not.toMatch(/<input[^>]*type="range"[^>]*disabled/);
+    // The seek is stale the moment the clip starts moving, and showing it
+    // would put a frozen number beside a moving model.
+    expect(html).not.toContain('1.23 / 3.20 s');
+    expect(html).toContain('0.00 / 3.20 s');
   });
 
   test('disables the scrubber on the bind pose, which has no length', () => {
@@ -470,5 +494,86 @@ describe('diffSpecs', () => {
     expect([...diff.added]).toEqual(['1.0']);
     // The parent gained a child and nothing else, so it is not itself changed.
     expect([...diff.changed]).toEqual([]);
+  });
+});
+
+describe('Outliner note badges', () => {
+  test('marks only the rows a note is open on, with the count', () => {
+    const html = renderToStaticMarkup(
+      h(Outliner, {
+        spec: swing,
+        selected: null,
+        onSelect: noop,
+        notes: new Map([
+          ['11.0', 2],
+          ['9', 1],
+        ]),
+      }),
+    );
+    const marked = buttons(html).filter((a) => 'data-notes' in a);
+    expect(marked.map((a) => a['data-path']).sort()).toEqual(['11.0', '9']);
+    expect(marked.find((a) => a['data-path'] === '11.0')!['data-notes']).toBe('2');
+    // The badge is inside the row it belongs to, not floating beside it.
+    expect(row(html, 'data-path', '11.0')).toContain('✎2');
+    expect(row(html, 'data-path', '11.1')).not.toContain('✎');
+  });
+
+  test('a tree given no notes is exactly the tree it always was', () => {
+    const plain = renderToStaticMarkup(
+      h(Outliner, { spec: swing, selected: null, onSelect: noop }),
+    );
+    const empty = renderToStaticMarkup(
+      h(Outliner, { spec: swing, selected: null, onSelect: noop, notes: new Map() }),
+    );
+    expect(empty).toBe(plain);
+    expect(plain).not.toContain('data-notes');
+  });
+});
+
+describe('FindingsPanel fix hints', () => {
+  /** A finding of the shape the audit produces once it can measure a fix. */
+  const floating = {
+    severity: 'error' as const,
+    code: 'detached-part',
+    message: 'The lantern floats 3 cm clear of the hook.',
+    part: [1],
+    hint: { move: [0, -0.03, 0] as [number, number, number], toward: 'hook' },
+  };
+
+  test('says the fix in words and offers to make it', () => {
+    const html = renderToStaticMarkup(
+      h(FindingsPanel, {
+        audit: { ok: false, findings: [floating] },
+        onApplyHint: noop,
+      }),
+    );
+    expect(html).toContain('move [0, −0.03, 0] toward hook');
+    const apply = buttons(html).find((a) => a.class?.includes('findings-apply'));
+    expect(apply).toBeDefined();
+    expect(apply).not.toHaveProperty('disabled');
+  });
+
+  test('a finding with no hint is the row it always was', () => {
+    const html = renderToStaticMarkup(
+      h(FindingsPanel, {
+        audit: {
+          ok: false,
+          findings: [{ severity: 'error', code: 'detached-part', message: 'x', part: [1] }],
+        },
+        onApplyHint: noop,
+      }),
+    );
+    expect(html).not.toContain('findings-hint');
+    expect(html).not.toContain('Apply');
+  });
+
+  test('nothing to apply the fix with means nothing to press', () => {
+    const html = renderToStaticMarkup(
+      h(FindingsPanel, { audit: { ok: false, findings: [floating] } }),
+    );
+    expect(html).toContain('findings-hint');
+    expect(
+      buttons(html).find((a) => a.class?.includes('findings-apply')),
+    ).toHaveProperty('disabled');
   });
 });

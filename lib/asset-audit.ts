@@ -1,5 +1,7 @@
 import * as T from 'three';
 import { AUTO_WEIGHT, autoBone } from './asset-rig';
+import { buildSpec, type AssetSpec } from './asset-spec';
+import { disposeScene } from './three-world';
 
 /**
  * Geometry checks that run on a finished model.
@@ -17,6 +19,36 @@ import { AUTO_WEIGHT, autoBone } from './asset-rig';
 
 export type Severity = 'error' | 'warn' | 'info';
 
+/**
+ * The edit that would clear a finding, as numbers rather than advice.
+ *
+ * A message can say a part is floating; only a vector says which way and how
+ * far. Working that out by hand is what agents spend their iterations on —
+ * they write a throwaway script, measure two boxes, guess an axis, rebuild,
+ * and guess again. Every field here is in SPEC units, before `spec.scale`, so
+ * it can be added to an authored number without conversion.
+ */
+export type Hint = {
+  /**
+   * Translation to add to the part's `position`, in model space.
+   *
+   * Model space, not parent space: a top-level part takes it as written, and a
+   * child of a ROTATED parent needs it rotated into that parent's frame first.
+   * Most parts have an unrotated parent, so most of the time it is the former.
+   */
+  move?: [number, number, number];
+  /**
+   * A value to raise a setting to. Only `detached-shell` carries it, where it
+   * is the `surface.blend` that would close the gap — blend fuses parts up to
+   * half its own width, so it is twice the measured gap. The gap itself is on
+   * the finding's `threshold`, in the same spec units, so neither number has
+   * to be recovered from the other.
+   */
+  grow?: number;
+  /** The part the fix is measured against: what to move toward, or fuse with. */
+  toward?: string;
+};
+
 export type Finding = {
   severity: Severity;
   /** Stable machine-readable id, e.g. `detached-part`. */
@@ -26,6 +58,8 @@ export type Finding = {
   part?: number[];
   value?: number;
   threshold?: number;
+  /** How to fix it, in numbers. See `Hint`. Absent when nothing can be said. */
+  hint?: Hint;
 };
 
 export type Audit = {
@@ -39,9 +73,9 @@ export type Audit = {
  * cap only bites on dense geometry, where a subset tells "touching" from
  * "floating" just as well.
  */
-const MESH_SAMPLES = 140;
+export const MESH_SAMPLES = 140;
 
-type Piece = {
+export type Piece = {
   /** One mesh — one copy of an authored part. */
   id: number;
   /** The authored part it came from; copies of one part share this. */
@@ -64,8 +98,12 @@ type Piece = {
  * the surfaces cross. Measuring corner to corner therefore reports every part
  * of every model as detached. Face centroids and edge midpoints put samples
  * where the surfaces actually meet.
+ *
+ * Exported because `asset-measure` answers "how far apart are these two parts"
+ * with the same machinery. One sampler means the gap a measurement reports and
+ * the gap a finding was raised on cannot disagree.
  */
-function surfaceOf(mesh: T.Mesh) {
+export function sampleMesh(mesh: T.Mesh) {
   const position = mesh.geometry.attributes.position as T.BufferAttribute;
   const triangles = Math.floor(position.count / 3);
   // Points are sampled; faces never are. Distance and containment are both
@@ -102,8 +140,12 @@ function surfaceOf(mesh: T.Mesh) {
  * do not stand or fall together: four blossoms can sit in the foliage while
  * two hang in the air above it. Auditing the part as a whole would let the
  * attached copies vouch for the floating ones.
+ *
+ * Exported for `asset-measure`, which reports on the same units the findings
+ * are raised on — a report that grouped copies differently from the audit
+ * would send an agent looking for a part the audit never named.
  */
-function collect(model: T.Object3D) {
+export function collect(model: T.Object3D) {
   const pieces: Piece[] = [];
   let grouped = false;
   model.updateMatrixWorld(true);
@@ -111,7 +153,7 @@ function collect(model: T.Object3D) {
     if (!(o instanceof T.Mesh)) return;
     const path = o.userData.specPath as number[] | undefined;
     if (path) grouped = true;
-    const { points, faces } = surfaceOf(o);
+    const { points, faces } = sampleMesh(o);
     if (!points.length) return;
     const box = new T.Box3().setFromPoints(points);
     pieces.push({
@@ -187,11 +229,56 @@ function rigSamples(model: T.Object3D, scale: number) {
 }
 
 /** Shortest distance between two axis-aligned boxes; zero when they overlap. */
-function boxDistance(a: T.Box3, b: T.Box3) {
+export function boxDistance(a: T.Box3, b: T.Box3) {
   const dx = Math.max(0, a.min.x - b.max.x, b.min.x - a.max.x);
   const dy = Math.max(0, a.min.y - b.max.y, b.min.y - a.max.y);
   const dz = Math.max(0, a.min.z - b.max.z, b.min.z - a.max.z);
   return Math.hypot(dx, dy, dz);
+}
+
+/**
+ * The closest the two surfaces come, and the pair of points that achieves it.
+ *
+ * Measured from the sparser mesh's sample points to the denser mesh's faces,
+ * for the reason `touching` gives: sampling density must not decide the
+ * answer. `from` lies on `small`, `to` on `large`, so `to - from` is the
+ * translation that brings the first into contact with the second.
+ */
+export function nearestBetween(small: Piece, large: Piece) {
+  const closest = new T.Vector3();
+  let distance = Infinity;
+  const from = new T.Vector3();
+  const to = new T.Vector3();
+  for (const point of small.points)
+    for (const face of large.faces) {
+      face.closestPointToPoint(point, closest);
+      const d = closest.distanceTo(point);
+      if (d >= distance) continue;
+      distance = d;
+      from.copy(point);
+      to.copy(closest);
+    }
+  return { distance, from, to };
+}
+
+/**
+ * Is this point inside that closed surface? Ray-parity, as `enclosedBy`.
+ *
+ * The direction is deliberately not an axis. Every primitive here has
+ * axis-aligned faces somewhere, and a ray cast down an axis from a sampled
+ * corner runs along an edge of the other mesh, where a triangle intersection
+ * is a coin toss — which reads back as "this corner is deep inside the part
+ * next to it". An oblique direction misses every edge it is not aimed at.
+ */
+const PROBE = new T.Vector3(0.5601, 0.6215, 0.5477).normalize();
+
+export function insideFaces(point: T.Vector3, faces: T.Triangle[]) {
+  const ray = new T.Ray(point, PROBE.clone());
+  const hit = new T.Vector3();
+  let crossings = 0;
+  for (const face of faces)
+    if (ray.intersectTriangle(face.a, face.b, face.c, false, hit)) crossings++;
+  return crossings % 2 === 1;
 }
 
 /**
@@ -320,6 +407,206 @@ function componentsOf(pieces: Piece[]) {
   return [...groups.values()].sort((a, b) => b.length - a.length);
 }
 
+// --- fix hints ---------------------------------------------------------
+//
+// Everything below turns a finding into an edit. It runs only when a finding
+// has already been raised, so a clean model pays nothing for it.
+
+/**
+ * Four decimals, which is a tenth of a millimetre.
+ *
+ * Rounding has to be tight enough that applying the hint really does clear the
+ * finding: contact is judged against a tolerance of at least 2 mm, and the
+ * worst case here is 5e-5 per axis. Printing eight decimals of float noise
+ * would be worse than useless to the reader.
+ */
+function round4(n: number) {
+  return Number(n.toFixed(4));
+}
+
+function movement(delta: T.Vector3, scale: number): [number, number, number] {
+  return [
+    round4(delta.x / scale),
+    round4(delta.y / scale),
+    round4(delta.z / scale),
+  ];
+}
+
+/**
+ * The stray's shortest route back to the body, as a translation.
+ *
+ * Measured both ways round and the shorter kept, because the sampled side is
+ * the approximate one: a dense stray beside a two-triangle plate is best
+ * measured from the plate, and the reverse for a stray the size of a rivet.
+ */
+function routeTo(stray: Piece, body: Piece[]) {
+  let best: { delta: T.Vector3; distance: number; piece: Piece } | null = null;
+  // Nearest boxes first, so `best` collapses early and the box test below
+  // rejects almost every remaining candidate before any triangle is touched.
+  const ranked = body
+    .map((piece) => ({ piece, floor: boxDistance(stray.box, piece.box) }))
+    .sort((a, b) => a.floor - b.floor);
+  for (const { piece, floor } of ranked) {
+    if (best && floor > best.distance) break;
+    const out = nearestBetween(stray, piece);
+    const back = nearestBetween(piece, stray);
+    const [distance, delta] = out.distance <= back.distance
+      ? [out.distance, out.to.clone().sub(out.from)]
+      : [back.distance, back.from.clone().sub(back.to)];
+    if (!best || distance < best.distance) best = { delta, distance, piece };
+  }
+  return best;
+}
+
+/** World-space triangles of an indexed mesh — the fused surface, in practice. */
+function indexedFaces(mesh: T.Mesh, keep?: (a: number) => boolean) {
+  const position = mesh.geometry.attributes.position as T.BufferAttribute;
+  const index = mesh.geometry.index;
+  if (!index) return [];
+  const faces: T.Triangle[] = [];
+  const a = new T.Vector3(),
+    b = new T.Vector3(),
+    c = new T.Vector3();
+  for (let i = 0; i < index.count; i += 3) {
+    const ia = index.getX(i),
+      ib = index.getX(i + 1),
+      ic = index.getX(i + 2);
+    if (keep && !(keep(ia) && keep(ib) && keep(ic))) continue;
+    faces.push(
+      new T.Triangle(
+        a.fromBufferAttribute(position, ia).applyMatrix4(mesh.matrixWorld).clone(),
+        b.fromBufferAttribute(position, ib).applyMatrix4(mesh.matrixWorld).clone(),
+        c.fromBufferAttribute(position, ic).applyMatrix4(mesh.matrixWorld).clone(),
+      ),
+    );
+  }
+  return faces;
+}
+
+/** Closest point on a triangle soup, and how far it is. */
+function nearestOnFaces(point: T.Vector3, faces: T.Triangle[]) {
+  const closest = new T.Vector3();
+  const at = new T.Vector3();
+  let distance = Infinity;
+  for (const face of faces) {
+    face.closestPointToPoint(point, closest);
+    const d = closest.distanceTo(point);
+    if (d >= distance) continue;
+    distance = d;
+    at.copy(closest);
+  }
+  return { distance, at };
+}
+
+/**
+ * How far the part reaches from its own centre along `direction`.
+ *
+ * A buried part has to travel its own half-width plus the depth it is sunk to,
+ * and half-width is not half the bounding box: a plate pushed edge-on into a
+ * hull reaches barely a centimetre one way and twenty the other. Casting
+ * against the part's own faces measures the direction that matters.
+ */
+function reachAlong(piece: Piece, direction: T.Vector3) {
+  const ray = new T.Ray(piece.centre.clone(), direction);
+  const hit = new T.Vector3();
+  let far = 0;
+  for (const face of piece.faces)
+    if (ray.intersectTriangle(face.a, face.b, face.c, false, hit))
+      far = Math.max(far, hit.distanceTo(piece.centre));
+  return far;
+}
+
+type SurfaceOwners = {
+  index: Uint16Array;
+  paths: (number[] | undefined)[];
+};
+
+/**
+ * How far to push a buried part until it shows.
+ *
+ * The fused mesh is the only geometry a surface build leaves behind, and it
+ * has no record of where a part that owns none of it went. Rebuilding the same
+ * spec through the faceted backend puts the part's own box and faces back in
+ * hand — it costs one extra build, which is why nothing calls this unless a
+ * `no-surface` finding has already been raised.
+ *
+ * The push is the part's own reach along the outward normal, plus the depth it
+ * is sunk to, plus one grid cell of clearance: a part flush with its
+ * neighbour's surface still owns nothing, because every vertex there is a tie
+ * the neighbour wins. All distances are world-space until `movement` converts.
+ */
+function burialHints(
+  fused: T.Mesh,
+  wanted: number[][],
+  spec: AssetSpec,
+  scale: number,
+  voxel: number,
+  label: (key: string) => string,
+): Map<string, Hint> {
+  const hints = new Map<string, Hint>();
+  // Rigging only re-parents geometry it has already baked into model space, so
+  // dropping it changes nothing a box or a face would notice, and saves the
+  // skinning pass.
+  const faceted = buildSpec({
+    ...spec,
+    surface: undefined,
+    rig: undefined,
+    joints: undefined,
+  });
+  try {
+    const byKey = new Map<string, Piece>();
+    for (const piece of collect(faceted).pieces)
+      if (!byKey.has(piece.partKey)) byKey.set(piece.partKey, piece);
+    const faces = indexedFaces(fused);
+    if (!faces.length) return hints;
+    const owners = fused.geometry.userData.surfaceOwners as
+      | SurfaceOwners
+      | undefined;
+    const position = fused.geometry.attributes.position as T.BufferAttribute;
+    const vertex = new T.Vector3();
+    for (const path of wanted) {
+      const key = path.join('.');
+      const piece = byKey.get(key);
+      if (!piece) continue;
+      const near = nearestOnFaces(piece.centre, faces);
+      if (!Number.isFinite(near.distance) || near.distance < 1e-9) continue;
+      // The part is buried, so the closest point on the shell is outward from
+      // its centre by definition.
+      const out = near.at.clone().sub(piece.centre).normalize();
+      const depth = near.distance - reachAlong(piece, out);
+      // The neighbour to become proud of: the nearest surface vertex that
+      // belongs to some OTHER part. Another copy of this same part owning the
+      // vertex says nothing an author can act on.
+      let toward: string | undefined;
+      if (owners) {
+        let best = Infinity;
+        for (let i = 0; i < position.count; i++) {
+          const from = owners.paths[owners.index[i]];
+          if (!from || from.join('.') === key) continue;
+          const d = vertex
+            .fromBufferAttribute(position, i)
+            .applyMatrix4(fused.matrixWorld)
+            .distanceToSquared(near.at);
+          if (d >= best) continue;
+          best = d;
+          toward = label(from.join('.'));
+        }
+      }
+      const push = depth + voxel;
+      hints.set(key, {
+        // A negative push means the part already stands proud and was lost to
+        // decimation instead. Moving it further out would not bring it back,
+        // so say nothing rather than something wrong.
+        ...(push > 0 ? { move: movement(out.multiplyScalar(push), scale) } : {}),
+        ...(toward ? { toward } : {}),
+      });
+    }
+  } finally {
+    disposeScene(faceted);
+  }
+  return hints;
+}
+
 export type AuditOptions = {
   /** True when the model is rigged, which enables the weighting checks. */
   rigged?: boolean;
@@ -341,6 +628,11 @@ export function auditModel(
   const { pieces, grouped } = collect(model);
   const size = new T.Box3().setFromObject(model).getSize(new T.Vector3());
   const name = (key: string) => options.labels?.get(key) ?? key;
+  // Geometry is measured in world space, which carries the display scale;
+  // every hint is an edit to an authored number, which does not. One divisor,
+  // declared once, is the difference between a hint an agent can paste and a
+  // hint that moves a part twice as far as it should.
+  const scale = options.scale && options.scale > 0 ? options.scale : 1;
 
   if (!pieces.length) {
     findings.push({
@@ -378,7 +670,12 @@ export function auditModel(
       const total = new Map<string, number>();
       for (const piece of pieces)
         total.set(piece.partKey, (total.get(piece.partKey) ?? 0) + 1);
-      for (const [key, count] of stray)
+      for (const [key, count] of stray) {
+        // The route is measured from a copy that actually floats. Picking the
+        // first copy with this path would sometimes pick one already sitting
+        // in the body, and hand back a move of zero.
+        const adrift = strays.find((p) => p.partKey === key)!;
+        const route = routeTo(adrift, body);
         findings.push({
           severity: 'error',
           code: 'detached-part',
@@ -386,7 +683,16 @@ export function auditModel(
           value: count,
           threshold: total.get(key),
           message: `${count} of ${total.get(key)} "${name(key)}" ${count === 1 ? 'sits' : 'sit'} in mid-air, touching nothing. Move ${count === 1 ? 'it' : 'them'} into the body, or place the part against a surface instead of at a fixed radius.`,
+          ...(route
+            ? {
+                hint: {
+                  move: movement(route.delta, scale),
+                  toward: name(route.piece.partKey),
+                },
+              }
+            : {}),
         });
+      }
       findings.push({
         severity: 'info',
         code: 'components',
@@ -424,6 +730,19 @@ export function auditModel(
     const owners = object.geometry.userData.surfaceOwners as
       | { index: Uint16Array; paths: (number[] | undefined)[] }
       | undefined;
+    // The main shell as triangles, built once however many strays there are.
+    const inBody = new Uint8Array(
+      (object.geometry.attributes.position as T.BufferAttribute).count,
+    );
+    for (const vertex of shells[0]) inBody[vertex] = 1;
+    const bodyFaces = indexedFaces(object, (v) => inBody[v] === 1);
+    const vertexAt = (i: number) =>
+      new T.Vector3()
+        .fromBufferAttribute(
+          object.geometry.attributes.position as T.BufferAttribute,
+          i,
+        )
+        .applyMatrix4(object.matrixWorld);
     for (const shell of shells.slice(1)) {
       const parts = new Set<string>();
       let path: number[] | undefined;
@@ -437,12 +756,47 @@ export function auditModel(
       const made = parts.size
         ? ` It is made of ${[...parts].slice(0, 4).join(', ')}.`
         : '';
+      // How far the stray floats, and from what. Measured vertex-to-triangle
+      // so the answer is a real clearance rather than a bounding-box guess.
+      let gap = Infinity;
+      let landing: T.Vector3 | null = null;
+      const stride = Math.max(1, Math.ceil(shell.length / MESH_SAMPLES));
+      for (let i = 0; i < shell.length; i += stride) {
+        const near = nearestOnFaces(vertexAt(shell[i]), bodyFaces);
+        if (near.distance >= gap) continue;
+        gap = near.distance;
+        landing = near.at.clone();
+      }
+      let toward: string | undefined;
+      if (landing && owners) {
+        let best = Infinity;
+        for (const vertex of shells[0]) {
+          const d = vertexAt(vertex).distanceToSquared(landing);
+          if (d >= best) continue;
+          best = d;
+          const from = owners.paths[owners.index[vertex]];
+          toward = from ? name(from.join('.')) : undefined;
+        }
+      }
+      // `blend` closes a gap up to half its own width, so the blend that would
+      // fuse this shell is twice the clearance — but only inside the range the
+      // schema allows. Past that the parts have to move, not melt.
+      const clearance = Number.isFinite(gap) ? round4(gap / scale) : null;
+      const blend = clearance === null ? null : round4(clearance * 2);
+      const hint: Hint = {
+        ...(blend !== null && blend > 0 && blend <= 0.5 ? { grow: blend } : {}),
+        ...(toward ? { toward } : {}),
+      };
       findings.push({
         severity: 'error',
         code: 'detached-shell',
         part: path,
         value: shell.length,
+        // How far the stray actually floats, in spec units. `grow` is the
+        // blend that would close it; this is the thing being closed.
+        ...(clearance === null ? {} : { threshold: clearance }),
         message: `The mesh falls into ${shells.length} separate shells; one of ${shell.length} vertices floats free of the body.${made} Raise the blend so the parts fuse, or move them into contact.`,
+        ...(hint.grow !== undefined || hint.toward ? { hint } : {}),
       });
     }
   });
@@ -468,19 +822,37 @@ export function auditModel(
       entry.copies++;
       missing.set(key, entry);
     });
-    for (const { path, copies } of missing.values())
+    const spec = model.userData.spec as AssetSpec | undefined;
+    // A grid cell, in world units: `sampleGrid` steps the longest axis of the
+    // model by `detail`, and a part has to clear one of those to own a vertex.
+    const voxel = spec?.surface
+      ? Math.max(size.x, size.y, size.z) / Math.max(8, spec.surface.detail)
+      : 0;
+    const hints = spec && missing.size
+      ? burialHints(
+          object,
+          [...missing.values()].map((entry) => entry.path),
+          spec,
+          scale,
+          voxel,
+          name,
+        )
+      : new Map<string, Hint>();
+    for (const { path, copies } of missing.values()) {
+      const hint = hints.get(path.join('.'));
       findings.push({
         severity: 'warn',
         code: 'no-surface',
         part: path,
         value: copies,
         message: `${copies > 1 ? `${copies} copies of ` : ''}"${name(path.join('.'))}" own no surface: every vertex nearby belongs to a neighbour, so the part is invisible. Make it proud of its neighbour by at least a grid cell, or remove it.`,
+        ...(hint && (hint.move || hint.toward) ? { hint } : {}),
       });
+    }
   });
 
   // --- rig weighting ----------------------------------------------------
   if (options.rigged) {
-    const scale = options.scale && options.scale > 0 ? options.scale : 1;
     const [low, high] = AUTO_WEIGHT.designedFor;
     const rigHeight = size.y / scale;
     const { samples, unit } = rigSamples(model, scale);

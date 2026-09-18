@@ -16,6 +16,7 @@ import {
   canRedo,
   canSave,
   canUndo,
+  ghostDoc,
   type GizmoMode,
   type Overlays,
   type StudioAction,
@@ -119,6 +120,16 @@ function cameraView(
   };
 }
 
+/**
+ * Exporting is off while a build is in flight.
+ *
+ * Not because the spec is unready — it is written down and the exporters build
+ * their own model from it — but because the file that comes out would be of
+ * the spec you have just edited while the viewport still shows the one before
+ * it, which is the one you were looking at when you chose Export.
+ */
+const settled = (state: StudioState) => !state.busy && !state.loading.build;
+
 export const COMMANDS: StudioCommand[] = [
   // — Selection ————————————————————————————————————————————————
   {
@@ -218,6 +229,16 @@ export const COMMANDS: StudioCommand[] = [
   overlay('toggle.skeleton', 'skeleton', 'Skeleton', 'B'),
   overlay('toggle.pixel', 'pixel', 'Pixel preview', 'P'),
   overlay('toggle.rotate', 'rotate', 'Turntable', 'T'),
+  {
+    id: 'view.compare',
+    label: 'Compare with the previous build',
+    group: 'Overlays',
+    keys: ['C'],
+    // Nothing to ghost is not a mode worth being in: the toggle would draw
+    // nothing and the Builds panel's button would lie about what it does.
+    enabled: (state) => Boolean(ghostDoc(state)),
+    run: ({ dispatch }) => dispatch({ type: 'overlay', key: 'compare' }),
+  },
 
   // — Editing ——————————————————————————————————————————————————
   {
@@ -296,28 +317,28 @@ export const COMMANDS: StudioCommand[] = [
     id: 'file.export.glb',
     label: 'Export GLB',
     group: 'File',
-    enabled: (state) => !state.busy,
+    enabled: settled,
     run: (context) => context.exportAs('glb'),
   },
   {
     id: 'file.export.obj',
     label: 'Export OBJ + MTL',
     group: 'File',
-    enabled: (state) => !state.busy,
+    enabled: settled,
     run: (context) => context.exportAs('obj'),
   },
   {
     id: 'file.export.unity',
     label: 'Export Unity pack',
     group: 'File',
-    enabled: (state) => !state.busy,
+    enabled: settled,
     run: (context) => context.exportAs('unity'),
   },
   {
     id: 'file.export.json',
     label: 'Export spec JSON',
     group: 'File',
-    enabled: (state) => !state.busy,
+    enabled: settled,
     run: (context) => context.exportAs('json'),
   },
 
@@ -431,6 +452,13 @@ export const COMMANDS: StudioCommand[] = [
     group: 'Panels',
     enabled: always,
     run: ({ dispatch }) => dispatch({ type: 'rightTab', tab: 'checks' }),
+  },
+  {
+    id: 'panel.notes',
+    label: 'Show review notes',
+    group: 'Panels',
+    enabled: always,
+    run: ({ dispatch }) => dispatch({ type: 'rightTab', tab: 'notes' }),
   },
   {
     id: 'panel.asset',

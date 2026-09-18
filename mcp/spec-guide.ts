@@ -12,6 +12,13 @@ Every shape is fitted to its "size" bounding box, so a sphere with
 size [0.6, 0.4, 0.6] is a squashed ball 0.6 m wide and 0.4 m tall. The
 exception is "limb", which is drawn between "from" and "to" with "radius".
 
+"size" is in the part's OWN axes, BEFORE "rotation". The shape is built and
+fitted to the box first and turned afterwards, so the numbers describe the part
+standing upright, not where it ends up. A cone you mean to point down +z is
+size [0.16, 0.22, 0.16] with rotation [90, 0, 0] - 0.22 is its height along
+local y, and the rotation lays that height along z. Write the box the shape
+occupies before you turn it.
+
 SHAPES
 Most of the list is the usual primitives. Four of them are what separate a prop
 that reads as blocks from one that reads as built:
@@ -21,7 +28,10 @@ that reads as blocks from one that reads as built:
   pointed bow, extruded downwards with taper 0.76, gives you flared topsides
   and a keel narrower than the deck. This is the shape to reach for whenever a
   silhouette matters and a box will not do it: hulls, gun houses, roof plates,
-  signage, a wing.
+  signage, a wing. Its "size" follows the rule above: the profile fills local x
+  and y and the sweep runs along local z. A stock or a beam extruded sideways
+  therefore has its LENGTH in size[0] and its sweep depth in size[2], however
+  the "rotation" turns it afterwards.
 - "lathe" revolves a "profile" of [radius, height] pairs about its own Y.
   Radii are never negative, and the result is SOLID to its axis: a lathe is
   a filled body of revolution, not a shell. A hat brim therefore needs a
@@ -193,6 +203,10 @@ trails what it hangs from: 90 on the tire means it reaches the top of its arc a
 quarter of a cycle after the rope does, which is most of what stops a chain
 looking welded together.
 
+A spec may declare at most 64 joints, which is an eight-legged walker with a
+hip, a knee and an ankle on every leg and room left over. Past that, bind
+several parts to one joint rather than giving each its own.
+
 MESH BACKEND
 By default each part is exported as its own closed solid, and the model is a
 pile of primitives pushed into each other. That reads fine but it is not a game
@@ -261,6 +275,50 @@ copies near the top of a dome end up in the air. Push the radius out, drop the
 scatter, or place fewer of them. There is no ground plane: a stone lying on
 the ground next to a tower touches nothing and is an error, so overlap it
 into the plinth or leave it out.
+
+Some findings carry a "hint" with the fix as numbers, so you do not have to
+work out which way and how far:
+
+  "hint": { "move": [0, -0.031, 0], "toward": "hull" }
+
+"move" is a translation to ADD to the part's "position", in spec units before
+"scale" and in model space - a top-level part takes it as written; a child of a
+rotated parent needs it turned into that parent's frame first. "toward" names
+the part the fix is measured against. "grow" appears on detached-shell and is
+the "surface.blend" that would close the gap; the gap itself is the finding's
+"threshold", in the same units.
+A detached-part hint moves the part until it touches the body; a no-surface
+hint pushes it out along its neighbour's normal until one grid cell of it
+stands proud. Apply the move and re-audit rather than guessing a second time.
+
+MEASURING
+Do not write a script to measure your own model. "measure_spec" (MCP) and
+"oddlings measure" (CLI) report, for every authored part: its world bounding
+box after "scale", how many meshes it expands into, the bone or joint carrying
+it, how many vertices of the fused surface it owns in surface mode - zero being
+the no-surface defect - and, for the parts you ask about, the NEAREST other
+part with the signed gap to it. A positive gap is clear air between the two
+surfaces; a negative one is how deep they interpenetrate. It also prints the
+skeleton with the vertex count bound to each bone, which is how you check that
+a leg is actually weighted to a leg.
+
+Gaps are exact point-to-triangle distances between the authored primitives, not
+bounding-box distances, so they are right for spheres, limbs and lathes and not
+just for boxes. Pass a list of part names to measure a corner of a model
+cheaply once you know where you are working.
+
+REVIEW NOTES
+A human reviewing an asset in the studio can pin a note to a part. Notes live
+beside the spec: "specs/foo.spec.json" has "specs/foo.review.json", and each
+note carries the part it is about, the text, and whether it is still open.
+
+You must read them and act on them. An audit ends with "N open review notes"
+whenever any exist, and "audit --json" carries them, so there is no way to miss
+one. Read them with "review_notes" (MCP) or "oddlings notes <spec>", make the
+change, then close each note with "resolve_note" (MCP) or
+"oddlings notes <spec> --resolve <id> --reply \\"...\\"". The reply is not
+optional politeness: it is the only thing the reviewer sees, and a note
+resolved without one reads as a note ignored.
 
 BUDGET
 Specs cap at 200 top-level parts and 4000 meshes after mirrors and repeats
@@ -355,3 +413,345 @@ export const EXAMPLE_SPEC: AssetSpecInput = {
     },
   ],
 };
+
+/**
+ * Starter specs: one per kind of thing this tool makes.
+ *
+ * A blank page is where the avoidable mistakes come from. Every template below
+ * is a working asset that already gets the conventions right — it faces +z, it
+ * stands on the ground with nothing floating, every part is named, characters
+ * pin their own bones and carry a `surface` block, the mechanism has a real
+ * joint chain — so the first edit an author makes is about the shape they
+ * want, not about the six rules they have not read yet.
+ *
+ * Each one passes `oddlings audit` as written, and a test holds them to it.
+ * Keep them small: a template is read in full before it is edited.
+ */
+export const TEMPLATE_KINDS = [
+  'creature',
+  'person',
+  'prop',
+  'mechanism',
+  'environment',
+] as const;
+export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
+
+/**
+ * `mechanism` is not one of the spec's four `kind` values — it is a prop with
+ * moving parts, and the difference that matters is the `joints` block, not the
+ * label. Everything else maps straight through.
+ */
+const TEMPLATES: Record<TemplateKind, AssetSpecInput> = {
+  creature: {
+    version: 1,
+    name: 'Starter Creature',
+    kind: 'creature',
+    seed: 11,
+    color: '#7f8f6a',
+    rig: { hipHeight: 0.42, headPivot: 0.7, shoulderWidth: 0.16 },
+    surface: { blend: 0.035, detail: 128, budget: 4000, shading: 'flat' },
+    parts: [
+      {
+        name: 'body',
+        shape: 'capsule',
+        size: [0.42, 0.42, 0.8],
+        position: [0, 0.55, 0],
+        jitter: 0.12,
+        rigPart: 'spine',
+      },
+      {
+        name: 'head',
+        shape: 'icosahedron',
+        size: [0.34, 0.32, 0.34],
+        position: [0, 0.72, 0.46],
+        jitter: 0.2,
+        rigPart: 'head',
+      },
+      {
+        // Points down +z, which is the way the creature faces. The size is in
+        // the cone's OWN axes, before the rotation: 0.22 is its height along
+        // local y, and the 90 degrees about x lays that height along z.
+        name: 'snout',
+        shape: 'cone',
+        size: [0.16, 0.22, 0.16],
+        position: [0, 0.68, 0.6],
+        rotation: [90, 0, 0],
+        rigPart: 'head',
+      },
+      {
+        name: 'foreleg',
+        shape: 'limb',
+        from: [0.15, 0.44, 0.28],
+        to: [0.16, 0.02, 0.3],
+        radius: 0.075,
+        taper: 0.8,
+        rigPart: 'arm_l',
+        mirror: 'x',
+      },
+      {
+        name: 'hindleg',
+        shape: 'limb',
+        from: [0.15, 0.44, -0.26],
+        to: [0.16, 0.02, -0.24],
+        radius: 0.085,
+        taper: 0.8,
+        rigPart: 'thigh_l',
+        mirror: 'x',
+      },
+      {
+        name: 'tail',
+        shape: 'limb',
+        from: [0, 0.62, -0.36],
+        to: [0, 0.8, -0.72],
+        via: [0, 0.64, -0.58],
+        radius: 0.07,
+        taper: 0.3,
+        rigPart: 'spine',
+      },
+    ],
+  },
+  person: {
+    version: 1,
+    name: 'Starter Person',
+    kind: 'person',
+    seed: 3,
+    color: '#5c6b8a',
+    rig: { hipHeight: 0.5, headPivot: 0.88, shoulderWidth: 0.18 },
+    surface: { blend: 0.03, detail: 128, budget: 4000, shading: 'flat' },
+    parts: [
+      {
+        name: 'torso',
+        shape: 'capsule',
+        size: [0.34, 0.44, 0.24],
+        position: [0, 0.68, 0],
+        rigPart: 'spine',
+      },
+      {
+        name: 'head',
+        shape: 'sphere',
+        size: [0.26, 0.3, 0.26],
+        position: [0, 1.02, 0],
+        rigPart: 'head',
+      },
+      {
+        // The face. A figure with no front reads backwards from every angle
+        // that is not straight on, and +z is the front.
+        name: 'nose',
+        shape: 'cone',
+        size: [0.07, 0.09, 0.07],
+        position: [0, 1.0, 0.15],
+        rotation: [90, 0, 0],
+        rigPart: 'head',
+      },
+      {
+        // Authored once and mirrored, which swaps the _l binding to _r. Wave
+        // lifts Arm_R, so the free hand belongs on -x.
+        name: 'arm',
+        shape: 'limb',
+        from: [0.16, 0.86, 0],
+        to: [0.24, 0.52, 0.05],
+        radius: 0.06,
+        taper: 0.8,
+        rigPart: 'arm_l',
+        mirror: 'x',
+      },
+      {
+        name: 'leg',
+        shape: 'limb',
+        from: [0.1, 0.52, 0],
+        to: [0.11, 0.03, 0.02],
+        radius: 0.085,
+        taper: 0.85,
+        rigPart: 'thigh_l',
+        mirror: 'x',
+      },
+    ],
+  },
+  prop: {
+    version: 1,
+    name: 'Starter Lantern',
+    kind: 'prop',
+    seed: 5,
+    color: '#5a5f66',
+    parts: [
+      {
+        // Sitting on y 0. There is no ground plane to rest against, so a prop
+        // that starts above zero is a prop that floats in every scene.
+        name: 'base',
+        shape: 'cylinder',
+        size: [0.17, 0.04, 0.17],
+        position: [0, 0.02, 0],
+        detail: 8,
+      },
+      {
+        name: 'body',
+        shape: 'box',
+        size: [0.14, 0.2, 0.14],
+        position: [0, 0.13, 0],
+        bevel: 0.015,
+        color: '#c8b26a',
+      },
+      {
+        name: 'pane',
+        shape: 'box',
+        size: [0.09, 0.13, 0.012],
+        position: [0, 0.13, 0.069],
+        color: '#f2e6b8',
+      },
+      {
+        name: 'cap',
+        shape: 'cone',
+        size: [0.2, 0.08, 0.2],
+        position: [0, 0.27, 0],
+        detail: 8,
+      },
+      {
+        name: 'ring',
+        shape: 'torus',
+        size: [0.06, 0.06, 0.02],
+        position: [0, 0.33, 0],
+      },
+    ],
+  },
+  mechanism: {
+    version: 1,
+    name: 'Starter Signpost',
+    kind: 'prop',
+    seed: 9,
+    color: '#6b5a44',
+    // Two joints in one clip, the second hanging off the first: the sign
+    // trails the bracket by a quarter cycle instead of moving with it welded.
+    joints: [
+      {
+        name: 'Swing',
+        at: [0, 1.52, 0.42],
+        binds: ['hanger'],
+        spin: {
+          axis: 'x',
+          mode: 'swing',
+          degrees: 16,
+          seconds: 3.2,
+          drift: 0.1,
+          clip: 'Swing',
+        },
+      },
+      {
+        name: 'Sign',
+        parent: 'Swing',
+        at: [0, 1.45, 0.42],
+        binds: ['sign'],
+        spin: {
+          axis: 'x',
+          mode: 'swing',
+          degrees: 5,
+          seconds: 3.2,
+          drift: 0,
+          clip: 'Swing',
+          phase: 90,
+        },
+      },
+    ],
+    parts: [
+      {
+        name: 'post',
+        shape: 'cylinder',
+        size: [0.09, 1.6, 0.09],
+        position: [0, 0.8, 0],
+        detail: 8,
+      },
+      {
+        name: 'bracket',
+        shape: 'box',
+        size: [0.055, 0.055, 0.5],
+        position: [0, 1.52, 0.22],
+        bevel: 0.008,
+      },
+      {
+        // The pivot is at the top of this, not at the middle of the sign —
+        // put `at` anywhere else and the sign spins in place.
+        name: 'hanger',
+        shape: 'limb',
+        from: [0, 1.52, 0.42],
+        to: [0, 1.43, 0.42],
+        radius: 0.014,
+      },
+      {
+        name: 'sign',
+        shape: 'box',
+        size: [0.04, 0.34, 0.44],
+        position: [0, 1.28, 0.42],
+        bevel: 0.01,
+        color: '#b9a179',
+      },
+    ],
+  },
+  environment: {
+    version: 1,
+    name: 'Starter Outcrop',
+    kind: 'environment',
+    seed: 21,
+    color: '#6d7264',
+    parts: [
+      {
+        name: 'mound',
+        shape: 'cylinder',
+        size: [2.4, 0.32, 2.4],
+        position: [0, 0.16, 0],
+        detail: 7,
+        jitter: 0.25,
+      },
+      {
+        name: 'boulder',
+        shape: 'icosahedron',
+        size: [1.1, 1.0, 1.0],
+        position: [-0.5, 0.5, -0.2],
+        jitter: 0.3,
+      },
+      {
+        name: 'trunk',
+        shape: 'limb',
+        from: [0.55, 0.2, 0.3],
+        to: [0.72, 1.5, 0.18],
+        via: [0.6, 0.9, 0.3],
+        radius: 0.16,
+        taper: 0.55,
+        color: '#4d3f2e',
+      },
+      {
+        name: 'canopy',
+        shape: 'icosahedron',
+        size: [1.5, 1.1, 1.5],
+        position: [0.75, 1.8, 0.2],
+        jitter: 0.25,
+        color: '#5f7a4a',
+      },
+      {
+        // Dropped onto the parts above rather than ringed at a fixed radius,
+        // which is what keeps them on the rock instead of in the air beside
+        // it. `band` holds them to the bottom fifth of the silhouette.
+        name: 'stone',
+        shape: 'icosahedron',
+        size: [0.26, 0.22, 0.26],
+        jitter: 0.35,
+        color: '#7c8071',
+        repeat: {
+          count: 9,
+          mode: 'surface',
+          band: [0, 0.2],
+          embed: -0.4,
+          scatter: [0.06, 0.02, 0.06],
+          sizeJitter: 0.4,
+        },
+      },
+    ],
+  },
+};
+
+/** A starter spec for one kind of asset. Returns a fresh copy every call. */
+export function specTemplate(kind: TemplateKind, name?: string): AssetSpecInput {
+  const template = TEMPLATES[kind];
+  if (!template) throw Error(`No template for "${kind}".`);
+  const copy = structuredClone(template);
+  if (name) copy.name = name;
+  return copy;
+}
