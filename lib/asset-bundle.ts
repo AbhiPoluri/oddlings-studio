@@ -1,7 +1,7 @@
 import * as T from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { zipSync, strToU8 } from 'fflate';
-import { buildAsset, objBundle } from './asset-build';
+import { buildAsset, dressSurfaceMaterials, objBundle } from './asset-build';
 import { buildSpec, type AssetSpec } from './asset-spec';
 import { readySurface } from './asset-surface';
 import { bakeColorAtlas, splitUvSeams } from './asset-uv';
@@ -26,6 +26,10 @@ export async function toGLB(
   // would read the seams as holes. Every caller builds a model, exports it and
   // disposes it, so nothing sees the torn one.
   splitUvSeams(model);
+  // And hand the fused shell the per-group materials it planned. Same reason
+  // and the same boundary: the studio's worker channel carries one material
+  // per mesh, so the array is built here rather than at build time.
+  dressSurfaceMaterials(model);
   const scene = new T.Scene();
   scene.add(model);
   const output = await new GLTFExporter().parseAsync(scene, {
@@ -48,7 +52,16 @@ export function clipsFor(recipe: Recipe) {
  * same pack built in the studio and on the CLI differs, and a README promising
  * a file that is not in the zip is worse than one that never mentions it.
  */
-export function unityReadme(name: string, textured = false) {
+export function unityReadme(
+  name: string,
+  textured = false,
+  /**
+   * The material channels that were baked beside the colour atlas, if any.
+   * Empty for every asset that authors no `material` block, which is what
+   * keeps the notes for those assets the notes they always were.
+   */
+  channels: string[] = [],
+) {
   return `${name} — Oddlings Studio
 
 UNITY IMPORT
@@ -62,7 +75,13 @@ The OBJ is a static mesh with flat normals and solid-color materials. The GLB in
     textured
       ? ` A baked color atlas ships beside the model as ${fileName(name)}.png, wired to the OBJ through map_Kd. The GLB keeps the same colors as vertex colors and does not embed the image, so point a material at the PNG after import if you want it there too.`
       : ''
-  } No collision shapes, LODs, normal/roughness maps or lightmap UVs are included. Generate colliders and lightmap UVs in Unity as needed.
+  }${
+    channels.length
+      ? ` Material maps for ${channels.join(', ')} ship beside it as ${channels
+          .map((channel) => `${fileName(name)}-${channel}.png`)
+          .join(', ')}; the GLB carries the same values on its own materials, and the MTL wires the emissive one through map_Ke. Assign the rest to the imported material's matching slots.`
+      : ''
+  } No collision shapes, LODs, ${channels.length ? 'normal maps' : 'normal/roughness maps'} or lightmap UVs are included. Generate colliders and lightmap UVs in Unity as needed.
 The pixelated viewport is a preview effect, not baked into the model.
 
 EDIT AGAIN
@@ -146,11 +165,23 @@ export async function specUnityPack(spec: AssetSpec) {
     splitUvSeams(staticModel);
     const atlas = bakeColorAtlas(staticModel);
     const png = atlas ? encodePng(atlas) : null;
+    // The material channels ride along the same way, one file per channel the
+    // asset actually varies in. None of them exist for a spec with no
+    // `material` block.
+    const extras = (['roughness', 'metalness', 'emissive'] as const).flatMap(
+      (channel) => {
+        const map = atlas?.maps?.[channel];
+        return map
+          ? [[`${base}/${base}-${channel}.png`, encodePng(map)] as const]
+          : [];
+      },
+    );
     const { obj, mtl } = objBundle(
       staticModel,
       spec.name,
       spec.color,
       png ? `${base}.png` : undefined,
+      atlas?.maps?.emissive ? `${base}-emissive.png` : undefined,
     );
     const glb = await toGLB(model, specClips(spec));
     const zip = zipSync(
@@ -159,8 +190,15 @@ export async function specUnityPack(spec: AssetSpec) {
         [`${base}/${base}.obj`]: strToU8(obj),
         [`${base}/${base}.mtl`]: strToU8(mtl),
         ...(png ? { [`${base}/${base}.png`]: png } : {}),
+        ...Object.fromEntries(extras),
         [`${base}/spec.json`]: strToU8(JSON.stringify(spec, null, 2)),
-        [`${base}/README.txt`]: strToU8(unityReadme(spec.name, Boolean(png))),
+        [`${base}/README.txt`]: strToU8(
+          unityReadme(
+            spec.name,
+            Boolean(png),
+            extras.map(([path]) => path.slice(path.lastIndexOf('-') + 1, -4)),
+          ),
+        ),
       },
       { level: 6 },
     );

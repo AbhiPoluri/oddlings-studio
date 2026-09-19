@@ -8,12 +8,26 @@ import { disposeScene } from './three-world';
 import { JOINTS, rigCreature } from './asset-rig';
 import { jointBinder, rigJoints } from './asset-joints';
 import {
-  DEFAULT_EXTRUDE_PROFILE,
-  DEFAULT_LATHE_PROFILE,
+  canonicalExtent,
+  deformPoint,
+  effectiveTaper,
   extrudeSection,
   latheSection,
+  loftMesh,
   signedArea,
+  warpFor,
+  type Warp,
 } from './asset-sdf';
+import {
+  contactTravel,
+  inSweep,
+  placeAlong,
+  REST_STEPS,
+  spineOf,
+  worldTriangles,
+  type PathPrim,
+  type Triangles,
+} from './asset-place';
 
 /**
  * The from-scratch authoring layer.
@@ -45,6 +59,7 @@ export const SHAPES = [
   'limb',
   'lathe',
   'extrude',
+  'loft',
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
@@ -73,7 +88,7 @@ const repeatSchema = z
      * nested repeat multiplies out of hand.
      */
     count: z.number().int().min(1).max(512),
-    mode: z.enum(['linear', 'radial', 'surface']).default('linear'),
+    mode: z.enum(['linear', 'radial', 'surface', 'along']).default('linear'),
     /** linear: translation applied per step. */
     offset: vec3.optional(),
     /** linear: extra rotation in degrees applied per step. */
@@ -109,8 +124,23 @@ const repeatSchema = z
     scatter: vec3.optional(),
     twist: z.number().min(0).max(180).optional(),
     sizeJitter: z.number().min(0).max(1).optional(),
+    /**
+     * along: the part whose spine the copies follow — a limb's from → via → to
+     * curve, or the long axis of anything else — and which surface line of it
+     * they sit on. Scutes down a tail, teeth along a jaw, rivets down a seam:
+     * every row on a curved thing, without working out the curve by hand.
+     */
+    path: z.string().min(1).max(60).optional(),
+    /** along: the fraction of the path to cover, 0 at `from`. */
+    span: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).default([0, 1]),
+    /** along: which side of the path — a named side, or degrees round it. */
+    side: z.union([z.enum(['up', 'down', 'left', 'right']), z.number().min(-360).max(360)]).default('up'),
   })
-  .strict();
+  .strict()
+  .superRefine((repeat, ctx) => {
+    if (repeat.mode === 'along' && !repeat.path)
+      ctx.addIssue({ code: 'custom', path: ['path'], message: 'mode "along" needs "path": the name of the part whose spine the copies follow.' });
+  });
 export type Repeat = z.infer<typeof repeatSchema>;
 
 const basePart = {
@@ -156,6 +186,72 @@ const basePart = {
    * machined panel from a cardboard box.
    */
   bevel: z.number().min(0).max(10).optional(),
+  /**
+   * `loft` only: cross-sections along a spine. Each station is a 2D outline at
+   * a fraction of the spine's length; the surface is skinned between them.
+   * Hulls, torsos, necks, tails, horns — anything whose silhouette changes
+   * along its length. With no stations a loft is a plain box, like a lathe
+   * with no profile is a cylinder.
+   */
+  stations: z
+    .array(
+      z.object({ at: z.number().min(0).max(1), profile: z.array(z.tuple([z.number(), z.number()])).min(3).max(64) }).strict(),
+    )
+    .min(2)
+    .max(24)
+    .optional(),
+  /** `loft` only: the curve the stations sit along. Straight along Z when omitted. */
+  spine: z.object({ from: vec3, to: vec3, via: vec3.optional() }).strict().optional(),
+  /**
+   * `loft` only: `mirror` reflects each station across its first axis, so an
+   * author draws half a hull; `none` takes the outline as drawn.
+   */
+  closed: z.enum(['mirror', 'none']).optional(),
+  /**
+   * Bend, twist and taper the part along one of its own axes before it is
+   * placed. A bent box is a sheer line; a bent, tapered cylinder is a horn.
+   * Degrees for bend and twist; taper is the far end's scale.
+   */
+  deform: z
+    .object({
+      axis: z.enum(['x', 'y', 'z']).default('y'),
+      bend: z.number().min(-180).max(180).default(0),
+      twist: z.number().min(-720).max(720).default(0),
+      taper: z.number().min(0).max(4).default(1),
+    })
+    .strict()
+    .optional(),
+  /**
+   * Drop the part until it touches another. The commonest defect in an
+   * authored asset is a part a few centimetres off the thing it belongs on;
+   * this asks the builder to find the contact instead of the author.
+   */
+  rest: z
+    .object({
+      /** The part to land on, by name, or "any" for everything built before this one. */
+      on: z.string().min(1).max(60),
+      from: z.enum(['above', 'below', '+x', '-x', '+z', '-z']).default('above'),
+      /** Metres to embed past the contact, so a scute sits in the hide, not on it. */
+      sink: z.number().min(-1).max(1).default(0),
+    })
+    .strict()
+    .optional(),
+  /**
+   * Carve this part out of everything blended before it instead of adding it.
+   * Surface mode only: a window through a wall, a gun port, a niche. The cut's
+   * inner walls take this part's colour.
+   */
+  subtract: z.boolean().optional(),
+  /** Surface response. Defaults reproduce the studio's matte look. */
+  material: z
+    .object({
+      roughness: z.number().min(0).max(1).default(1),
+      metalness: z.number().min(0).max(1).default(0),
+      emissive: hex.optional(),
+      emissiveStrength: z.number().min(0).max(10).default(1),
+    })
+    .strict()
+    .optional(),
   /** Pin this part and its children to one bone. */
   rigPart: z.enum(RIG_PARTS).optional(),
   /** Duplicate the part mirrored across an axis. */
@@ -190,6 +286,13 @@ function checkPart(part: Part, ctx: z.RefinementCtx) {
       path: ['via'],
       message: `"via" bends a limb through a point, and ${shape} is not drawn between two points. Use "limb".`,
     });
+  for (const key of ['stations', 'spine', 'closed'] as const)
+    if (part[key] !== undefined && shape !== 'loft')
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: `"${key}" belongs to loft, not to ${shape}. Skin sections along a spine with "loft".`,
+      });
   if (part.bevel !== undefined && shape !== 'box' && shape !== 'extrude')
     ctx.addIssue({
       code: 'custom',
@@ -399,11 +502,18 @@ export const specSchema = z
         /** Blend radius in metres. 0 welds parts with a hard crease. */
         blend: z.number().min(0).max(0.5).default(0.03),
         /** Grid resolution along the longest axis. Higher resolves finer detail. */
-        detail: z.number().int().min(24).max(320).default(128),
+        detail: z.number().int().min(24).max(512).default(128),
         /** Triangle budget after decimation. */
-        budget: z.number().int().min(200).max(200000).default(6000),
+        budget: z.number().int().min(200).max(1000000).default(6000),
         /** `flat` keeps the studio's faceted look; `smooth` reads as sculpted. */
         shading: z.enum(['flat', 'smooth']).default('flat'),
+        /**
+         * Crease angle in degrees. Set, it replaces `shading`: two faces that
+         * meet under it share a smooth normal, two that turn harder keep a
+         * hard edge. 0 is flat, 180 is smooth, 40 to 60 suits armour and
+         * machines, 80 or more a creature.
+         */
+        crease: z.number().min(0).max(180).optional(),
       })
       .strict()
       .optional(),
@@ -748,13 +858,29 @@ function insetPolygon(points: [number, number][], amount: number) {
  * gives a hull its flare, and its bevel is measured from a contour it offsets
  * on its own terms rather than from the size the part declares.
  */
-function extrudeGeometry(part: Part) {
+function extrudeGeometry(part: Part, rings: number) {
   const { points, halfDepth, taper, bevel: lip } = extrudeSection(part);
   const depth = halfDepth * 2;
-  const levels = lip > 0
+  const rims = lip > 0
     ? [-halfDepth, -halfDepth + lip, halfDepth - lip, halfDepth]
     : [-halfDepth, halfDepth];
-  const insets = lip > 0 ? [lip, 0, 0, lip] : [0, 0];
+  const rimInsets = lip > 0 ? [lip, 0, 0, lip] : [0, 0];
+  // A bend or a twist moves vertices, so an extrude with nothing between its
+  // two rims has nothing to bend: the ends swing and the wall stays a flat
+  // plate between them. The extra levels go in the straight span, never across
+  // a chamfer, so the bevel keeps the profile it was cut with.
+  const span = lip > 0 ? 1 : 0;
+  const levels: number[] = [];
+  const insets: number[] = [];
+  rims.forEach((z, at) => {
+    levels.push(z);
+    insets.push(rimInsets[at]);
+    if (at === span)
+      for (let k = 1; k < rings; k++) {
+        levels.push(z + (rims[at + 1] - z) * (k / rings));
+        insets.push(0);
+      }
+  });
 
   const sections = levels.map((z, at) => {
     const k = 1 + (taper - 1) * (z / depth + 0.5);
@@ -802,13 +928,102 @@ function extrudeGeometry(part: Part) {
   return geometry;
 }
 
-function geometryFor(part: Part, detail: number, taper: number) {
+/**
+ * Skin a loft's stations into a closed solid.
+ *
+ * The skinning itself lives beside the distance field, the way `extrudeSection`
+ * and `latheSection` do, because a loft is the one shape with no closed form
+ * for the field to check itself against: the only way the two backends can
+ * agree about where a hull's cheek is, is for both of them to be reading the
+ * same triangles. This wraps those numbers in a `BufferGeometry` and nothing
+ * else.
+ *
+ * With fewer than two stations there is nothing to skin, and a loft falls back
+ * to a plain box — the same bargain a lathe with no profile makes when it comes
+ * out a cylinder. Every shape has to build from `{ shape, size }` alone.
+ */
+function loftGeometry(part: Part) {
+  const mesh = loftMesh(part);
+  if (!mesh) return new T.BoxGeometry(1, 1, 1);
+  const geometry = new T.BufferGeometry();
+  geometry.setAttribute(
+    'position',
+    new T.Float32BufferAttribute(mesh.positions, 3),
+  );
+  geometry.setAttribute('uv', new T.Float32BufferAttribute(mesh.uvs, 2));
+  geometry.setIndex(mesh.indices);
+  return geometry;
+}
+
+/**
+ * Bend, twist and taper a primitive into its declared size.
+ *
+ * The warp runs in the canonical frame — the primitive normalised into the
+ * extent `canonicalExtent` names — and the part is then scaled straight to
+ * `size` rather than re-fitted to it. That ordering is the whole contract
+ * between the two backends: the field divides a query point by the same
+ * scale, undoes the same warp with `undeformPoint`, and evaluates the same
+ * canonical shape, so a bent horn is the identical solid faceted or fused.
+ *
+ * Re-fitting the bent mesh back into `size` would be prettier — `size` would
+ * stay the part's bounding box — but the fit depends on the deformed mesh's
+ * own bounds, which the field never sees and cannot derive from `size` alone
+ * for anything rounder than a box. Two backends drawing different hulls is a
+ * worse bargain than a bend that reaches outside its box, so the bend reaches.
+ *
+ * A loft has already baked its own warp into the stations it skinned, and a
+ * limb is drawn between two authored points rather than inside a box, so
+ * `warpFor` returns nothing for either and this is a no-op.
+ */
+function deformGeometry(
+  geometry: T.BufferGeometry,
+  part: Part,
+  warp: Warp | null,
+  size: readonly number[],
+) {
+  if (!warp) return fitToSize(geometry, size);
+  const extent = canonicalExtent(part.shape);
+  // Into the canonical frame first, so the warp's own half-extents — which the
+  // field takes from `canonicalExtent` — are the ones the vertices actually
+  // sit in.
+  fitToSize(geometry, extent);
+  const position = geometry.attributes.position as T.BufferAttribute;
+  const point = [0, 0, 0];
+  for (let i = 0; i < position.count; i++) {
+    point[0] = position.getX(i);
+    point[1] = position.getY(i);
+    point[2] = position.getZ(i);
+    deformPoint(warp, point);
+    position.setXYZ(i, point[0], point[1], point[2]);
+  }
+  position.needsUpdate = true;
+  geometry.scale(size[0] / extent[0], size[1] / extent[1], size[2] / extent[2]);
+  // Three caches a bounding box, and these vertices have just invalidated it.
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function geometryFor(
+  part: Part,
+  detail: number,
+  taper: number,
+  warp: Warp | null,
+) {
   const size = part.size ?? [1, 1, 1];
+  // A primitive with a single segment along the axis a bend acts on has no
+  // vertices in the middle to move, so it comes out a straight thing with
+  // tilted ends. One ring per six degrees keeps the chord error below the
+  // faceting the studio draws anyway.
+  const rings = warp?.segments ?? 1;
+  const along = (axis: number) => (warp && warp.axis === axis ? rings : 1);
   switch (part.shape) {
     case 'lathe':
       return latheGeometry(part, detail);
     case 'extrude':
-      return extrudeGeometry(part);
+      return extrudeGeometry(part, rings);
+    case 'loft':
+      return loftGeometry(part);
     case 'sphere':
       return new T.SphereGeometry(0.5, detail * 2, detail);
     case 'icosahedron':
@@ -818,21 +1033,36 @@ function geometryFor(part: Part, detail: number, taper: number) {
     case 'tetrahedron':
       return new T.TetrahedronGeometry(0.5, 0);
     case 'box':
+      // A chamfered box is built at final size from its own corner algebra, so
+      // it has no segments to raise; a bevelled box that is also bent keeps its
+      // chamfer and bends only at its corners.
       return part.bevel
         ? chamferedBoxGeometry(size, part.bevel)
-        : new T.BoxGeometry(1, 1, 1);
+        : new T.BoxGeometry(1, 1, 1, along(0), along(1), along(2));
     case 'cylinder':
-      return new T.CylinderGeometry(0.5 * taper, 0.5, 1, detail);
+      return new T.CylinderGeometry(0.5 * taper, 0.5, 1, detail, rings);
     case 'prism':
-      return new T.CylinderGeometry(0.5 * taper, 0.5, 1, Math.max(3, detail));
+      return new T.CylinderGeometry(
+        0.5 * taper,
+        0.5,
+        1,
+        Math.max(3, detail),
+        rings,
+      );
     case 'cone':
-      return new T.ConeGeometry(0.5, 1, detail);
+      return new T.ConeGeometry(0.5, 1, detail, rings);
     case 'capsule':
-      return new T.CapsuleGeometry(0.5, 0.5, Math.max(2, detail >> 1), detail);
+      return new T.CapsuleGeometry(
+        0.5,
+        0.5,
+        Math.max(2, detail >> 1),
+        detail,
+        rings,
+      );
     case 'torus':
       return new T.TorusGeometry(0.35, 0.15, Math.max(4, detail >> 1), detail);
     case 'plane':
-      return new T.PlaneGeometry(1, 1);
+      return new T.PlaneGeometry(1, 1, along(0), along(1));
     default:
       return new T.BoxGeometry(1, 1, 1);
   }
@@ -1007,6 +1237,14 @@ type BuildContext = {
   count: { meshes: number };
   /** Its own stream, so surface placement does not shift with repeat scatter. */
   rng: () => number;
+  /**
+   * Every mesh finished so far, in build order, with the authored part it came
+   * from. `rest` lands on these and `along` rides one of them, and both mean
+   * "what already exists", which is the only order a builder can offer.
+   */
+  built: { mesh: T.Mesh; path?: number[] }[];
+  /** Authored names to their paths, so `rest.on` and `repeat.path` resolve. */
+  names: Map<string, number[][]>;
 };
 
 /**
@@ -1084,8 +1322,12 @@ function placeOnSurface(
 /** Build one mesh for a part. Shared by direct placement and surface placement. */
 function makeMesh(part: PlacedPart, context: BuildContext, rigPart?: string) {
   const detail = part.detail ?? 6;
-  const taper = part.taper ?? 1;
+  // `deform.taper` and the bare `taper` say the same thing, so the shapes that
+  // already take one are given the resolved value rather than being tapered
+  // twice. `effectiveTaper` is shared with the field, which has to agree.
+  const taper = effectiveTaper(part);
   const size = part.size ?? [1, 1, 1];
+  const warp = warpFor(part.shape, part.deform);
 
   if (++context.count.meshes > MAX_MESHES)
     throw Error(
@@ -1095,7 +1337,12 @@ function makeMesh(part: PlacedPart, context: BuildContext, rigPart?: string) {
   const geometry =
     part.shape === 'limb'
       ? limbGeometry(part, detail, taper)
-      : fitToSize(geometryFor(part, detail, taper), size);
+      : deformGeometry(
+          geometryFor(part, detail, taper, warp),
+          part,
+          warp,
+          size,
+        );
   if (part.jitter)
     jitterGeometry(
       geometry,
@@ -1128,6 +1375,12 @@ function makeMesh(part: PlacedPart, context: BuildContext, rigPart?: string) {
     radius: part.radius,
     profile: part.profile,
     bevel: part.bevel,
+    stations: part.stations,
+    spine: part.spine,
+    closed: part.closed,
+    deform: part.deform,
+    subtract: part.subtract,
+    material: part.material,
   };
   return mesh;
 }
@@ -1151,6 +1404,134 @@ function targetsUnder(parent: T.Object3D) {
   return meshes;
 }
 
+/** Authored names to the paths that carry them, `jointBinder`'s index. */
+function partPaths(
+  parts: Part[],
+  prefix: number[] = [],
+  into = new Map<string, number[][]>(),
+) {
+  parts.forEach((part, index) => {
+    const path = [...prefix, index];
+    if (part.name) into.set(part.name, [...(into.get(part.name) ?? []), path]);
+    if (part.children) partPaths(part.children, path, into);
+  });
+  return into;
+}
+
+/**
+ * The one part this name points at.
+ *
+ * `binds` refuses a name two parts share and so does this: a scute told to
+ * rest on "plate" when there are nine plates has no answer, and guessing the
+ * first would be a placement the author cannot see or correct.
+ */
+function pathNamed(
+  context: BuildContext,
+  name: string,
+  who: string,
+  verb: string,
+) {
+  const found = context.names.get(name);
+  if (!found?.length)
+    throw Error(`"${who}" ${verb} "${name}", but no part is called that.`);
+  if (found.length > 1)
+    throw Error(
+      `"${who}" ${verb} "${name}", but ${found.length} parts share that name. Give them distinct names.`,
+    );
+  return found[0];
+}
+
+/** Is this mesh's part the one at `root`, or something hanging off it? */
+function beneath(path: number[] | undefined, root: number[]) {
+  return Boolean(path && root.every((step, at) => path[at] === step));
+}
+
+function rootOf(object: T.Object3D) {
+  let top = object;
+  while (top.parent) top = top.parent;
+  return top;
+}
+
+/**
+ * A finished mesh's world triangles and bounds, remembered.
+ *
+ * Nothing moves a mesh once it is recorded — `rest` moves only the part it is
+ * resting, and the model's own scale is applied after every part is placed —
+ * so the reading cannot go stale, and a row of forty scutes resting on one
+ * body reads that body's triangles once instead of forty times.
+ */
+const SETTLED = new WeakMap<T.Mesh, { tris: Triangles; box: T.Box3 }>();
+
+function settled(mesh: T.Mesh) {
+  let shape = SETTLED.get(mesh);
+  if (!shape) {
+    shape = { tris: worldTriangles(mesh), box: new T.Box3().setFromObject(mesh) };
+    SETTLED.set(mesh, shape);
+  }
+  return shape;
+}
+
+function record(context: BuildContext, mesh: T.Mesh, part: PlacedPart) {
+  context.built.push({ mesh, path: part.origin });
+}
+
+/**
+ * Drop a placed part along one world direction until it touches another.
+ *
+ * The travel is worked out in world space and applied in the parent's, which
+ * is the distinction `buildOnSurface` learnt the hard way: a part hanging off
+ * a body that has been turned and carried still falls straight down, and
+ * writing the world answer into a rotated parent's `position` sends it
+ * sideways instead.
+ *
+ * Children are built afterwards and so come along untouched, keeping the
+ * offsets the author gave them relative to the part that moved.
+ */
+function applyRest(
+  part: PlacedPart,
+  holder: T.Group,
+  mesh: T.Mesh,
+  parent: T.Object3D,
+  context: BuildContext,
+) {
+  const rest = part.rest;
+  if (!rest) return;
+  const label = part.name ?? part.shape;
+  const wanted =
+    rest.on === 'any' ? null : pathNamed(context, rest.on, label, 'rests on');
+  rootOf(parent).updateMatrixWorld(true);
+
+  const step = new T.Vector3(...REST_STEPS[rest.from]);
+  const axis = step.x !== 0 ? 0 : step.y !== 0 ? 1 : 2;
+  const box = new T.Box3().setFromObject(mesh);
+  const targets: Triangles[] = [];
+  let named = 0;
+  for (const entry of context.built) {
+    if (wanted && !beneath(entry.path, wanted)) continue;
+    named++;
+    const shape = settled(entry.mesh);
+    if (!inSweep(box, shape.box, axis)) continue;
+    targets.push(shape.tris);
+  }
+  if (!named)
+    throw Error(
+      `"${label}" rests on "${rest.on}", but ${rest.on === 'any' ? 'nothing is' : `"${rest.on}" is not`} built before it. Put it later in the parts list.`,
+    );
+  const travel = targets.length
+    ? contactTravel(worldTriangles(mesh), targets, step)
+    : null;
+  if (travel === null)
+    throw Error(
+      `"${label}" rests on "${rest.on}" from ${rest.from}, but it never meets it: nothing lies along that direction. Move the part over the target, or rest it from the side it should land on.`,
+    );
+
+  const landed = holder
+    .getWorldPosition(new T.Vector3())
+    .addScaledVector(step, travel + rest.sink);
+  holder.position.copy(parent.worldToLocal(landed));
+  holder.updateMatrixWorld(true);
+}
+
 function buildPart(
   part: PlacedPart,
   parent: T.Object3D,
@@ -1163,17 +1544,170 @@ function buildPart(
 
   if (part.repeat?.mode === 'surface')
     return buildOnSurface(part, parent, context, rigPart, depth);
+  if (part.repeat?.mode === 'along')
+    return buildAlong(part, parent, context, rigPart, depth);
 
   const holder = new T.Group();
   holder.name = part.name ?? part.shape;
   holder.position.set(...(part.position ?? [0, 0, 0]));
   applyRotation(holder, part.rotation ?? [0, 0, 0]);
   parent.add(holder);
-  holder.add(makeMesh(part, context, rigPart));
+  const mesh = makeMesh(part, context, rigPart);
+  holder.add(mesh);
+  applyRest(part, holder, mesh, parent, context);
+  record(context, mesh, part);
 
   for (const child of part.children ?? [])
     buildPart(child, holder, context, rigPart, depth + 1);
   return holder;
+}
+
+/**
+ * Lay copies of a part along another part's spine.
+ *
+ * A row of scutes down a tail, teeth along a jaw, rivets down a seam: the
+ * copies are the easy half, and the curve they sit on is the half an author
+ * ends up computing by hand, one position at a time, and re-computing every
+ * time the tail moves. Naming the tail instead keeps the row on it.
+ *
+ * The path has to be built already, for the same reason surface placement
+ * needs its body first: this reads where the part actually ended up, so a row
+ * follows a limb that has itself been moved, turned or rested.
+ */
+function buildAlong(
+  part: PlacedPart,
+  parent: T.Object3D,
+  context: BuildContext,
+  rigPart: string | undefined,
+  depth: number,
+) {
+  const repeat = repeatSchema.parse(part.repeat);
+  const label = part.name ?? part.shape;
+  // The schema refuses `along` without a path, so this is only ever a name.
+  const wanted = pathNamed(context, repeat.path ?? '', label, 'repeats along');
+  const source = context.built.find(
+    (entry) => entry.path?.length === wanted.length && beneath(entry.path, wanted),
+  );
+  if (!source)
+    throw Error(
+      `"${label}" repeats along "${repeat.path}", but "${repeat.path}" is not built before it. Put the path earlier in the parts list.`,
+    );
+
+  rootOf(parent).updateMatrixWorld(true);
+  const spine = spineOf(
+    source.mesh.userData.prim as PathPrim,
+    source.mesh.matrixWorld,
+  );
+  const placements = placeAlong(
+    spine,
+    repeat.count,
+    repeat.span,
+    repeat.side,
+  );
+
+  const group = new T.Group();
+  group.name = `${label}_along`;
+  parent.add(group);
+  parent.updateMatrixWorld(true);
+  // The spine answers in world space and a holder is read in its parent's, as
+  // in `buildOnSurface`.
+  const toLocal = new T.Matrix4().copy(parent.matrixWorld).invert();
+  const unturn = new T.Quaternion().setFromRotationMatrix(toLocal);
+  const base = { ...part, repeat: undefined, mirror: undefined } as PlacedPart;
+  const flip = part.mirror
+    ? part.mirror === 'x'
+      ? 0
+      : part.mirror === 'y'
+        ? 1
+        : 2
+    : null;
+
+  const place = (
+    copy: PlacedPart,
+    position: T.Vector3,
+    quaternion: T.Quaternion,
+  ) => {
+    const holder = new T.Group();
+    holder.name = copy.name ?? copy.shape;
+    holder.position.copy(position);
+    holder.quaternion.copy(quaternion);
+    group.add(holder);
+    const mesh = makeMesh(copy, context, rigPart);
+    holder.add(mesh);
+    applyRest(copy, holder, mesh, group, context);
+    record(context, mesh, copy);
+    for (const child of copy.children ?? [])
+      buildPart(child, holder, context, rigPart, depth + 1);
+  };
+
+  placements.forEach((placement, i) => {
+    const copy: PlacedPart = {
+      ...base,
+      name: `${base.name ?? base.shape}_${i + 1}`,
+      position: undefined,
+      rotation: undefined,
+    };
+    const factor = (repeat.scaleStep ?? 1) ** i;
+    // One draw per station, shared with the mirrored row: two rows that
+    // differ in their irregularity are two decorations, not one mirrored one.
+    const vary = repeat.sizeJitter
+      ? 1 + (context.rng() - 0.5) * 2 * repeat.sizeJitter
+      : 1;
+    const scale = factor * vary;
+    if (scale !== 1) {
+      if (base.size)
+        copy.size = [base.size[0] * scale, base.size[1] * scale, base.size[2] * scale];
+      if (base.radius) copy.radius = base.radius * scale;
+    }
+
+    const position = placement.position.clone().applyMatrix4(toLocal);
+    const quaternion = unturn.clone().multiply(placement.quaternion);
+    // The part's own rotation turns it where it stands, after the path has
+    // aimed it — a scute leaning back down the tail is `rotation` on the copy.
+    if (part.rotation)
+      quaternion.multiply(
+        new T.Quaternion().setFromEuler(
+          new T.Euler(
+            T.MathUtils.degToRad(part.rotation[0]),
+            T.MathUtils.degToRad(part.rotation[1]),
+            T.MathUtils.degToRad(part.rotation[2]),
+          ),
+        ),
+      );
+    if (repeat.twist)
+      quaternion.multiply(
+        new T.Quaternion().setFromEuler(
+          new T.Euler(
+            T.MathUtils.degToRad((context.rng() - 0.5) * 2 * repeat.twist),
+            T.MathUtils.degToRad((context.rng() - 0.5) * 2 * repeat.twist),
+            T.MathUtils.degToRad((context.rng() - 0.5) * 2 * repeat.twist),
+          ),
+        ),
+      );
+    if (repeat.scatter)
+      position.set(
+        position.x + (context.rng() - 0.5) * 2 * repeat.scatter[0],
+        position.y + (context.rng() - 0.5) * 2 * repeat.scatter[1],
+        position.z + (context.rng() - 0.5) * 2 * repeat.scatter[2],
+      );
+
+    place(copy, position, quaternion);
+    if (flip === null) return;
+    // Reflecting one axis negates the rotation about the other two, the same
+    // rule `flipPart` applies to an authored part's euler angles.
+    const mirrored = new T.Quaternion(
+      flip === 0 ? quaternion.x : -quaternion.x,
+      flip === 1 ? quaternion.y : -quaternion.y,
+      flip === 2 ? quaternion.z : -quaternion.z,
+      quaternion.w,
+    );
+    place(
+      flipPart(copy, flip),
+      position.clone().setComponent(flip, -position.getComponent(flip)),
+      mirrored,
+    );
+  });
+  return group;
 }
 
 /**
@@ -1263,7 +1797,10 @@ function buildOnSurface(
       if (base.radius) copy.radius = base.radius * vary;
     }
     group.add(holder);
-    holder.add(makeMesh(copy, context, rigPart));
+    const mesh = makeMesh(copy, context, rigPart);
+    holder.add(mesh);
+    applyRest(copy, holder, mesh, group, context);
+    record(context, mesh, copy);
     for (const child of part.children ?? [])
       buildPart(child, holder, context, rigPart, depth + 1);
   }
@@ -1272,9 +1809,13 @@ function buildOnSurface(
 
 function expand(part: PlacedPart, rng: () => number): PlacedPart[] {
   let copies: PlacedPart[] = [part];
-  // Surface placement needs geometry that does not exist yet, so it is left
-  // alone here and resolved in buildPart against the siblings already built.
-  if (part.repeat && part.repeat.mode !== 'surface') {
+  // Surface and along placement both need geometry that does not exist yet,
+  // so they are left alone here and resolved in buildPart against what has
+  // been built. Along carries its mirror through with it too: the two rows
+  // are reflections of where the path put them, which is not a fact this
+  // pass can know.
+  const deferred = part.repeat?.mode === 'along';
+  if (part.repeat && part.repeat.mode !== 'surface' && !deferred) {
     const {
       count,
       mode,
@@ -1355,7 +1896,7 @@ function expand(part: PlacedPart, rng: () => number): PlacedPart[] {
       copies.push(copy);
     }
   }
-  if (part.mirror) {
+  if (part.mirror && !deferred) {
     const axis = part.mirror;
     const index = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
     copies = copies.flatMap((copy) => [
@@ -1371,6 +1912,17 @@ function flipAxis(v: readonly number[], index: number) {
   out[index] *= -1;
   return out;
 }
+
+/** The axis each `rest` direction falls along, and its opposite. */
+const REST_AXIS = { above: 1, below: 1, '+x': 0, '-x': 0, '+z': 2, '-z': 2 } as const;
+const REST_OPPOSITE = {
+  above: 'below',
+  below: 'above',
+  '+x': '-x',
+  '-x': '+x',
+  '+z': '-z',
+  '-z': '+z',
+} as const;
 
 /**
  * Reflect a part and everything hanging off it. Children carry local
@@ -1393,6 +1945,11 @@ function flipPart(part: PlacedPart, index: number): PlacedPart {
     rigPart: mirrorRig(part.rigPart),
     children: part.children?.map((child) => flipPart(child, index)),
   };
+  // A copy that fell from +x lands from -x once it is on the far side, and a
+  // direction left alone would send the mirrored copy away from the body it
+  // was meant to sit on.
+  if (part.rest && REST_AXIS[part.rest.from] === index)
+    flipped.rest = { ...part.rest, from: REST_OPPOSITE[part.rest.from] };
   if (part.from && part.to) {
     flipped.from = flipAxis(part.from, index);
     flipped.to = flipAxis(part.to, index);
@@ -1400,6 +1957,12 @@ function flipPart(part: PlacedPart, index: number): PlacedPart {
     // and its ends no longer meet what they were tied to.
     if (part.via) flipped.via = flipAxis(part.via, index);
   }
+  if (part.spine)
+    flipped.spine = {
+      from: flipAxis(part.spine.from, index),
+      to: flipAxis(part.spine.to, index),
+      ...(part.spine.via ? { via: flipAxis(part.spine.via, index) } : {}),
+    };
   return flipped;
 }
 
@@ -1446,6 +2009,8 @@ export function buildSpec(input: unknown, options: SurfaceOptions = {}) {
     seed: spec.seed,
     count: { meshes: 0 },
     rng: random(spec.seed + 7919),
+    built: [],
+    names: partPaths(spec.parts),
   };
   // One stream for the whole expansion pass: walk visits parts in a fixed
   // order, so the same spec always draws the same numbers.

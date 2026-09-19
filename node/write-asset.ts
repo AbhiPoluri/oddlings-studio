@@ -92,6 +92,17 @@ export async function writeAsset(
   // Faceted assets have flat materials and no vertex colours, so there is
   // nothing for a texture to carry and no PNG is written.
   const texture = png ? `${base}.png` : undefined;
+  // And the material channels, one file each, only where the asset actually
+  // varies. A spec with no `material` block produces none of them, so what
+  // lands on disk is exactly what used to.
+  const extras: { name: string; data: Uint8Array }[] = [];
+  for (const channel of ['roughness', 'metalness', 'emissive'] as const) {
+    const map = atlas?.maps?.[channel];
+    if (map) extras.push({ name: `${base}-${channel}.png`, data: encodePng(map) });
+  }
+  const emissiveTexture = atlas?.maps?.emissive
+    ? `${base}-emissive.png`
+    : undefined;
   const files: string[] = [];
 
   try {
@@ -113,6 +124,7 @@ export async function writeAsset(
           name,
           isRecipe ? undefined : source.spec.color,
           texture,
+          emissiveTexture,
         );
         if (formats.includes('obj')) {
           files.push(await put(join(outDir, `${base}.obj`), bundle.obj));
@@ -129,9 +141,18 @@ export async function writeAsset(
                 JSON.stringify(isRecipe ? source.recipe : source.spec, null, 2),
               ),
               [`${base}/README.txt`]: strToU8(
-                unityReadme(name, Boolean(png)),
+                unityReadme(
+                  name,
+                  Boolean(png),
+                  extras.map((extra) =>
+                    extra.name.slice(extra.name.lastIndexOf('-') + 1, -4),
+                  ),
+                ),
               ),
               ...(png ? { [`${base}/${base}.png`]: png } : {}),
+              ...Object.fromEntries(
+                extras.map((extra) => [`${base}/${extra.name}`, extra.data]),
+              ),
             },
             { level: 6 },
           );
@@ -152,8 +173,11 @@ export async function writeAsset(
     // source it can only get from a canvas, which neither the CLI nor the
     // worker has — so the atlas ships beside the model and the GLB keeps its
     // vertex colours.
-    if (png && formats.some((format) => format !== 'json'))
+    if (png && formats.some((format) => format !== 'json')) {
       files.push(await put(join(outDir, `${base}.png`), png));
+      for (const extra of extras)
+        files.push(await put(join(outDir, extra.name), extra.data));
+    }
   } finally {
     disposeScene(model);
   }

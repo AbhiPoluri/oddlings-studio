@@ -1,6 +1,16 @@
 import * as T from 'three';
+import { creaseSplit } from './asset-smooth';
 import { MeshoptSimplifier } from 'meshoptimizer';
-import { planUv } from './asset-uv';
+import {
+  applyMaterial,
+  isDefaultMaterial,
+  materialKey,
+  materialOf,
+  materialSuffix,
+  ownerOf,
+  planUv,
+  type SurfaceMaterial,
+} from './asset-uv';
 import { bump, mark, measure } from './perf';
 import {
   canonicalExtent,
@@ -10,6 +20,7 @@ import {
   smin,
   type Prim,
   type PrimSource,
+  deformedBounds,
 } from './asset-sdf';
 
 /**
@@ -36,6 +47,11 @@ export type SurfaceSettings = {
   /** Triangle count to decimate down to. */
   budget: number;
   shading: 'flat' | 'smooth';
+  /**
+   * Crease angle in degrees. Set, it replaces `shading`: edges that turn
+   * harder than this stay sharp and everything gentler is shaded smooth.
+   */
+  crease?: number;
 };
 
 /** Knobs that change how a surface is built without changing what it is. */
@@ -67,6 +83,14 @@ export type BuildPhase =
   | 'skinning';
 
 const ready = MeshoptSimplifier.ready;
+
+/**
+ * The empty attribute buffer `simplifyWithAttributes` takes when the only
+ * thing being asked of it is the vertex lock. The attribute machinery is how
+ * meshoptimizer exposes locking at all; with a stride of zero and no weights
+ * it ranks collapses exactly as `simplify` does.
+ */
+const NO_ATTRIBUTES = new Float32Array(0);
 
 /**
  * Load the decimator's WebAssembly module.
@@ -146,6 +170,9 @@ function primFor(
       specPath,
       jitter,
       seed,
+      deform: source.deform,
+      subtract: source.subtract,
+      material: source.material,
     };
   }
 
@@ -164,6 +191,15 @@ function primFor(
     new T.Vector3(-size[0] / 2, -size[1] / 2, -size[2] / 2),
     new T.Vector3(size[0] / 2, size[1] / 2, size[2] / 2),
   );
+  // A bend or a twist reaches outside the box `size` describes, and both the
+  // grid bounds and the per-cell cull read this box — without it a bent part
+  // marches off flat where it leaves its authored footprint.
+  const bent = deformedBounds(shape, source.deform);
+  if (bent)
+    local.set(
+      bent.min.clone().multiply(new T.Vector3(...stretch)),
+      bent.max.clone().multiply(new T.Vector3(...stretch)),
+    );
   if (shape === 'plane') local.expandByVector(new T.Vector3(0, 0, 0.02));
   box.copy(local).applyMatrix4(matrix);
 
@@ -179,12 +215,30 @@ function primFor(
     specPath,
     jitter,
     seed,
+    deform: source.deform,
+    subtract: source.subtract,
+    material: source.material,
   };
 }
 
 /**
+ * Smooth maximum: the mirror of `smin`, and what a cut is made of.
+ *
+ * `smax(a, b, k) = −smin(−a, −b, k)`, so the rim where a subtracted part meets
+ * the surface it was cut from is rounded by exactly the same radius as a join
+ * between two added parts. A cut with a hard rim and joins with soft ones would
+ * read as two different materials welded together; one `blend` controls both.
+ * `k = 0` gives the plain max, which is a knife edge.
+ */
+function smax(a: number, b: number, k: number) {
+  if (k <= 0) return a > b ? a : b;
+  const h = Math.max(k - Math.abs(a - b), 0) / k;
+  return Math.max(a, b) + h * h * k * 0.25;
+}
+
+/**
  * Field value at a world-space point: the smooth union of every primitive
- * whose influence reaches it.
+ * whose influence reaches it, less every primitive that carves.
  *
  * `candidates` is the pre-culled list for this region. Points outside every
  * primitive's padded box are outside the surface by construction, so the
@@ -193,6 +247,14 @@ function primFor(
  * `pad` widens each primitive's own box by its blend reach. Culling on the
  * bare box instead would silently drop exactly the points between two parts —
  * the ones the blend exists to fill — and leave them looking detached.
+ *
+ * SUBTRACTION IS ORDERED. Parts fold in the spec's own order, and a part with
+ * `subtract` is cut from the union of everything *before* it:
+ * `f ← smax(f, −d, k)`. So a subtractor after a subtractor cuts the
+ * already-cut field, and a part added after a subtractor fills the hole back
+ * in. A subtractor with nothing in front of it has nothing to cut and is
+ * skipped rather than inverting the world — which is also what keeps a spec
+ * whose first part is a cut from producing a solid the size of the grid.
  */
 function fieldAt(
   candidates: Prim[],
@@ -223,6 +285,11 @@ function fieldAt(
         prim.jitter *
         0.06 *
         Math.max(0.01, prim.lipschitz);
+    if (prim.subtract) {
+      if (first) continue;
+      d = smax(d, -di, blend);
+      continue;
+    }
     d = first ? di : smin(d, di, blend);
     first = false;
   }
@@ -230,19 +297,48 @@ function fieldAt(
 }
 
 /**
- * The primitive nearest a point, used to colour and bind the finished mesh.
+ * The primitive that owns a point, used to colour and bind the finished mesh.
+ *
+ * Without subtraction this is plain argmin over the signed distances — the
+ * nearest primitive, ties to the lowest index — and that is exactly what it
+ * still computes for a spec with no cuts.
+ *
+ * A cut needs the order. A vertex on a niche's inner wall sits *inside* the
+ * wall it was carved from, so the wall's signed distance there is large and
+ * negative while the subtractor's is zero: argmin hands the vertex to the
+ * wall and the cut comes out painted like solid stone. Replaying the hard CSG
+ * in spec order instead — union takes the smaller, a cut takes the larger of
+ * the running value and the subtractor's negation — tracks which primitive
+ * actually put the surface where it is, so the inner walls take the
+ * subtractor's own colour, and a part added after the cut takes the wall back
+ * where it fills the hole in.
+ *
+ * Ownership stays with the subtractor for rigging too: the cut walls follow
+ * whatever bone the *subtracting* part is pinned to, which by default is the
+ * one it inherits from its parent. A window cut into a wall therefore follows
+ * the window's bone, not the wall's — put the cut under the part it belongs
+ * to, or set `rigPart` on it, if that is not what you want.
  *
  * Linear over every primitive, and run once per finished vertex. That is cheap
  * at a few thousand vertices against a few dozen parts; a spec with thousands
  * of scattered copies and a large budget would want a spatial index here.
  */
-function nearestPrim(prims: Prim[], x: number, y: number, z: number) {
+function ownerAt(prims: Prim[], x: number, y: number, z: number) {
   let best = 0;
-  let bestD = Infinity;
+  // The running CSG value, starting from "nothing has been added yet".
+  let field = Infinity;
   for (let i = 0; i < prims.length; i++) {
-    const d = distanceTo(prims[i], x, y, z);
-    if (d < bestD) {
-      bestD = d;
+    const prim = prims[i];
+    const d = distanceTo(prim, x, y, z);
+    if (prim.subtract) {
+      if (-d > field) {
+        field = -d;
+        best = i;
+      }
+      continue;
+    }
+    if (d < field) {
+      field = d;
       best = i;
     }
   }
@@ -349,16 +445,42 @@ function slope(_prim: Prim) {
  * would consider at any point of `E`. With `D_i` the plain distance from `c`
  * to primitive `i`, `A_i` its jitter amplitude and `k` the blend radius:
  *
- *   outside, f > 0 on all of E, if   min_i (D_i − R − A_i) − (|S| − 1)·k/4 > 0
+ *   outside, f > 0 on all of E, if   min_i (D_i − R − A_i) − (|S⁺| − 1)·k/4 > 0
  *   inside,  f < 0 on all of E, if   some i has E inside its padded box
  *                                    and D_i + R + A_i < 0
  *
- * The first holds because each `d_i` is 1-Lipschitz, so `d_i ≥ D_i − R` on
- * `E`, the jitter moves it by at most `A_i`, and every `smin` in the fold can
- * depress the running value by at most `k/4` — which compounds, once per
- * blend, hence the `|S| − 1`. The second holds because `smin(a, b, k) ≤
- * min(a, b)`, so one primitive that is certainly a candidate and certainly
- * negative across `E` caps the whole union below zero.
+ * where `S⁺` is the additive part of `S` and `i` ranges over it. The first
+ * holds because each `d_i` is 1-Lipschitz, so `d_i ≥ D_i − R` on `E`, the
+ * jitter moves it by at most `A_i`, and every `smin` in the fold can depress
+ * the running value by at most `k/4` — which compounds, once per blend, hence
+ * the `|S⁺| − 1`. The second holds because `smin(a, b, k) ≤ min(a, b)`, so one
+ * primitive that is certainly a candidate and certainly negative across `E`
+ * caps the whole union below zero.
+ *
+ * SUBTRACTION BREAKS THE SECOND, NOT THE FIRST. A cut is `f ← smax(f, −d_j, k)`
+ * and `smax(a, b, k) ≥ max(a, b) ≥ a`, so a subtractor can only ever raise the
+ * field. The outside test therefore stands as written — it is a lower bound,
+ * and the subtractors are simply left out of it. The inside test does not: a
+ * primitive wholly negative across `E` no longer caps the field, because a cut
+ * after it can lift the whole block back out of the solid. So with `S⁻` the
+ * subtractors whose padded box meets `E`, the bound becomes
+ *
+ *   inside,  f < 0 on all of E, if   max( min_i (D_i + R + A_i),
+ *                                        max_j (−(D_j − R − A_j)) )
+ *                                    + |S⁻|·k/4 < 0
+ *
+ * taking `i` over the additive primitives that contain `E` and `j` over `S⁻`.
+ * Each `smax` takes the larger of the running value and `−d_j ≤ −(D_j − R −
+ * A_j)`, and adds at most `k/4` of its own — once per cut, hence `|S⁻|`. With
+ * no subtractors the second term is `−∞`, the third is zero, and this is the
+ * old test unchanged, which is why a spec with no cuts samples bit for bit as
+ * it did. Read in words: a block counts as inside when some part swallows it
+ * whole *and* every cut that could reach it stays clear of it by more than the
+ * rims those cuts can round.
+ *
+ * A block whose candidates are all subtractors is a cut with nothing to cut,
+ * which `fieldAt` answers with the empty field — so it is settled as outside
+ * without sampling, exactly as an empty block is.
  *
  * A rejected block gets a constant of the right sign, not the true distance.
  * That is enough because `surfaceNets` reads a value's magnitude only when it
@@ -486,11 +608,17 @@ export function sampleGrid(
 
     const near = (pool[depth] ??= []);
     near.length = 0;
-    // The lowest any candidate's field can reach anywhere in `E`, and the
-    // highest any certainly-present candidate's can. Both carry the
+    // The lowest any added candidate's field can reach anywhere in `E`, and the
+    // highest any certainly-present added candidate's can. Both carry the
     // primitive's own jitter amplitude and its own Lipschitz factor.
     let floor_ = Infinity;
     let ceiling = Infinity;
+    // How far the nearest cut stays clear of `E`, and how many cuts reach it.
+    // `-Infinity` is "no cut can touch this block", which is what makes the
+    // inside test below collapse to the one a spec without cuts gets.
+    let carve = -Infinity;
+    let adds = 0;
+    let cuts = 0;
     for (let c = 0; c < cands.length; c++) {
       const prim = cands[c];
       const box = prim.padded as T.Box3;
@@ -506,6 +634,13 @@ export function sampleGrid(
       near.push(prim);
       const d = distanceTo(prim, cx, cy, cz);
       const slack = radius * slope(prim) + amplitude(prim);
+      if (prim.subtract) {
+        cuts++;
+        // The highest `−d_j` can be anywhere in `E`.
+        if (-(d - slack) > carve) carve = -(d - slack);
+        continue;
+      }
+      adds++;
       if (d - slack < floor_) floor_ = d - slack;
       if (
         box.min.x <= lo.x &&
@@ -519,21 +654,22 @@ export function sampleGrid(
         ceiling = d + slack;
     }
 
-    // Nothing reaches here, so every point is the field's default — the same 1
-    // the brute-force path leaves behind.
-    if (!near.length) {
-      bump('block.empty');
+    // Nothing reaches here — or only cuts do, which carve an empty field into
+    // an empty field — so every point is the field's default, the same 1 the
+    // brute-force path leaves behind.
+    if (!adds) {
+      bump(near.length ? 'block.cutonly' : 'block.empty');
       flagRun(i0, i1, j0, j1, k0, k1, POS);
       return POS;
     }
     // Wholly outside: leave the default 1s in place.
-    if (floor_ - (near.length - 1) * quarter > 0) {
+    if (floor_ - (adds - 1) * quarter > 0) {
       bump('block.outside');
       flagRun(i0, i1, j0, j1, k0, k1, POS);
       return POS;
     }
     // Wholly inside: any constant of the right sign will do.
-    if (ceiling < 0) {
+    if (Math.max(ceiling, carve) + cuts * quarter < 0) {
       bump('block.inside');
       for (let k = k0; k <= k1; k++)
         for (let j = j0; j <= j1; j++) {
@@ -885,6 +1021,149 @@ function surfaceNets(grid: Grid) {
   };
 }
 
+/**
+ * How many grid cells a part may span and still count as a small feature.
+ *
+ * The decimator measures error against the whole mesh, so a feature that is a
+ * fraction of a percent of the longest axis costs almost nothing to erase: the
+ * wizard's eyes, a rune on a hem, a fang, all collapse into the face they sit
+ * on long before the budget is met. Sixteen cells is where a part stops being
+ * a silhouette and starts being a detail, calibrated against the shipped
+ * specs: the wizard's eye spans 12.1 cells and its cheek 13.9, its hand spans
+ * 20 and its fingers 18, and the lich's fangs span 5. Twelve was the first
+ * guess and missed the wizard's own eye by a tenth of a cell.
+ *
+ * Measured in cells rather than metres on purpose: it is the same threshold
+ * whether the asset is a 2 m wizard or a 130 m building, and it tracks
+ * `surface.detail`, which is what decides how much of a small part the grid
+ * could resolve in the first place.
+ *
+ * Not a spec field. It is a property of how the decimator weighs error, not of
+ * any one asset, and no spec so far has wanted a different number — see the
+ * report if that stops being true.
+ */
+const SMALL_FEATURE_CELLS = 16;
+
+/**
+ * Vertices pinned per small part.
+ *
+ * Enough to keep a shape rather than a bump — an eye held by twenty vertices
+ * still reads as a sphere — and few enough that protecting every rune on a hem
+ * does not eat the budget the rest of the model needs. The rest of a small
+ * part's vertices stay collapsible, so the decimator still simplifies it; it
+ * simply cannot delete it.
+ */
+const PROTECT_PER_PART = 24;
+
+/**
+ * The most of the target vertex count that pinning may claim.
+ *
+ * A lock the decimator cannot honour is worse than no lock: it would blow
+ * through the triangle budget the spec asked for. Past this share the smallest
+ * parts keep their protection and the larger ones lose it, which is the right
+ * order — the larger a part is, the better it survives on its own.
+ */
+const PROTECT_SHARE = 0.35;
+
+/**
+ * Which vertices the decimator may not collapse away.
+ *
+ * Returns null when nothing qualifies, and the caller then takes the plain
+ * `simplify` path it always did — so an asset with no small parts decimates to
+ * the same bytes it used to.
+ *
+ * The work is kept proportional to the small parts rather than to the mesh:
+ * only vertices inside some small part's own box are asked who owns them, and
+ * that question is the same `ownerAt` the paint pass asks later, so a vertex
+ * counted here is one that really will carry the part's colour.
+ */
+function protectSmallFeatures(
+  positions: Float32Array,
+  prims: Prim[],
+  step: number,
+  reach: number,
+  targetTriangles: number,
+) {
+  const limit = SMALL_FEATURE_CELLS * step;
+  const size = new T.Vector3();
+  const small = prims
+    .map((prim, index) => {
+      const span = Math.max(...prim.box.getSize(size).toArray());
+      return {
+        index,
+        span,
+        // Where to look for the vertices this part owns. Not its own box: an
+        // eye sunk into a head owns the patch of head surface that bulges over
+        // it, and that patch sits outside the eye entirely. One part-width
+        // plus the blend's reach covers how far a small part can push its
+        // neighbour's skin — and stays a small region, which is the point of
+        // filtering at all.
+        near: prim.box.clone().expandByScalar(span + reach),
+      };
+    })
+    .filter((entry) => entry.span < limit)
+    // Smallest first: they are the ones a collapse erases outright, and the
+    // ones that keep their protection when the share below runs out. Ties by
+    // primitive index, so the order never depends on the sort's stability.
+    .sort((a, b) => a.span - b.span || a.index - b.index);
+  if (!small.length) return null;
+
+  const count = positions.length / 3;
+  const isSmall = new Uint8Array(prims.length);
+  for (const entry of small) isSmall[entry.index] = 1;
+  const owned = new Map<number, number[]>();
+  for (let v = 0; v < count; v++) {
+    const x = positions[v * 3],
+      y = positions[v * 3 + 1],
+      z = positions[v * 3 + 2];
+    let near = false;
+    for (const entry of small) {
+      const b = entry.near;
+      if (
+        x >= b.min.x &&
+        x <= b.max.x &&
+        y >= b.min.y &&
+        y <= b.max.y &&
+        z >= b.min.z &&
+        z <= b.max.z
+      ) {
+        near = true;
+        break;
+      }
+    }
+    if (!near) continue;
+    const owner = ownerAt(prims, x, y, z);
+    if (!isSmall[owner]) continue;
+    const list = owned.get(owner);
+    if (list) list.push(v);
+    else owned.set(owner, [v]);
+  }
+
+  // A closed mesh has about half as many vertices as triangles, so this is the
+  // vertex count the budget is really asking for.
+  const room = Math.max(8, Math.floor(((targetTriangles / 2) * PROTECT_SHARE)));
+  const lock = new Uint8Array(count);
+  let locked = 0;
+  for (const entry of small) {
+    const list = owned.get(entry.index);
+    if (!list?.length) continue;
+    const wanted = Math.min(PROTECT_PER_PART, list.length);
+    if (locked + wanted > room) break;
+    // Strided rather than the first N: the vertices come in grid order, so the
+    // first twenty of an eye are one horizontal band of it. Spreading them over
+    // the part keeps its whole silhouette, not one slice.
+    const stride = list.length / wanted;
+    for (let i = 0; i < wanted; i++) {
+      const v = list[Math.floor(i * stride)];
+      if (lock[v]) continue;
+      lock[v] = 1;
+      locked++;
+    }
+  }
+  bump('surface.protected', locked);
+  return locked ? lock : null;
+}
+
 /** Drop vertices no triangle references, so the mesh carries no dead weight. */
 function compact(positions: Float32Array, indices: Uint32Array) {
   const remap = new Int32Array(positions.length / 3).fill(-1);
@@ -945,19 +1224,44 @@ export function surfaceModel(
   let mesh = compact(raw.positions, raw.indices);
   const budget = Math.max(64, settings.budget) * 3;
   if (mesh.indices.length > budget) {
-    const simplified = MeshoptSimplifier.simplify(
-      mesh.indices,
+    // The decimator ranks every collapse by the error it adds to the whole
+    // mesh, which is exactly the wrong ranking for a face: erasing an eye
+    // costs a hundredth of what flattening a shoulder does, so the eye goes
+    // first. Pinning a handful of each small part's vertices takes those
+    // collapses off the table without touching the rest of the ranking.
+    const lock = protectSmallFeatures(
       mesh.positions,
-      3,
-      budget,
-      0.02,
-      ['LockBorder'],
+      prims,
+      grid.step,
+      settings.blend + grid.step,
+      settings.budget,
     );
+    const simplified = lock
+      ? MeshoptSimplifier.simplifyWithAttributes(
+          mesh.indices,
+          mesh.positions,
+          3,
+          NO_ATTRIBUTES,
+          0,
+          [],
+          lock,
+          budget,
+          0.02,
+          ['LockBorder'],
+        )
+      : MeshoptSimplifier.simplify(
+          mesh.indices,
+          mesh.positions,
+          3,
+          budget,
+          0.02,
+          ['LockBorder'],
+        );
     mesh = compact(mesh.positions, simplified[0] as Uint32Array);
   }
   measure('surface.decimate', t3);
 
-  const geometry = new T.BufferGeometry();
+  let geometry = new T.BufferGeometry();
   geometry.setAttribute(
     'position',
     new T.BufferAttribute(mesh.positions, 3),
@@ -967,8 +1271,12 @@ export function surfaceModel(
   options.onPhase?.('painting');
   const t4 = mark();
   paint(geometry, prims);
+  // Before the unwrap: grouping reorders the index, and the unwrap's charts
+  // and the seam cut are both keyed by triangle position in it.
+  const tuples = dressMaterials(geometry, prims);
   measure('surface.paint', t4);
-  if (settings.shading === 'smooth') geometry.computeVertexNormals();
+  const creased = settings.crease !== undefined;
+  if (settings.shading === 'smooth' && !creased) geometry.computeVertexNormals();
   // Plan the unwrap now, while the primitives that own each vertex are still
   // in hand, but leave the mesh welded: cutting the uv seams here would tear
   // the index the audit reads to prove the shell is closed and connected.
@@ -982,13 +1290,31 @@ export function surfaceModel(
     measure('surface.uv', t5);
   }
 
+  if (creased) {
+    // Last, once everything keyed by vertex id has been recorded: the split
+    // carries those records across, and the uv plan is keyed by triangle so
+    // it rides through untouched.
+    const t6 = mark();
+    geometry = creaseSplit(geometry, settings.crease!);
+    measure('surface.crease', t6);
+  }
+
   const material = new T.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 1,
     vertexColors: true,
-    flatShading: settings.shading === 'flat',
+    flatShading: settings.shading === 'flat' && !creased,
   });
   material.name = 'surface';
+  // One tuple for the whole shell needs no groups and no export-time fan-out:
+  // it is the mesh's own material, set here. Several is what `geometry.groups`
+  // and `surfaceMaterials` describe, and `dressSurfaceMaterials` builds on the
+  // way out — see the note on `dressMaterials`.
+  if (tuples?.length === 1) {
+    applyMaterial(material, tuples[0]);
+    if (!isDefaultMaterial(tuples[0]))
+      material.name = `surface_${materialSuffix(tuples[0])}`;
+  }
 
   const finished = new T.Mesh(geometry, material);
   // The faceted path names meshes in finishModel, which surface mode skips.
@@ -1006,6 +1332,119 @@ export function surfaceModel(
 }
 
 /**
+ * Split the fused shell by material and carry the numbers per vertex.
+ *
+ * Surface mode's whole point is one mesh, and one mesh in glTF has one
+ * material — unless it has groups, which is how a single primitive buffer
+ * carries several. So the index is sorted by material tuple and one group is
+ * declared per run: still one mesh, one vertex buffer and one draw per
+ * material, which is what an engine wants anyway.
+ *
+ * Colour stays per vertex, because colour varies inside a group and nothing
+ * else does. Roughness, metalness and emission ride along as vertex
+ * attributes as well, even though the group already knows them: they are what
+ * the atlas bake rasterises into its extra channels, and reading them off the
+ * geometry keeps that bake the same loop as the colour bake rather than a
+ * second one that looks the answer up somewhere else.
+ *
+ * Returns the tuples in group order, or null when every part is matte — and
+ * null means nothing is written at all. That silence is load-bearing: the
+ * exporter copies `geometry.userData` into the GLB, and a groups array, a
+ * material table and three attribute buffers full of defaults would change
+ * every existing asset's bytes to say exactly what their absence already says.
+ */
+function dressMaterials(geometry: T.BufferGeometry, prims: Prim[]) {
+  const tuples = prims.map((prim) => materialOf(prim.material));
+  if (tuples.every(isDefaultMaterial)) return null;
+
+  const position = geometry.attributes.position as T.BufferAttribute;
+  const owners = (geometry.userData.surfaceOwners as { index: Uint16Array })
+    .index;
+  const count = position.count;
+  const roughness = new Float32Array(count);
+  const metalness = new Float32Array(count);
+  const emissive = new Float32Array(count * 3);
+  const colour = new T.Color();
+  for (let i = 0; i < count; i++) {
+    const tuple = tuples[owners[i]];
+    roughness[i] = tuple.roughness;
+    metalness[i] = tuple.metalness;
+    if (!tuple.emissive) continue;
+    // Clamped by the colour itself, not by the strength: the map is a colour
+    // and cannot hold a factor of four. The strength stays on the material,
+    // where glTF has a real extension for it.
+    colour.set(tuple.emissive);
+    emissive[i * 3] = colour.r;
+    emissive[i * 3 + 1] = colour.g;
+    emissive[i * 3 + 2] = colour.b;
+  }
+  geometry.setAttribute('roughness', new T.BufferAttribute(roughness, 1));
+  geometry.setAttribute('metalness', new T.BufferAttribute(metalness, 1));
+  geometry.setAttribute('emissive', new T.BufferAttribute(emissive, 3));
+
+  // --- one group per distinct tuple, in first-appearance order -------------
+  const index = geometry.index as T.BufferAttribute;
+  const indices = index.array as Uint32Array;
+  const triangles = index.count / 3;
+  const order = new Map<string, number>();
+  const groups: SurfaceMaterial[] = [];
+  const groupOfPrim = new Int32Array(prims.length);
+  for (let p = 0; p < prims.length; p++) {
+    const key = materialKey(tuples[p]);
+    let at = order.get(key);
+    if (at === undefined) {
+      at = groups.length;
+      order.set(key, at);
+      groups.push(tuples[p]);
+    }
+    groupOfPrim[p] = at;
+  }
+  if (groups.length < 2) return groups;
+
+  const groupOfTriangle = new Int32Array(triangles);
+  const counts = new Int32Array(groups.length);
+  for (let t = 0; t < triangles; t++) {
+    const owner = ownerOf(
+      owners[indices[t * 3]],
+      owners[indices[t * 3 + 1]],
+      owners[indices[t * 3 + 2]],
+    );
+    const group = groupOfPrim[owner];
+    groupOfTriangle[t] = group;
+    counts[group]++;
+  }
+  const start = new Int32Array(groups.length);
+  for (let g = 1; g < groups.length; g++) start[g] = start[g - 1] + counts[g - 1];
+  const cursor = start.slice();
+  const sorted = new Uint32Array(indices.length);
+  // A counting sort, so triangles keep their relative order inside a group and
+  // the result depends on nothing but the input.
+  for (let t = 0; t < triangles; t++) {
+    const at = cursor[groupOfTriangle[t]]++;
+    sorted[at * 3] = indices[t * 3];
+    sorted[at * 3 + 1] = indices[t * 3 + 1];
+    sorted[at * 3 + 2] = indices[t * 3 + 2];
+  }
+  geometry.setIndex(new T.BufferAttribute(sorted, 1));
+  geometry.clearGroups();
+  for (let g = 0; g < groups.length; g++)
+    if (counts[g]) geometry.addGroup(start[g] * 3, counts[g] * 3, g);
+  geometry.userData.surfaceMaterials = groups;
+  // The same ranges again, as plain numbers on userData rather than only as
+  // `geometry.groups`. The studio builds in a worker and the model comes back
+  // rebuilt from attributes, index and userData — `groups` is not part of that
+  // channel, so without this copy a model that took the worker's route would
+  // arrive knowing which materials it has and not which triangles wear them,
+  // and its export would collapse back to one material.
+  geometry.userData.surfaceGroups = geometry.groups.map((group) => ({
+    start: group.start,
+    count: group.count,
+    materialIndex: group.materialIndex ?? 0,
+  }));
+  return groups;
+}
+
+/**
  * Colour each vertex from the primitive nearest to it, and record which bone
  * that primitive was pinned to.
  *
@@ -1018,7 +1457,7 @@ function paint(geometry: T.BufferGeometry, prims: Prim[]) {
   const colors = new Float32Array(position.count * 3);
   const owners = new Uint16Array(position.count);
   for (let i = 0; i < position.count; i++) {
-    const nearest = nearestPrim(
+    const nearest = ownerAt(
       prims,
       position.getX(i),
       position.getY(i),
@@ -1040,5 +1479,16 @@ function paint(geometry: T.BufferGeometry, prims: Prim[]) {
   geometry.userData.surfaceOwners = {
     index: owners,
     paths: prims.map((prim) => prim.specPath),
+    // Which of those primitives carve rather than add. The audit needs it to
+    // keep `no-surface` quiet about a cut that happened to remove nothing
+    // visible: a subtractor owning no vertex is a cut that did not show, which
+    // is a note about the cut, not a part the author forgot to expose.
+    //
+    // Left out entirely when nothing cuts, because the exporter writes
+    // `geometry.userData` into the GLB as extras — an always-present array of
+    // falses would change every existing asset's bytes to say nothing.
+    ...(prims.some((prim) => prim.subtract)
+      ? { subtract: prims.map((prim) => Boolean(prim.subtract)) }
+      : {}),
   };
 }

@@ -56,6 +56,7 @@ const SHAPE_TAG: Record<Shape, string> = {
   limb: 'lmb',
   lathe: 'lth',
   extrude: 'ext',
+  loft: 'lof',
 };
 
 /** The key a selection is remembered by, for focus and scroll-into-view. */

@@ -32,6 +32,100 @@ import * as T from 'three';
  * `objBundle` — where nothing looks at connectivity again.
  */
 
+/**
+ * A part's authored surface response, reduced to the tuple that decides which
+ * material it can share with another part.
+ *
+ * It lives here because the atlas is where these numbers stop being material
+ * settings and become texture channels: the same rasteriser that paints
+ * colour paints roughness, metalness and emission, and it has to agree with
+ * whoever grouped the geometry about what "the same material" means.
+ *
+ * `emissiveStrength` is deliberately absent from the key when there is no
+ * emissive colour. Zod fills it in at 1 whether or not the author wrote it, so
+ * keying on it would split one visible material into two groups over a number
+ * that multiplies black.
+ */
+export type SurfaceMaterial = {
+  roughness: number;
+  metalness: number;
+  emissive?: string;
+  emissiveStrength: number;
+};
+
+/** What every part had before `material` existed, and still has without it. */
+export const DEFAULT_MATERIAL: SurfaceMaterial = {
+  roughness: 1,
+  metalness: 0,
+  emissiveStrength: 1,
+};
+
+export function materialOf(
+  source?: Partial<SurfaceMaterial> | null,
+): SurfaceMaterial {
+  return {
+    roughness: source?.roughness ?? DEFAULT_MATERIAL.roughness,
+    metalness: source?.metalness ?? DEFAULT_MATERIAL.metalness,
+    ...(source?.emissive ? { emissive: source.emissive } : {}),
+    emissiveStrength:
+      source?.emissiveStrength ?? DEFAULT_MATERIAL.emissiveStrength,
+  };
+}
+
+export function isDefaultMaterial(material: SurfaceMaterial) {
+  return (
+    material.roughness === DEFAULT_MATERIAL.roughness &&
+    material.metalness === DEFAULT_MATERIAL.metalness &&
+    !material.emissive
+  );
+}
+
+export function materialKey(material: SurfaceMaterial) {
+  return material.emissive
+    ? `${material.roughness}|${material.metalness}|${material.emissive}|${material.emissiveStrength}`
+    : `${material.roughness}|${material.metalness}`;
+}
+
+/**
+ * A stable, collision-free suffix for a material's name.
+ *
+ * Injective on the tuple — full precision, `.` written as `p` and `-` as `n`
+ * so the name stays a plain identifier — because a name is what the MTL and
+ * the palette index by, and two different materials answering to one name
+ * would quietly merge on the way out.
+ */
+export function materialSuffix(material: SurfaceMaterial) {
+  const num = (n: number) => String(n).replace('.', 'p').replace('-', 'n');
+  const bits = [`r${num(material.roughness)}`, `m${num(material.metalness)}`];
+  if (material.emissive)
+    bits.push(
+      `e${material.emissive.replace('#', '')}`,
+      `s${num(material.emissiveStrength)}`,
+    );
+  return bits.join('');
+}
+
+/**
+ * Write one authored tuple onto a three material.
+ *
+ * `emissiveStrength` becomes `emissiveIntensity`, which the glTF exporter
+ * turns into `KHR_materials_emissive_strength` whenever it is not 1 — so a
+ * lamp authored at strength 4 arrives in an engine as a lamp, not as a
+ * washed-out clamp of one.
+ */
+export function applyMaterial(
+  material: T.MeshStandardMaterial,
+  wanted: SurfaceMaterial,
+) {
+  material.roughness = wanted.roughness;
+  material.metalness = wanted.metalness;
+  if (wanted.emissive) {
+    material.emissive = new T.Color(wanted.emissive);
+    material.emissiveIntensity = wanted.emissiveStrength;
+  }
+  return material;
+}
+
 /** Tunables. No spec field controls these; they are the same for every asset. */
 export type UvOptions = {
   /** Atlas edge in texels. UVs are packed for this size and no other. */
@@ -122,8 +216,12 @@ function directionOf(
 }
 
 /** Which primitive a triangle belongs to: the majority of its corners, ties to
- * the lowest index, so the answer never depends on corner order. */
-function ownerOf(a: number, b: number, c: number) {
+ * the lowest index, so the answer never depends on corner order.
+ *
+ * Exported so the material grouping in `asset-surface` decides a triangle's
+ * owner exactly as the unwrap does. Two rules would put a chart boundary and a
+ * material boundary in different places, which is a seam you can see. */
+export function ownerOf(a: number, b: number, c: number) {
   if (a === b || a === c) return a;
   if (b === c) return b;
   return Math.min(a, b, c);
@@ -466,13 +564,24 @@ export function splitUvSeams(model: T.Object3D) {
     if (rigParts)
       split.userData.rigParts = Array.from(order, (v) => rigParts[v]);
     const owners = geometry.userData.surfaceOwners as
-      | { index: Uint16Array; paths: (number[] | undefined)[] }
+      | {
+          index: Uint16Array;
+          paths: (number[] | undefined)[];
+          subtract?: boolean[];
+        }
       | undefined;
     if (owners)
       split.userData.surfaceOwners = {
         index: Uint16Array.from(order, (v) => owners.index[v]),
         paths: owners.paths,
+        ...(owners.subtract ? { subtract: owners.subtract } : {}),
       };
+    // Material groups are ranges over the index, and the split rewrites the
+    // index corner for corner in place, so every range still covers the same
+    // triangles. Losing them here would collapse a multi-material export back
+    // to one material at the last moment.
+    for (const group of geometry.groups)
+      split.addGroup(group.start, group.count, group.materialIndex);
     // Which welded vertex each split vertex came from. A weld map for anyone
     // downstream, and the only honest way to check that duplicating a vertex
     // did not change what it is bound to.
@@ -498,6 +607,21 @@ export type ColorAtlas = {
   rgba: Uint8Array;
   /** Texels the triangles themselves wrote, before dilation. */
   covered: number;
+  /**
+   * The other channels the same rasteriser drew, when the model varies in
+   * them. Absent by default and absent one at a time: a model whose parts are
+   * all matte ships one PNG, exactly as it always did, and a model with one
+   * glowing lens ships a colour map and an emissive map and no others.
+   *
+   * Roughness and metalness are written linearly, because they are data an
+   * engine reads as numbers; colour and emission go through sRGB, because they
+   * are light.
+   */
+  maps?: {
+    roughness?: ColorAtlas;
+    metalness?: ColorAtlas;
+    emissive?: ColorAtlas;
+  };
 };
 
 /** Linear working colour to sRGB, the space a colour map is sampled in. */
@@ -525,23 +649,86 @@ export function bakeColorAtlas(model: T.Object3D): ColorAtlas | null {
   });
   if (!found) return null;
   const geometry = (found as T.Mesh).geometry;
-  const atlas = geometry.userData.uvAtlas as { size: number; gutter: number };
-  const uv = geometry.attributes.uv as T.BufferAttribute | undefined;
   const color = geometry.attributes.color as T.BufferAttribute | undefined;
+  if (!color) return null;
+  const base = rasterise(geometry, color.array, 3, true);
+  if (!base) return null;
+
+  // The material channels, if this asset has any variation to record. A
+  // constant channel is a number, not a texture: the MTL writes it as `Ns` and
+  // the glTF material carries it outright, and shipping a flat grey PNG beside
+  // them would be a megabyte that says nothing.
+  const maps: NonNullable<ColorAtlas['maps']> = {};
+  const roughness = geometry.attributes.roughness as
+    | T.BufferAttribute
+    | undefined;
+  const metalness = geometry.attributes.metalness as
+    | T.BufferAttribute
+    | undefined;
+  const emissive = geometry.attributes.emissive as
+    | T.BufferAttribute
+    | undefined;
+  if (roughness && varies(roughness.array))
+    maps.roughness = rasterise(geometry, roughness.array, 1, false) ?? undefined;
+  if (metalness && varies(metalness.array))
+    maps.metalness = rasterise(geometry, metalness.array, 1, false) ?? undefined;
+  if (emissive && lit(emissive.array))
+    maps.emissive = rasterise(geometry, emissive.array, 3, true) ?? undefined;
+  if (Object.keys(maps).length) base.maps = maps;
+  return base;
+}
+
+/** Does this channel hold more than one value? */
+function varies(values: ArrayLike<number>) {
+  if (!values.length) return false;
+  const first = values[0];
+  for (let i = 1; i < values.length; i++)
+    if (Math.abs(values[i] - first) > 1e-6) return true;
+  return false;
+}
+
+/** Does anything here emit at all? */
+function lit(values: ArrayLike<number>) {
+  for (let i = 0; i < values.length; i++) if (values[i] > 1e-6) return true;
+  return false;
+}
+
+/**
+ * Draw one per-vertex channel into an atlas at the geometry's own uvs.
+ *
+ * Every triangle is drawn in uv space with its value interpolated
+ * barycentrically, then the result is grown a few texels outward so a bilinear
+ * sample near a chart edge picks up the chart rather than the empty background.
+ *
+ * `stride` is 1 for a scalar channel, which is written to all three colour
+ * channels so the image reads the same whichever one a shader samples.
+ */
+function rasterise(
+  geometry: T.BufferGeometry,
+  values: ArrayLike<number>,
+  stride: 1 | 3,
+  srgb: boolean,
+): ColorAtlas | null {
+  const atlas = geometry.userData.uvAtlas as
+    | { size: number; gutter: number }
+    | undefined;
+  const uv = geometry.attributes.uv as T.BufferAttribute | undefined;
   const index = geometry.index;
-  if (!uv || !color || !index) return null;
+  if (!atlas || !uv || !index) return null;
 
   const size = atlas.size;
   const rgba = new Uint8Array(size * size * 4);
   const mask = new Uint8Array(size * size);
   const us = uv.array,
-    cs = color.array,
     indices = index.array;
+  const encode = srgb ? toSrgb : clamp01;
+  const at = (v: number, channel: number) =>
+    values[v * stride + (stride === 1 ? 0 : channel)];
 
   const paint = (pixel: number, r: number, g: number, b: number) => {
-    rgba[pixel * 4] = Math.round(toSrgb(r) * 255);
-    rgba[pixel * 4 + 1] = Math.round(toSrgb(g) * 255);
-    rgba[pixel * 4 + 2] = Math.round(toSrgb(b) * 255);
+    rgba[pixel * 4] = Math.round(encode(r) * 255);
+    rgba[pixel * 4 + 1] = Math.round(encode(g) * 255);
+    rgba[pixel * 4 + 2] = Math.round(encode(b) * 255);
     rgba[pixel * 4 + 3] = 255;
     mask[pixel] = 1;
   };
@@ -577,9 +764,9 @@ export function bakeColorAtlas(model: T.Object3D): ColorAtlas | null {
           if (wa < 0 || wb < 0 || wc < 0) continue;
           paint(
             y * size + x,
-            wa * cs[a * 3] + wb * cs[b * 3] + wc * cs[c * 3],
-            wa * cs[a * 3 + 1] + wb * cs[b * 3 + 1] + wc * cs[c * 3 + 1],
-            wa * cs[a * 3 + 2] + wb * cs[b * 3 + 2] + wc * cs[c * 3 + 2],
+            wa * at(a, 0) + wb * at(b, 0) + wc * at(c, 0),
+            wa * at(a, 1) + wb * at(b, 1) + wc * at(c, 1),
+            wa * at(a, 2) + wb * at(b, 2) + wc * at(c, 2),
           );
           drawn++;
         }
@@ -594,7 +781,7 @@ export function bakeColorAtlas(model: T.Object3D): ColorAtlas | null {
           size - 1,
           Math.max(0, Math.floor((1 - us[v * 2 + 1]) * size)),
         );
-        paint(y * size + x, cs[v * 3], cs[v * 3 + 1], cs[v * 3 + 2]);
+        paint(y * size + x, at(v, 0), at(v, 1), at(v, 2));
       }
   }
 

@@ -1,4 +1,5 @@
 import * as T from 'three';
+import { weldByPosition } from './asset-smooth';
 import { AUTO_WEIGHT, autoBone } from './asset-rig';
 import { buildSpec, type AssetSpec } from './asset-spec';
 import { disposeScene } from './three-world';
@@ -340,8 +341,12 @@ function shellsOf(geometry: T.BufferGeometry) {
   const count = (geometry.attributes.position as T.BufferAttribute).count;
   if (!index) return [];
 
+  // A crease split duplicates vertices along hard edges. Those are the same
+  // points of the same shell, so the walk runs over welded ids and only the
+  // grouping at the end hands back every duplicate.
+  const canon = weldByPosition(geometry);
   const parent = new Int32Array(count);
-  for (let i = 0; i < count; i++) parent[i] = i;
+  for (let i = 0; i < count; i++) parent[i] = canon[i];
   const find = (i: number): number => {
     while (parent[i] !== i) i = parent[i] = parent[parent[i]];
     return i;
@@ -375,8 +380,13 @@ function openEdges(geometry: T.BufferGeometry) {
   if (!index) return 0;
   const uses = new Map<number, number>();
   const count = (geometry.attributes.position as T.BufferAttribute).count;
+  const canon = weldByPosition(geometry);
   for (let i = 0; i < index.count; i += 3) {
-    const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+    const tri = [
+      canon[index.getX(i)],
+      canon[index.getX(i + 1)],
+      canon[index.getX(i + 2)],
+    ];
     for (let e = 0; e < 3; e++) {
       const a = tri[e];
       const b = tri[(e + 1) % 3];
@@ -519,6 +529,8 @@ function reachAlong(piece: Piece, direction: T.Vector3) {
 type SurfaceOwners = {
   index: Uint16Array;
   paths: (number[] | undefined)[];
+  /** True for the primitives that carve the field instead of adding to it. */
+  subtract?: boolean[];
 };
 
 /**
@@ -682,7 +694,7 @@ export function auditModel(
           part: pieces.find((p) => p.partKey === key)?.path,
           value: count,
           threshold: total.get(key),
-          message: `${count} of ${total.get(key)} "${name(key)}" ${count === 1 ? 'sits' : 'sit'} in mid-air, touching nothing. Move ${count === 1 ? 'it' : 'them'} into the body, or place the part against a surface instead of at a fixed radius.`,
+          message: `${count} of ${total.get(key)} "${name(key)}" ${count === 1 ? 'sits' : 'sit'} in mid-air, touching nothing. Move ${count === 1 ? 'it' : 'them'} into the body, or place the part against a surface instead of at a fixed radius. Or add "rest": { "on": "<part>" } and let the builder find the contact.`,
           ...(route
             ? {
                 hint: {
@@ -809,13 +821,18 @@ export function auditModel(
   model.traverse((object) => {
     if (!(object instanceof T.Mesh)) return;
     const owners = object.geometry.userData.surfaceOwners as
-      | { index: Uint16Array; paths: (number[] | undefined)[] }
+      | SurfaceOwners
       | undefined;
     if (!owners) return;
     const seen = new Uint8Array(owners.paths.length);
     for (let i = 0; i < owners.index.length; i++) seen[owners.index[i]] = 1;
     const missing = new Map<string, { path: number[]; copies: number }>();
     owners.paths.forEach((path, prim) => {
+      // A subtractor that owns no vertex cut nothing that shows — a niche
+      // sunk too far into a wall, a bore that missed. That is a note about the
+      // cut, not a part left invisible, and telling an author to "make it
+      // proud of its neighbour" would be exactly the wrong advice.
+      if (owners.subtract?.[prim]) return;
       if (seen[prim] || !path) return;
       const key = path.join('.');
       const entry = missing.get(key) ?? { path, copies: 0 };
@@ -850,6 +867,32 @@ export function auditModel(
       });
     }
   });
+
+  // --- cuts that were never made ----------------------------------------
+  // `subtract` is a field-mode instruction: it carves the blended surface.
+  // The faceted builder has no CSG to carve with, so it builds the part as the
+  // plain solid it was authored as — which puts a window-shaped block where the
+  // window should be. Nothing about the geometry says that went wrong, so the
+  // spec has to.
+  const uncut = new Map<string, { path?: number[]; copies: number }>();
+  model.traverse((object) => {
+    if (!(object instanceof T.Mesh) || object.userData.surface) return;
+    const prim = object.userData.prim as { subtract?: boolean } | undefined;
+    if (!prim?.subtract) return;
+    const path = object.userData.specPath as number[] | undefined;
+    const key = path ? path.join('.') : object.name;
+    const entry = uncut.get(key) ?? { path, copies: 0 };
+    entry.copies++;
+    uncut.set(key, entry);
+  });
+  for (const [key, { path, copies }] of uncut)
+    findings.push({
+      severity: 'warn',
+      code: 'subtract-needs-surface',
+      ...(path ? { part: path } : {}),
+      value: copies,
+      message: `"${name(key)}" asks to be subtracted, but this asset is built from stacked solids, so it was added as one instead of cut away${copies > 1 ? ` (${copies} copies)` : ''}. Give the spec a surface block to get the cut, or drop the subtract flag.`,
+    });
 
   // --- rig weighting ----------------------------------------------------
   if (options.rigged) {

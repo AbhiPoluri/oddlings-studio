@@ -5,7 +5,9 @@ import { buildSpec, parseSpec, type AssetSpecInput, type Part } from '../lib/ass
 import { stats } from '../lib/asset-build';
 import {
   canonicalExtent,
+  deformedBounds,
   distanceTo,
+  loftMesh,
   primArgs,
   type Prim,
   type PrimSource,
@@ -576,4 +578,367 @@ describe('the new shapes are deterministic', () => {
       expect(Array.from(first)).toStrictEqual(Array.from(second));
     },
   );
+});
+
+/**
+ * A prim with its `deform` carried over, and its box grown to hold the bend.
+ *
+ * `primOf` above is a copy of `primFor`, which already passes the part's
+ * modifiers through. The box is the part `primFor` still needs: a bend moves
+ * material outside the box `size` describes, and the sampler culls every query
+ * outside `prim.box`, so a bent horn marches off flat without this. Written
+ * out here as the two lines that edit is, so the fix can be read rather than
+ * described.
+ */
+function warpedPrim(source: PrimSource) {
+  const prim = { ...primOf(source), deform: source.deform } as Prim;
+  const bounds = deformedBounds(source.shape, source.deform);
+  if (bounds) {
+    const size = source.size ?? [1, 1, 1];
+    const extent = canonicalExtent(source.shape);
+    const stretch = new T.Vector3(
+      size[0] / extent[0],
+      size[1] / extent[1],
+      size[2] / extent[2],
+    );
+    prim.box = new T.Box3(
+      bounds.min.clone().multiply(stretch),
+      bounds.max.clone().multiply(stretch),
+    );
+  }
+  return prim;
+}
+
+/** Half a boat: drawn on one side of the keel, mirrored into a section. */
+const SECTION: [number, number][] = [
+  [0, -0.5],
+  [0.28, -0.42],
+  [0.46, -0.1],
+  [0.5, 0.26],
+  [0.46, 0.46],
+  [0, 0.46],
+];
+
+/** The same plan at three sizes: a stern, a full midships, and a fine bow. */
+function hullStations(): NonNullable<Part['stations']> {
+  const scaled = (beam: number, rise: number) =>
+    SECTION.map(([x, y]) => [x * beam, y * rise] as [number, number]);
+  return [
+    { at: 0, profile: scaled(0.72, 0.8) },
+    { at: 0.45, profile: scaled(1, 1) },
+    { at: 1, profile: scaled(0.3, 0.9) },
+  ];
+}
+
+/**
+ * The centre of each of a loft's end caps, found by triangle count.
+ *
+ * Every other vertex of a revolved or skinned solid is shared by six triangles
+ * or so; the middle of a fan cap is shared by as many as the cap has segments.
+ * That makes it findable without knowing anything about the order the builder
+ * emitted its vertices in — which is exactly what a test of where the ends
+ * ended up should not have to know.
+ */
+function fanCentres(geometry: T.BufferGeometry) {
+  const position = geometry.attributes.position as T.BufferAttribute;
+  const map = weld(geometry);
+  const places: number[][] = [];
+  for (let i = 0; i < position.count; i++)
+    places[map[i]] = [position.getX(i), position.getY(i), position.getZ(i)];
+  const uses = new Map<number, number>();
+  for (const corner of triangles(geometry))
+    uses.set(map[corner], (uses.get(map[corner]) ?? 0) + 1);
+  const ranked = [...uses.entries()].sort((a, b) => b[1] - a[1]);
+  return [places[ranked[0][0]], places[ranked[1][0]]].sort((a, b) => a[1] - b[1]);
+}
+
+describe('loft', () => {
+  const size: [number, number, number] = [0.6, 0.4, 1.2];
+  const boat: Part = { shape: 'loft', size, stations: hullStations() };
+
+  test('skins its stations into a closed solid the declared size', () => {
+    const geometry = meshOf(boat).geometry;
+    expect(boundaryEdges(geometry)).toBe(0);
+    expect(signedVolume(geometry)).toBeGreaterThan(0);
+    const measured = stats(buildSpec(spec(boat))).size;
+    for (let axis = 0; axis < 3; axis++)
+      expect(measured[axis]).toBeCloseTo(size[axis], 5);
+  });
+
+  test('with every station the same it is the extrude of that profile', () => {
+    // The default spine runs along +Z and the first frame puts the profile's
+    // own x and y on the world x and y, which is the whole reason an author can
+    // check a loft against a shape they already understand.
+    const plan: [number, number][] = [
+      [-0.3, -0.2],
+      [0.3, -0.2],
+      [0.3, 0.2],
+      [-0.3, 0.2],
+    ];
+    const swept: Part = { shape: 'extrude', size, profile: plan };
+    const skinned: Part = {
+      shape: 'loft',
+      size,
+      closed: 'none',
+      stations: [
+        { at: 0, profile: plan },
+        { at: 1, profile: plan },
+      ],
+    };
+    expect(triangleCount(skinned)).toBe(triangleCount(swept));
+    const a = new T.Box3().setFromObject(buildSpec(spec(skinned)));
+    const b = new T.Box3().setFromObject(buildSpec(spec(swept)));
+    for (const axis of ['x', 'y', 'z'] as const) {
+      expect(a.min[axis]).toBeCloseTo(b.min[axis], 5);
+      expect(a.max[axis]).toBeCloseTo(b.max[axis], 5);
+    }
+    expect(signedVolume(meshOf(skinned).geometry)).toBeCloseTo(
+      signedVolume(meshOf(swept).geometry),
+      5,
+    );
+  });
+
+  test('follows a spine bent through a via', () => {
+    const straight = loftMesh(boat)!;
+    const bent = loftMesh({
+      ...boat,
+      spine: { from: [0, 0, -0.5], via: [0, 0.35, 0], to: [0, 0, 0.5] },
+    })!;
+    /** The mean of one ring's vertices: where that station ended up. */
+    const centre = (mesh: { positions: number[] }, ring: number, rings: number) => {
+      const stride = mesh.positions.length / 3 / rings;
+      let x = 0, y = 0, z = 0;
+      for (let j = 0; j < stride; j++) {
+        const i = (ring * stride + j) * 3;
+        x += mesh.positions[i];
+        y += mesh.positions[i + 1];
+        z += mesh.positions[i + 2];
+      }
+      return [x / stride, y / stride, z / stride];
+    };
+    // Three stations, so three rings, and the middle one is what the via moves.
+    const sag = (mesh: { positions: number[] }) =>
+      centre(mesh, 1, 3)[1] - (centre(mesh, 0, 3)[1] + centre(mesh, 2, 3)[1]) / 2;
+    expect(Math.abs(sag(straight))).toBeLessThan(0.02);
+    expect(sag(bent)).toBeGreaterThan(0.1);
+  });
+
+  test('takes the outline as drawn when closed is "none"', () => {
+    const asDrawn: Part = { ...boat, closed: 'none' };
+    const geometry = meshOf(asDrawn).geometry;
+    expect(boundaryEdges(geometry)).toBe(0);
+    expect(signedVolume(geometry)).toBeGreaterThan(0);
+    // Half the boat, so half the triangles of the mirrored one: ten points per
+    // section against the mirror's sixteen.
+    expect(triangleCount(asDrawn)).toBeLessThan(triangleCount(boat));
+    // And the section is no longer symmetric about the keel, so the mirrored
+    // hull is the wider of the two once both are fitted to the same box.
+    const drawn = new T.Box3().setFromObject(buildSpec(spec(asDrawn)));
+    expect(drawn.max.x).toBeCloseTo(size[0] / 2, 5);
+  });
+
+  test('with no stations it is a box', () => {
+    const plain: Part = { shape: 'loft', size };
+    expect(triangleCount(plain)).toBe(12);
+    const measured = stats(buildSpec(spec(plain))).size;
+    for (let axis = 0; axis < 3; axis++)
+      expect(measured[axis]).toBeCloseTo(size[axis], 5);
+    // And the field falls back with it, rather than reading past its own args.
+    const prim = primOf(plain);
+    expect(distanceTo(prim, 0, 0, 0)).toBeCloseTo(-0.2, 5);
+    // Canonical distances are scaled back by the smallest stretch, so a fifth
+    // of a metre past the bow of a long thin box reads as a fifteenth.
+    expect(distanceTo(prim, 0, 0, 0.8)).toBeCloseTo(0.0667, 3);
+  });
+
+  test('its field agrees with its triangles', () => {
+    const prim = primOf(boat);
+    expect(distanceTo(prim, 0, 0, 0)).toBeLessThan(-0.05);
+    expect(distanceTo(prim, 0, 0, 0.9)).toBeGreaterThan(0.05);
+    expect(distanceTo(prim, 0.6, 0, 0)).toBeGreaterThan(0.2);
+    expect(distanceTo(prim, 0, 0.5, 0)).toBeGreaterThan(0.2);
+    // Both backends read the same triangles, so "within a cell" understates it:
+    // the only difference is the rounding of the float32 the builder stores.
+    expect(surfaceDrift(boat, prim)).toBeLessThan(1e-5);
+    // Never faster than the point that moved it, which is what the block test
+    // in the sampler assumes of every field.
+    expect(gradientRange(prim, 0.9)[1]).toBeLessThan(1 + 1e-6);
+  });
+
+  test('skins the same geometry twice', () => {
+    const first = meshOf(boat).geometry.attributes.position.array;
+    const second = meshOf(boat).geometry.attributes.position.array;
+    expect(Array.from(first)).toStrictEqual(Array.from(second));
+  });
+});
+
+describe('deform', () => {
+  test('bends the end centroids onto a circular arc', () => {
+    const size: [number, number, number] = [0.5, 1.2, 0.6];
+    for (const degrees of [30, 60, 90]) {
+      const horn: Part = {
+        shape: 'cylinder',
+        size,
+        detail: 24,
+        deform: { axis: 'y', bend: degrees, twist: 0, taper: 1 },
+      };
+      const [low, high] = fanCentres(meshOf(horn).geometry);
+      // The canonical axis is one unit long, so the arc's radius is 1/angle and
+      // its ends sit at half the angle either side of the middle. Both caps
+      // swing the same way — bend curves the axis, it does not tilt the part —
+      // so they share a displacement and differ only in sign along the axis.
+      const angle = T.MathUtils.degToRad(degrees);
+      const along = (size[1] * Math.sin(angle / 2)) / angle;
+      const across = (size[2] * (1 - Math.cos(angle / 2))) / angle;
+      expect(high[0]).toBeCloseTo(0, 6);
+      expect(high[1]).toBeCloseTo(along, 5);
+      expect(high[2]).toBeCloseTo(across, 5);
+      expect(low[1]).toBeCloseTo(-along, 5);
+      expect(low[2]).toBeCloseTo(across, 5);
+    }
+  });
+
+  test('twists without losing volume', () => {
+    const size: [number, number, number] = [0.4, 1, 0.4];
+    const plain = signedVolume(meshOf({ shape: 'cylinder', size, detail: 24 }).geometry);
+    for (const degrees of [45, 90, 180]) {
+      const twisted = meshOf({
+        shape: 'cylinder',
+        size,
+        detail: 24,
+        deform: { axis: 'y', bend: 0, twist: degrees, taper: 1 },
+      }).geometry;
+      // A twist turns each cross-section rigidly, so the solid it sweeps has
+      // exactly the volume it started with. What the mesh loses is the sliver
+      // between each pair of rings, and that is what the one percent is.
+      expect(signedVolume(twisted) / plain).toBeGreaterThan(0.99);
+      expect(signedVolume(twisted) / plain).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test('a twisted box is still closed and wound outward', () => {
+    const twisted = meshOf({
+      shape: 'box',
+      size: [0.4, 1, 0.4],
+      deform: { axis: 'y', bend: 0, twist: 120, taper: 1 },
+    }).geometry;
+    expect(boundaryEdges(twisted)).toBe(0);
+    expect(signedVolume(twisted)).toBeGreaterThan(0);
+    const bent = meshOf({
+      shape: 'box',
+      size: [0.4, 1, 0.4],
+      deform: { axis: 'y', bend: 75, twist: 0, taper: 1 },
+    }).geometry;
+    expect(boundaryEdges(bent)).toBe(0);
+    expect(signedVolume(bent)).toBeGreaterThan(0);
+  });
+
+  test('deform.taper is the shape own taper, to the last vertex', () => {
+    const size: [number, number, number] = [0.5, 1, 0.5];
+    for (const shape of ['cylinder', 'prism', 'cone'] as const)
+      for (const taper of [0.4, 1.8]) {
+        const plain: Part = { shape, size, taper, detail: 8 };
+        const viaDeform: Part = {
+          shape,
+          size,
+          detail: 8,
+          deform: { axis: 'y', bend: 0, twist: 0, taper },
+        };
+        expect(
+          Array.from(meshOf(viaDeform).geometry.attributes.position.array),
+        ).toStrictEqual(
+          Array.from(meshOf(plain).geometry.attributes.position.array),
+        );
+        // And the same in the field, which reads the resolved taper too.
+        expect(primArgs(shape, viaDeform)).toStrictEqual(primArgs(shape, plain));
+      }
+  });
+
+  test('a deformed field agrees with its triangles', () => {
+    const cases: Part[] = [
+      { shape: 'box', size: [0.4, 1, 0.4], deform: { axis: 'y', bend: 70, twist: 0, taper: 1 } },
+      { shape: 'box', size: [0.4, 1, 0.4], deform: { axis: 'y', bend: 0, twist: 90, taper: 1 } },
+      { shape: 'box', size: [0.6, 1, 0.5], deform: { axis: 'y', bend: 40, twist: 40, taper: 0.5 } },
+      { shape: 'box', size: [1, 0.5, 0.5], deform: { axis: 'x', bend: 50, twist: 20, taper: 1 } },
+      { shape: 'cylinder', size: [0.5, 1, 0.5], detail: 24, deform: { axis: 'y', bend: 60, twist: 0, taper: 1 } },
+    ];
+    for (const part of cases) {
+      const prim = warpedPrim(part);
+      // The builder warps its vertices with `deformPoint` and the field undoes
+      // the same map with `undeformPoint`, in the same canonical frame, so the
+      // two agree to float32 rather than to a voxel.
+      expect(surfaceDrift(part, prim)).toBeLessThan(1e-5);
+      expect(distanceTo(prim, 0, 0, 0)).toBeLessThan(0);
+    }
+  });
+
+  test('reaches outside the box its size describes, and says by how much', () => {
+    // The consequence of warping after the fit rather than fitting after the
+    // warp: `size` is the box the part fills before it is bent. Surface mode
+    // culls on that box, so the sampler has to be told the larger one — which
+    // is what `deformedBounds` is for, and what this measures it against.
+    const size: [number, number, number] = [0.3, 1, 0.3];
+    for (const degrees of [45, 90, 120]) {
+      const horn: Part = {
+        shape: 'cylinder',
+        size,
+        detail: 12,
+        deform: { axis: 'y', bend: degrees, twist: 0, taper: 1 },
+      };
+      const drawn = new T.Box3().setFromObject(buildSpec(spec(horn)));
+      const bounds = deformedBounds('cylinder', horn.deform)!;
+      const stretch = new T.Vector3(size[0], size[1], size[2]);
+      const claimed = new T.Box3(
+        bounds.min.clone().multiply(stretch),
+        bounds.max.clone().multiply(stretch),
+      );
+      // The bend really does escape — a 90 degree bend of a metre-long horn by
+      // more than half a metre — and the claim really does contain it.
+      expect(drawn.max.y - drawn.min.y).toBeGreaterThan(size[1] * 1.2);
+      expect(claimed.containsBox(drawn)).toBe(true);
+      // And it is a bound worth having rather than a shrug: no more than a
+      // tenth of the part wider than what it has to hold.
+      expect(claimed.max.y - claimed.min.y).toBeLessThan(
+        (drawn.max.y - drawn.min.y) * 1.1,
+      );
+    }
+    expect(deformedBounds('cylinder', undefined)).toBe(null);
+    expect(deformedBounds('loft', { axis: 'y', bend: 60, twist: 0, taper: 1 })).toBe(null);
+  });
+
+  test('a deformed field never outruns the point that moved it', () => {
+    // The hierarchical sampler rejects a block by walking one sample outward by
+    // the block's radius, which is only sound while no field moves faster than
+    // its query point. An inverse warp does move faster, and `warpFor` divides
+    // that back out; without the division this is what would catch it.
+    const cases: Part[] = [
+      { shape: 'box', size: [0.6, 0.4, 0.5], deform: { axis: 'y', bend: 90, twist: 0, taper: 1 } },
+      { shape: 'box', size: [0.6, 0.4, 0.5], deform: { axis: 'z', bend: 0, twist: 180, taper: 1 } },
+      { shape: 'sphere', size: [0.6, 0.4, 0.5], deform: { axis: 'x', bend: 45, twist: 45, taper: 0.5 } },
+      { shape: 'capsule', size: [0.4, 0.9, 0.4], deform: { axis: 'y', bend: 120, twist: 60, taper: 1 } },
+    ];
+    for (const part of cases) {
+      const prim = warpedPrim(part);
+      let seed = 987654321;
+      const next = () => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      const point = () =>
+        [next() * 3 - 1.5, next() * 3 - 1.5, next() * 3 - 1.5] as const;
+      let worst = 0;
+      for (let i = 0; i < 4000; i++) {
+        const a = point();
+        const b = point();
+        const moved = Math.abs(
+          distanceTo(prim, a[0], a[1], a[2]) - distanceTo(prim, b[0], b[1], b[2]),
+        );
+        worst = Math.max(
+          worst,
+          moved / Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]),
+        );
+      }
+      expect(worst).toBeLessThanOrEqual(1 + 1e-6);
+    }
+  });
 });

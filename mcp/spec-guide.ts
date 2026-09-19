@@ -60,6 +60,34 @@ them safe to switch a part to before you have drawn the outline. One caution:
 rotations about the other two axes all flip - but not the part's own outline,
 so a mirrored extrude with an asymmetric profile is a second left-hand bracket,
 not a right-hand one. Write the mirrored profile out as its own part.
+- "loft" skins a run of cross-sections along a spine, which is the shape for
+  anything whose silhouette changes down its length: hulls, torsos, necks,
+  tails, horns, chimneys. Each station is { at, profile } - "at" a fraction of
+  the spine's LENGTH, "profile" a 2D outline. With closed "mirror" (the
+  default) you draw one side and the other is reflected in x and welded at
+  the seam, so start and end the outline on the centreline; closed "none"
+  takes the outline as a closed polygon as written. The "spine" runs straight
+  from "from" to "to", or curves through "via"; leave it out and it runs
+  along +Z, where the profile's x and y land on the part's x and y - a loft
+  whose stations are all the same profile is exactly the extrude of it, which
+  is the cheapest way to check your sections read the way you think. Sections
+  ride the spine in a rotation-minimising frame, so a curved spine puts no
+  twist in the middle of a hull; profiles with different point counts are
+  paired by arc length, so give every station the same count and your corners
+  stay where you drew them. Then it is fitted to "size" like every shape.
+  With fewer than two stations a loft is a box.
+- "deform" bends, twists and tapers a part along one of its own axes:
+  { axis, bend, twist, taper }, degrees for the first two, a far-end scale for
+  the third. "bend" curves the axis toward the next axis in cyclic order (x
+  toward +y, y toward +z, z toward +x); on a cylinder, prism, cone or extrude
+  "taper" is routed into the shape's own taper. Hold on to this: "size" is
+  the box the part fills BEFORE it is bent, and a bend or twist reaches
+  outside it - a 90 degree bend on a metre-long horn adds over half a metre.
+  That is what lets both backends draw the identical shape, so place a bent
+  part by its unbent box and check the result; for a bent hull, a loft with a
+  curved spine gives a better solid than a bent box. Segments along the axis
+  are added automatically; a twisted box still pinches a few percent between
+  rings, so use a round section when the volume matters.
 
 COMPOSITION
 - children inherit their parent's transform, so build a head once and hang
@@ -97,6 +125,34 @@ COMPOSITION
   a clock face; the same ring with scatter [0.07, 0.23, 0.07] looks like a bush.
   When you scatter a decoration over a body, push its "radius" out past the
   body's own silhouette or the scatter will bury it inside.
+- "rest" drops a part until it touches another instead of asking you for the
+  height. "on" names the part to land on, or "any" for everything authored
+  before it; "from" is the side it falls from (above, below, +x, -x, +z, -z),
+  and "sink" is how far past the contact to push, in metres, so a scute sits
+  in the hide rather than on it. The builder sweeps the real triangles of both
+  parts, so the answer is the surface and not the bounding box: a box rested
+  on a sphere lands on the pole, and a repeat laid over a stepped or lumpy
+  body lands every copy at its own height. A part that already overlaps its
+  target is backed out until it is tangent, which is what makes "sink" mean
+  the same depth for every copy of a row. The target has to be authored
+  BEFORE the resting part; "any" also sees earlier copies of the row itself,
+  so keep a row's copies clear of each other sideways. Nothing along that
+  direction is a build error naming both parts - that is the case where you
+  wanted a different "from".
+- mode "along" lays a row down another part's spine. "path" names that part,
+  "span" is the fraction of its length to cover (0 at its start), and "side"
+  is which way round it the copies sit: up, down, left, right, or degrees
+  turned about the path. A limb's spine is its from -> via -> to curve and the
+  row rides at the limb's own radius, tapering with it; a capsule, cylinder,
+  cone, prism or lathe is read along its own axis however it is rotated; and
+  anything else along whichever way its "size" is longest. Copies are spaced
+  evenly by arc length and turned so their +z runs along the path and their
+  +y points out of it; "scaleStep", "sizeJitter", "twist" and "scatter" apply
+  as they do to a linear repeat, the copy's own "position" is ignored because
+  the path decides it, and "rotation" still turns the copy where it stands.
+  "mirror" gives the row a twin reflected across the axis. Scutes down a
+  tail, teeth along a jaw, rivets down a seam - and add "rest" as well when
+  the row has to touch a body lumpier than the path's own surface.
 
 LOOK
 Keep "detail" low (4-8). The studio's look is faceted and flat-shaded, and a
@@ -111,6 +167,34 @@ rather than a part's vertices, so it still reads as erosion but at a gentler
 amplitude - and the amplitude scales with the part's SMALLEST dimension, so
 the same number barely ripples a wide lathe and clearly roughens a thin limb.
 Raise jitter rather than part detail if a surface asset looks too clean.
+
+MATERIALS
+"material" on any part sets "roughness" (default 1), "metalness" (0),
+"emissive" (none) and "emissiveStrength" (1); leaving it out is exactly the
+matte finish every asset had before. Parts that share a colour and a tuple
+share one material, so a faceted asset stays as cheap as it was. A fused
+surface keeps one mesh and splits its triangles into groups by tuple, one glTF
+material per group with vertex colours on, so an engine gets real materials
+rather than a single flat shell; emissive strength travels as
+KHR_materials_emissive_strength, which means a lamp authored at 3 arrives as a
+lamp. Exports bake an extra atlas PNG per channel that actually varies - none
+for an asset that authors no materials - and the OBJ's material library
+carries Ns from roughness plus Ke and map_Ke for emission.
+
+SUBTRACT
+Set "subtract": true on a part to carve it out of the surface instead of
+adding it. Surface mode only - the faceted builder has no CSG, so it builds
+the part as the plain solid it was authored as and the audit warns
+subtract-needs-surface. Parts fold in the order the spec lists them: a cut
+removes everything blended before it, a cut after a cut carves the already-cut
+field, and a part added after a cut fills the hole back in. A cut with nothing
+in front of it does nothing. The rim where the cut meets the surface is
+rounded by surface.blend, the same radius that rounds a join, so blend 0 gives
+a hard edge. The cut's inner walls take the subtracting part's colour and
+follow its bone - which it inherits from its parent unless you set rigPart -
+so a window cut into a wall animates with the window, not the wall. Make the
+cut deep enough to break the surface: one sunk entirely inside a solid hollows
+out a sealed cavity, which the audit reports as a detached shell.
 
 RIGGING
 Add a "rig" block to skin the asset to the 14-bone skeleton and export Idle,
@@ -224,10 +308,32 @@ blend is how softly the parts melt into one another, in metres. It closes gaps
 up to HALF its own width, so a blend of 0.06 fuses parts sitting 0.03 apart.
 Zero welds them with a hard crease instead. detail is the sampling resolution
 along the longest axis - raise it to resolve small features like teeth, lower
-it for speed. budget is the triangle count the mesh is decimated down to, so
+it for speed. It goes up to 512; the grid is detail cubed, so 320 is a
+33-million-point volume and 512 is four times that, several seconds and half a
+gigabyte per build, worth it only for a hero asset with features finer than
+its size divided by 320. budget goes up to 1,000,000 triangles. budget is the triangle count the mesh is decimated down to, so
 you get a game budget rather than whatever the grid happened to produce.
 shading "flat" keeps the studio's faceted look at a low budget; "smooth" reads
 as a sculpt and wants a higher one.
+
+One more knob decides whether the result reads as clean or as clay. A shell
+decimated to a game budget is genuinely faceted — at 9,000 triangles on a
+1.7 m character, neighbouring faces turn about 16 degrees on average — and flat
+shading draws every facet as a tile, so a fused model comes out looking smudged
+however carefully it was built. "crease" is an angle in degrees and replaces
+"shading" when set: two faces that meet under it share one smooth normal, two
+that turn harder keep a hard edge, so a pauldron shades as a curve while the
+rim of a helm stays crisp. 0 is flat, 180 is smooth; 40 to 60 suits armour,
+vehicles and machines, 80 or more a creature. The crease splits vertices along
+hard edges in the finished mesh, which the audit and the exporter both
+understand. There is no vertex-smoothing pass, on purpose: the sampled surface
+is already within a fraction of a cell of the field, and relaxing vertices was
+measured to widen the spread of facet angles, not narrow it.
+
+  "surface": { "blend": 0.02, "detail": 256, "budget": 9000, "crease": 50 }
+
+Do not add "jitter" to make plates look worked and then wonder why they look
+rough: jitter is erosion, and under a crease it reads as exactly that.
 
 Use surface for anything organic, and for anything that has to deform: a
 creature, a person, a character. Leave it off for hard-surface props and
@@ -265,6 +371,11 @@ projections, not a true unwrap - expect roughly a quarter of the atlas to be
 covered, and repaint by editing part colours in the spec rather than by hand.
 
 CHECKS
+Parts whose bounding box spans fewer than sixteen grid cells have up to
+twenty-four of their vertices pinned against the decimator, so eyes, teeth,
+gems and runes survive a tight surface.budget instead of being the first thing
+collapsed away.
+
 Every build is audited and the result comes back with it. An audit.ok of false
 means a real defect, not a style note: parts left hanging in mid-air, a model
 that falls into separate pieces, or geometry that would bind to the wrong bone.

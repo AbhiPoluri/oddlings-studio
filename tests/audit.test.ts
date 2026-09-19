@@ -271,3 +271,95 @@ describe('fix hints', () => {
     expect(audit.findings.every((f) => f.hint === undefined)).toBe(true);
   });
 });
+
+describe('cuts', () => {
+  const wall = {
+    name: 'wall',
+    shape: 'box' as const,
+    size: [0.8, 0.8, 0.4] as [number, number, number],
+  };
+  const window_ = {
+    name: 'window',
+    shape: 'cylinder' as const,
+    size: [0.3, 0.8, 0.3] as [number, number, number],
+    rotation: [90, 0, 0] as [number, number, number],
+    subtract: true,
+  };
+
+  test('says so when a cut was asked for and stacked solids were built', () => {
+    // The faceted builder has no CSG. It puts the window-shaped block where
+    // the window should be and nothing about the geometry looks wrong, so the
+    // only place this can be caught is against the authored intent.
+    const audit = auditModel(
+      buildSpec({ ...base, parts: [wall, window_] }),
+      { labels: new Map([['0', 'wall'], ['1', 'window']]) },
+    );
+    const finding = audit.findings.find(
+      (f) => f.code === 'subtract-needs-surface',
+    );
+    expect(finding?.severity).toBe('warn');
+    expect(finding?.message).toContain('window');
+    expect(finding?.part).toEqual([1]);
+    // A warning, not an error: the asset still builds and still exports.
+    expect(audit.ok).toBe(true);
+  });
+
+  test('counts the copies of a cut that was not made', () => {
+    const audit = auditModel(
+      buildSpec({
+        ...base,
+        parts: [
+          wall,
+          {
+            ...window_,
+            position: [-0.2, 0, 0] as [number, number, number],
+            repeat: { count: 3, mode: 'linear' as const, offset: [0.2, 0, 0] as [number, number, number] },
+          },
+        ],
+      }),
+    );
+    expect(
+      audit.findings.find((f) => f.code === 'subtract-needs-surface')?.value,
+    ).toBe(3);
+  });
+
+  test('says nothing at all once the spec asks for a surface', async () => {
+    await (await import('../lib/asset-surface')).readySurface();
+    const audit = auditModel(
+      buildSpec({
+        ...base,
+        surface: { blend: 0.02, detail: 64, budget: 4000, shading: 'flat' as const },
+        parts: [wall, window_],
+      }),
+    );
+    expect(audit.findings.map((f) => f.code)).not.toContain(
+      'subtract-needs-surface',
+    );
+    // And the cut's own walls are surface, so nothing reports it missing.
+    expect(audit.findings.map((f) => f.code)).not.toContain('no-surface');
+  });
+
+  test('does not ask an author to expose a cut that removed nothing', async () => {
+    await (await import('../lib/asset-surface')).readySurface();
+    const audit = auditModel(
+      buildSpec({
+        ...base,
+        surface: { blend: 0.02, detail: 64, budget: 4000, shading: 'flat' as const },
+        parts: [
+          wall,
+          // Sunk entirely inside the wall's own bulk would still cut; this one
+          // is nowhere near it, so it carves nothing and owns nothing.
+          {
+            name: 'missed',
+            shape: 'sphere' as const,
+            size: [0.1, 0.1, 0.1] as [number, number, number],
+            position: [2, 0, 0] as [number, number, number],
+            subtract: true,
+          },
+        ],
+      }),
+      { labels: new Map([['0', 'wall'], ['1', 'missed']]) },
+    );
+    expect(audit.findings.map((f) => f.code)).not.toContain('no-surface');
+  });
+});

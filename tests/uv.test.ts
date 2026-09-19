@@ -541,3 +541,136 @@ describe('written files', () => {
     }
   });
 });
+
+/**
+ * The material channels.
+ *
+ * Same rasteriser, different channels — so what is worth testing is not that
+ * it draws, but that it draws only when the asset has something to say, and
+ * that what comes out decodes to the numbers that were authored.
+ */
+describe('material atlases', () => {
+  test('a spec with no material block bakes one map and no others', () => {
+    // The default tuple is the tuple every asset had before `material`
+    // existed. Shipping three flat grey megabytes beside it would be a
+    // regression dressed as a feature.
+    const { model } = unwrapped('lantern-keeper');
+    const atlas = bakeColorAtlas(model)!;
+    expect(atlas.covered).toBeGreaterThan(0);
+    expect(atlas.maps).toBeUndefined();
+  });
+
+  test('an emissive part bakes an emissive map and still no others', () => {
+    // The octopod's eye glows and nothing on it varies in roughness or
+    // metalness, so exactly one extra channel has anything to record.
+    const { model } = unwrapped('octopod-walker');
+    const atlas = bakeColorAtlas(model)!;
+    expect(atlas.maps?.emissive).toBeDefined();
+    expect(atlas.maps?.roughness).toBeUndefined();
+    expect(atlas.maps?.metalness).toBeUndefined();
+    const emissive = atlas.maps!.emissive!;
+    expect(emissive.width).toBe(UV_DEFAULTS.size);
+    expect(emissive.height).toBe(UV_DEFAULTS.size);
+    // Most of the model is unlit, and the lens is not: both have to be in
+    // there, or the map is a flat fill that says nothing.
+    let dark = 0;
+    let lit = 0;
+    for (let pixel = 0; pixel < emissive.width * emissive.height; pixel++) {
+      if (!emissive.rgba[pixel * 4 + 3]) continue;
+      const bright =
+        emissive.rgba[pixel * 4] +
+        emissive.rgba[pixel * 4 + 1] +
+        emissive.rgba[pixel * 4 + 2];
+      if (bright > 90) lit++;
+      else dark++;
+    }
+    expect(dark).toBeGreaterThan(1000);
+    expect(lit).toBeGreaterThan(20);
+  });
+
+  test('roughness and metalness bake linearly, and decode to what was authored', () => {
+    const spec = parseSpec({
+      version: 1,
+      name: 'Two Finishes',
+      kind: 'prop',
+      surface: { blend: 0.02, detail: 72, budget: 4000, shading: 'flat' },
+      parts: [
+        {
+          name: 'matte',
+          shape: 'box',
+          size: [0.6, 0.3, 0.3],
+          color: '#888888',
+        },
+        {
+          name: 'chrome',
+          shape: 'sphere',
+          size: [0.36, 0.36, 0.36],
+          position: [0.3, 0, 0],
+          color: '#cccccc',
+          material: { roughness: 0.25, metalness: 1 },
+        },
+      ],
+    });
+    const model = buildSpec(spec);
+    splitUvSeams(model);
+    const atlas = bakeColorAtlas(model)!;
+    const rough = atlas.maps?.roughness;
+    const metal = atlas.maps?.metalness;
+    expect(rough).toBeDefined();
+    expect(metal).toBeDefined();
+    expect(atlas.maps?.emissive).toBeUndefined();
+    // Linear, not sRGB: 0.25 roughness is 64, not the 137 a colour curve
+    // would give it. An engine reads these as numbers.
+    const levels = new Set<number>();
+    for (let pixel = 0; pixel < rough!.width * rough!.height; pixel++)
+      if (rough!.rgba[pixel * 4 + 3]) levels.add(rough!.rgba[pixel * 4]);
+    expect([...levels].some((v) => Math.abs(v - 64) <= 2)).toBe(true);
+    expect([...levels].some((v) => v >= 253)).toBe(true);
+    const metals = new Set<number>();
+    for (let pixel = 0; pixel < metal!.width * metal!.height; pixel++)
+      if (metal!.rgba[pixel * 4 + 3]) metals.add(metal!.rgba[pixel * 4]);
+    expect([...metals].some((v) => v >= 253)).toBe(true);
+    expect([...metals].some((v) => v <= 2)).toBe(true);
+  });
+
+  test('the written files carry the extra maps and the mtl points at them', async () => {
+    const spec = parseSpec(specFile('octopod-walker'));
+    const result = await writeAsset(
+      { spec },
+      { outDir: join(scratch, 'materials'), formats: ['glb', 'obj'] },
+    );
+    const base = fileName(spec.name);
+    const written = result.files.map((f) => f.split('/').pop());
+    expect(written).toContain(`${base}.png`);
+    expect(written).toContain(`${base}-emissive.png`);
+    expect(written).not.toContain(`${base}-roughness.png`);
+    const emissive = await readFile(
+      result.files.find((f) => f.endsWith('-emissive.png'))!,
+    );
+    const decoded = decodePng(new Uint8Array(emissive));
+    expect(decoded.width).toBe(UV_DEFAULTS.size);
+    const mtl = await readFile(
+      result.files.find((f) => f.endsWith('.mtl'))!,
+      'utf8',
+    );
+    expect(mtl).toContain(`map_Ke ${base}-emissive.png`);
+    // An importer multiplies Ke by map_Ke, so the scalar has to be white or
+    // the map is tinted twice.
+    expect(mtl).toContain('Ke 1.00000 1.00000 1.00000');
+  });
+
+  test('a faceted spec with no material writes the mtl it always wrote', async () => {
+    const result = await writeAsset(
+      { spec: parseSpec(specFile('cottage')) },
+      { outDir: join(scratch, 'plain-mtl'), formats: ['obj'] },
+    );
+    const mtl = await readFile(
+      result.files.find((f) => f.endsWith('.mtl'))!,
+      'utf8',
+    );
+    expect(mtl).toContain('Ns 1\n');
+    expect(mtl).not.toContain('Ke ');
+    expect(mtl).not.toContain('map_Ke');
+    expect(result.files.some((f) => f.includes('-roughness'))).toBe(false);
+  });
+});

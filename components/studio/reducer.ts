@@ -237,7 +237,7 @@ export const initialState: StudioState = {
     wireframe: false,
     grid: true,
     skeleton: false,
-    pixel: true,
+    pixel: false,
     rotate: false,
     compare: false,
   },

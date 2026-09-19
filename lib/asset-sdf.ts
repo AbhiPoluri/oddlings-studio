@@ -1,5 +1,6 @@
 import * as T from 'three';
 import type { Part, Shape } from './asset-spec';
+import { buildMeshField, type MeshField } from './asset-mesh-sdf';
 
 /**
  * Signed distance functions for the spec's primitives.
@@ -450,6 +451,21 @@ export type Prim = {
   specPath?: number[];
   jitter: number;
   seed: number;
+  /** The authored part's own modifiers, carried whole so the field can read them. */
+  deform?: NonNullable<Part['deform']>;
+  /**
+   * `deform` resolved into a warp, or null when it does nothing.
+   *
+   * Filled in by the first query rather than by `primFor`, because resolving it
+   * measures what the warp does to the part's extent — a few thousand points —
+   * and a primitive the sampler culls on its bounding box is never asked.
+   */
+  warp?: Warp | null;
+  /** Carve out of the field instead of adding to it (surface mode). */
+  subtract?: boolean;
+  material?: NonNullable<Part['material']>;
+  /** A loft's built triangles, for the mesh-SDF path. */
+  mesh?: T.BufferGeometry;
 };
 
 /** The descriptor `makeMesh` stashes so surface mode can rebuild the shape analytically. */
@@ -465,6 +481,12 @@ export type PrimSource = Pick<
   | 'radius'
   | 'profile'
   | 'bevel'
+  | 'stations'
+  | 'spine'
+  | 'closed'
+  | 'deform'
+  | 'subtract'
+  | 'material'
 >;
 
 const scratch = new T.Vector3();
@@ -491,9 +513,30 @@ export function distanceTo(prim: Prim, x: number, y: number, z: number) {
         );
   }
   scratch.set(x, y, z).applyMatrix4(prim.inverse);
-  const lx = scratch.x / prim.stretch[0];
-  const ly = scratch.y / prim.stretch[1];
-  const lz = scratch.z / prim.stretch[2];
+  let lx = scratch.x / prim.stretch[0];
+  let ly = scratch.y / prim.stretch[1];
+  let lz = scratch.z / prim.stretch[2];
+  // Local metres, which the two shapes measured there — a bevelled box and an
+  // extrude — read instead of the canonical point.
+  let mx = scratch.x;
+  let my = scratch.y;
+  let mz = scratch.z;
+  // A bend, twist or taper is undone on the query point rather than applied to
+  // the shape: there is no analytic field for a bent frustum, but there is one
+  // for a straight frustum evaluated at the point the bend came from.
+  const warp = warpOf(prim);
+  if (warp) {
+    local[0] = lx;
+    local[1] = ly;
+    local[2] = lz;
+    undeformPoint(warp, local);
+    lx = local[0];
+    ly = local[1];
+    lz = local[2];
+    mx = lx * prim.stretch[0];
+    my = ly * prim.stretch[1];
+    mz = lz * prim.stretch[2];
+  }
   const a = prim.args;
   let d: number;
   switch (prim.shape) {
@@ -505,9 +548,9 @@ export function distanceTo(prim: Prim, x: number, y: number, z: number) {
       d =
         a.length > 3 && a[3] > 0
           ? sdRoundBox(
-              scratch.x,
-              scratch.y,
-              scratch.z,
+              mx,
+              my,
+              mz,
               a[0] * prim.stretch[0],
               a[1] * prim.stretch[1],
               a[2] * prim.stretch[2],
@@ -524,7 +567,19 @@ export function distanceTo(prim: Prim, x: number, y: number, z: number) {
     case 'extrude':
       d =
         a[0] >= 3
-          ? sdExtrude(a, scratch.x, scratch.y, scratch.z) / prim.lipschitz
+          ? sdExtrude(a, mx, my, mz) / prim.lipschitz
+          : sdBox(lx, ly, lz, a[1], a[2], a[3]);
+      break;
+    case 'loft':
+      // A loft has no closed form, so its own triangles are the field. They
+      // are packed into `args` fitted to the unit box, which is the frame
+      // `lx, ly, lz` is already in — so the mesh field is 1-Lipschitz here for
+      // the same reason every other canonical shape is, and `lipschitz` scales
+      // it back into metres unchanged. A loft with no stations is a box, and
+      // its args say so by carrying no vertices.
+      d =
+        a[0] >= 3
+          ? loftFieldOf(prim).distance(lx, ly, lz)
           : sdBox(lx, ly, lz, a[1], a[2], a[3]);
       break;
     case 'octahedron':
@@ -547,8 +602,15 @@ export function distanceTo(prim: Prim, x: number, y: number, z: number) {
     default:
       d = sdSphere(lx, ly, lz, a[0]);
   }
-  return d * prim.lipschitz;
+  // The warp's factor divides rather than multiplies: an inverse warp can move
+  // the point it is evaluated at faster than the query point moves, and the
+  // block test only stays sound while the reported distance cannot outrun the
+  // step that produced it.
+  return warp ? (d * prim.lipschitz) / warp.lipschitz : d * prim.lipschitz;
 }
+
+/** Scratch for the inverse warp, so a hot query allocates nothing. */
+const local = [0, 0, 0];
 
 /**
  * Build the canonical arguments for a shape sized to the unit box.
@@ -576,7 +638,7 @@ export function extrudeSection(source: PrimSource) {
   // Counter-clockwise, so the walls the builder raises off it face outward.
   if (signedArea(profile) < 0) profile.reverse();
   const size = source.size ?? [1, 1, 1];
-  const taper = source.taper ?? 1;
+  const taper = effectiveTaper(source);
   const [minX, minY, maxX, maxY] = profileBounds(profile);
   const width = Math.max(maxX - minX, 1e-9);
   const height = Math.max(maxY - minY, 1e-9);
@@ -659,12 +721,14 @@ export function primArgs(
   // the marcher can survive, not the right silhouette. Pass the whole part to
   // get that.
   const part = typeof source === 'number' ? undefined : source;
-  const taper = typeof source === 'number' ? source : (source.taper ?? 1);
+  const taper = typeof source === 'number' ? source : effectiveTaper(source);
   switch (shape) {
     case 'lathe':
       return part ? latheArgs(part) : BOXLIKE;
     case 'extrude':
       return part ? extrudeArgs(part) : BOXLIKE;
+    case 'loft':
+      return part ? loftArgs(part) : BOXLIKE;
     case 'box': {
       const size = part?.size ?? [1, 1, 1];
       // `RoundedBoxGeometry` clamps the radius to the shortest side for us; the
@@ -737,4 +801,631 @@ function hash3(x: number, y: number, z: number, seed: number) {
   h = (h ^ seed) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/* ------------------------------------------------------------------ deform */
+
+/**
+ * Shapes that already take a `taper` of their own.
+ *
+ * `deform.taper` and the standalone `taper` mean exactly the same thing — the
+ * far end's scale — so on these it is routed into the shape's own machinery
+ * rather than warped on top of it. That is what makes `deform: { taper: 0.6 }`
+ * and `taper: 0.6` produce the identical cylinder instead of two shapes that
+ * are nearly the same; it also keeps the exact frustum field, which is a far
+ * better distance than any warp of a cylinder could be.
+ */
+const NATIVE_TAPER = new Set<Shape>(['cylinder', 'prism', 'cone', 'extrude', 'limb']);
+
+/**
+ * The taper a part is actually built with.
+ *
+ * `deform.taper` wins, because a `deform` block is the more specific statement
+ * — except at its neutral value of 1, which is what the schema fills in when
+ * an author writes a `deform` that only bends. Treating that as an override
+ * would silently un-taper a tapered mast the moment someone bent it.
+ */
+export function effectiveTaper(source: Pick<Part, 'taper' | 'deform'>) {
+  const shaped = source.deform?.taper;
+  return shaped !== undefined && shaped !== 1 ? shaped : (source.taper ?? 1);
+}
+
+/**
+ * A resolved bend / twist / taper, in the part's own canonical frame.
+ *
+ * The frame is the one `canonicalExtent` describes: the shape centred on the
+ * origin, filling that extent, before `fitToSize` scales it into metres. Both
+ * backends warp there and only there, which is the whole reason a deformed
+ * part looks the same faceted as it does fused.
+ *
+ * `axis` is the part's own x, y or z. The two cross-section axes are the next
+ * two in cyclic order, so (axis, u, v) is always right-handed: x bends toward
+ * +y, y toward +z, z toward +x, and a positive twist turns u toward v. One
+ * convention, stated once, is worth more than three special cases.
+ */
+export type Warp = {
+  axis: number;
+  u: number;
+  v: number;
+  /** Half the canonical extent along the axis. */
+  h: number;
+  taper: number;
+  /** Radians. */
+  twist: number;
+  /** Radians. */
+  bend: number;
+  /** Signed radius of the bent axis, or 0 when it is straight. */
+  bendRadius: number;
+  /**
+   * How much faster the inverse warp can move a point than the point moves.
+   *
+   * `distanceTo` divides by this. A warped field is `d(F⁻¹(x))`, whose gradient
+   * is bounded by the largest singular value of `DF⁻¹` — which is not 1 — so
+   * without the division the hierarchical sampler's block rejection would step
+   * further than the field can be trusted and carve holes in a bent part.
+   */
+  lipschitz: number;
+  /** Rings the faceted builder needs along the axis to draw this smoothly. */
+  segments: number;
+};
+
+/**
+ * Resolve a part's `deform` into a warp, or null when it does nothing.
+ *
+ * A `loft` is left out on purpose: its triangles are skinned rather than
+ * fitted, so the warp is baked into them once at build time and the field
+ * reads the deformed mesh directly. Warping the query point as well would
+ * apply the bend twice. A `limb` is left out because it is drawn between two
+ * authored points rather than inside a box, so there is no canonical frame to
+ * bend in — move its `via` instead.
+ */
+export function warpFor(shape: Shape, deform: Part['deform']): Warp | null {
+  if (!deform || shape === 'loft' || shape === 'limb') return null;
+  const taper = NATIVE_TAPER.has(shape) ? 1 : (deform.taper ?? 1);
+  const twist = T.MathUtils.degToRad(deform.twist ?? 0);
+  const bend = T.MathUtils.degToRad(deform.bend ?? 0);
+  if (taper === 1 && twist === 0 && bend === 0) return null;
+
+  const axis = deform.axis === 'x' ? 0 : deform.axis === 'z' ? 2 : 1;
+  const u = (axis + 1) % 3;
+  const v = (axis + 2) % 3;
+  const extent = canonicalExtent(shape);
+  const h = Math.max(extent[axis] / 2, 1e-6);
+  const warp: Warp = {
+    axis,
+    u,
+    v,
+    h,
+    taper,
+    twist,
+    bend,
+    bendRadius: Math.abs(bend) > 1e-9 ? (2 * h) / bend : 0,
+    lipschitz: 1,
+    segments: Math.min(
+      32,
+      Math.max(1, Math.ceil(Math.max(Math.abs(deform.bend ?? 0), Math.abs(deform.twist ?? 0)) / 6)),
+    ),
+  };
+
+  // The three warps, each bounded by the worst its own inverse can stretch.
+  // The field is `d(F⁻¹(x))`, so what matters is the largest singular value of
+  // `DF⁻¹`, which is one over the smallest singular value of `DF`.
+  //
+  // taper: `DF` scales the cross-section by s, smallest at the narrow end, so
+  //   the bound is 1/min(1, taper). Clamped at 0.05 because the map is
+  //   genuinely singular at a point — a taper of zero is a knife edge, and no
+  //   finite factor makes an inverse warp well behaved there.
+  // twist: `DF` is a rotation of the cross-section plus a shear of
+  //   ψ' = twist / 2h along the axis, acting at radius r. Its smallest singular
+  //   value is (√(g² + 4) − g)/2 with g = ψ'r, and 1 + g is a clean upper bound
+  //   on the reciprocal — the `1 + |twist| · r` the guide quotes, since 2h is 1
+  //   for every shape whose canonical extent is the unit box.
+  // bend: `DF` stretches the outer fibre by (R + r)/R and compresses the inner
+  //   one to (R − r)/R, and it is the compression that bounds the inverse:
+  //   1/(1 − |bend| · r / 2h). To first order that is the outer fibre's stretch
+  //   1 + |bend| · r / 2h, but it is strictly larger, and the block test is only
+  //   sound with a bound that is never too small.
+  const grow = Math.max(1, taper);
+  const rBend = (extent[u] / 2) * grow;
+  const rTwist = Math.hypot(extent[u] / 2, extent[v] / 2) * grow;
+  const kTaper = 1 / Math.min(1, Math.max(taper, 0.05));
+  const kTwist = 1 + (Math.abs(twist) * rTwist) / (2 * h);
+  const kBend = 1 / (1 - Math.min(0.9, (Math.abs(bend) * rBend) / (2 * h)));
+  warp.lipschitz = kTaper * kTwist * kBend;
+  return warp;
+}
+
+/**
+ * Bend, twist and taper a point in place, in the part's canonical frame.
+ *
+ * This is the map the faceted builder pushes its vertices through and the map
+ * `undeformPoint` undoes on a query point, and there is deliberately nothing
+ * else in it: no re-fitting of the result back into the part's box. Re-fitting
+ * would depend on the deformed mesh's own bounding box, which the field never
+ * sees, and the two backends would draw different shapes. The price is that a
+ * bend moves material outside `size` — `size` is the box the part fills before
+ * it is bent — and the guide says so.
+ */
+export function deformPoint(w: Warp, p: number[]) {
+  let a = p[w.axis];
+  let pu = p[w.u];
+  let pv = p[w.v];
+  // Clamped, so a point past the end of the shape carries the end's own
+  // section rather than an extrapolated one that folds back through the axis.
+  const t = clamp(a / (2 * w.h) + 0.5, 0, 1);
+  if (w.taper !== 1) {
+    const s = 1 + (w.taper - 1) * t;
+    pu *= s;
+    pv *= s;
+  }
+  if (w.twist !== 0) {
+    const angle = w.twist * t;
+    const sin = Math.sin(angle);
+    const cos = Math.cos(angle);
+    const nu = pu * cos - pv * sin;
+    pv = pu * sin + pv * cos;
+    pu = nu;
+  }
+  if (w.bendRadius !== 0) {
+    const r = w.bendRadius;
+    const phi = a / r;
+    const arm = r - pu;
+    a = arm * Math.sin(phi);
+    pu = r - arm * Math.cos(phi);
+  }
+  p[w.axis] = a;
+  p[w.u] = pu;
+  p[w.v] = pv;
+}
+
+/**
+ * The exact inverse of `deformPoint`.
+ *
+ * Exact rather than approximate because the sign of the field comes from it:
+ * an inverse that drifted would report points just inside a bent horn as
+ * outside it, and the marcher would pit the surface.
+ */
+export function undeformPoint(w: Warp, p: number[]) {
+  let a = p[w.axis];
+  let pu = p[w.u];
+  let pv = p[w.v];
+  if (w.bendRadius !== 0) {
+    const r = w.bendRadius;
+    const sign = r < 0 ? -1 : 1;
+    // The bent point lies on a circle about (axis 0, u = r); its distance from
+    // that centre is the arm |r - u|, and the angle it subtends is the arc
+    // parameter the forward map used.
+    const arm = sign * Math.hypot(a, r - pu);
+    const phi = Math.atan2(a * sign, (r - pu) * sign);
+    pu = r - arm;
+    a = phi * r;
+  }
+  const t = clamp(a / (2 * w.h) + 0.5, 0, 1);
+  if (w.twist !== 0) {
+    const angle = -w.twist * t;
+    const sin = Math.sin(angle);
+    const cos = Math.cos(angle);
+    const nu = pu * cos - pv * sin;
+    pv = pu * sin + pv * cos;
+    pu = nu;
+  }
+  if (w.taper !== 1) {
+    const s = Math.max(1e-4, 1 + (w.taper - 1) * t);
+    pu /= s;
+    pv /= s;
+  }
+  p[w.axis] = a;
+  p[w.u] = pu;
+  p[w.v] = pv;
+}
+
+/**
+ * The box a deformed shape occupies in its own canonical frame, or null when
+ * the part is not deformed.
+ *
+ * A bend moves material outside the extent the shape started in — that is what
+ * bending is — and `deformPoint` deliberately does not fit it back, because a
+ * fit depends on the deformed mesh's own bounds and the field has only `size`
+ * to go on. So the primitive's bounding box has to grow instead, and this is
+ * how much: the canonical extent box pushed through the same warp the vertices
+ * went through. Sampled rather than solved, because the extremes of a bent,
+ * twisted, tapered box have no tidy closed form and a lattice of the box costs
+ * a few microseconds once per primitive.
+ *
+ * `primFor` in `asset-surface.ts` is what needs this: without it the sampler
+ * culls every query outside the un-bent box and marches a bent horn off flat.
+ */
+export function deformedBounds(shape: Shape, deform: Part['deform']) {
+  const warp = warpFor(shape, deform);
+  if (!warp) return null;
+  const extent = canonicalExtent(shape);
+  const box = new T.Box3();
+  const point = [0, 0, 0];
+  const steps = 8;
+  for (let i = 0; i <= steps; i++)
+    for (let j = 0; j <= steps; j++)
+      for (let k = 0; k <= steps; k++) {
+        point[0] = (i / steps - 0.5) * extent[0];
+        point[1] = (j / steps - 0.5) * extent[1];
+        point[2] = (k / steps - 0.5) * extent[2];
+        deformPoint(warp, point);
+        box.expandByPoint(scratch.set(point[0], point[1], point[2]));
+      }
+  // The lattice can undershoot the true extreme by half a cell of curvature, so
+  // the box is grown by a fiftieth of the part. A bounding box that is slightly
+  // too large costs a few more samples; one that is slightly too small cuts a
+  // sliver off the model, which is the whole failure this exists to prevent.
+  return box.expandByScalar(Math.max(extent[0], extent[1], extent[2]) / 50);
+}
+
+/** Resolved once per primitive, on its first query. */
+function warpOf(prim: Prim) {
+  if (prim.warp === undefined) prim.warp = warpFor(prim.shape, prim.deform);
+  return prim.warp;
+}
+
+/* -------------------------------------------------------------------- loft */
+
+/**
+ * The closed 2D outline of one station.
+ *
+ * `mirror` reflects the authored half across x = 0 and welds the seam, so an
+ * author draws one side of a hull and gets both. Points already sitting on the
+ * seam are their own reflection, and emitting them twice would leave a
+ * zero-length edge at the keel — which survives every test until the resample
+ * divides by it.
+ *
+ * Wound counter-clockwise, because the ruled quads and the end caps both take
+ * their outward direction from the contour's winding. Reversing keeps the
+ * first point first: station 0 of every section has to start in the same place
+ * or the quads join a hull's keel to its gunwale.
+ */
+function stationOutline(
+  profile: ReadonlyArray<readonly [number, number]>,
+  closed: 'mirror' | 'none',
+) {
+  const points: [number, number][] = profile.map((p) => [p[0], p[1]]);
+  if (closed === 'mirror')
+    for (let i = profile.length - 1; i >= 0; i--) {
+      if (Math.abs(profile[i][0]) < 1e-9) continue;
+      points.push([-profile[i][0], profile[i][1]]);
+    }
+  if (signedArea(points) < 0) {
+    const head = points[0];
+    return [head, ...points.slice(1).reverse()];
+  }
+  return points;
+}
+
+/**
+ * Resample a closed contour to exactly `count` points, evenly by arc length.
+ *
+ * By arc length rather than by index, because the stations of a hull are
+ * authored with whatever number of points each one needs — a transom wants
+ * four, midships wants nine — and pairing them by index would run the
+ * midships chine into the transom's corner and put a crease down the side.
+ * Arc length pairs the two contours by how far round each point sits, which is
+ * the correspondence an author draws by eye.
+ *
+ * A contour that already has the wanted count is handed back untouched, so a
+ * spec whose stations all share a point count keeps its corners exactly where
+ * they were authored.
+ */
+function resampleContour(points: [number, number][], count: number) {
+  if (points.length === count) return points;
+  const n = points.length;
+  const run = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % n];
+    run[i + 1] = run[i] + Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  const total = run[n];
+  const out: [number, number][] = [];
+  if (total < 1e-12) {
+    for (let i = 0; i < count; i++) out.push([points[0][0], points[0][1]]);
+    return out;
+  }
+  let edge = 0;
+  for (let i = 0; i < count; i++) {
+    const want = (i / count) * total;
+    while (edge < n - 1 && run[edge + 1] < want) edge++;
+    const span = run[edge + 1] - run[edge];
+    const t = span > 1e-12 ? (want - run[edge]) / span : 0;
+    const a = points[edge];
+    const b = points[(edge + 1) % n];
+    out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+  }
+  return out;
+}
+
+type Frame = { point: number[]; tangent: number[] };
+
+/** Where each station sits on the spine, and which way the spine points there. */
+function spinePath(spine: Part['spine'], ats: number[]): Frame[] {
+  // The default spine runs along +Z of the canonical box, which is what makes
+  // a loft of identical stations the same solid as an `extrude` of that
+  // profile — the one case where an author can check the skinner by eye.
+  const from = spine?.from ?? [0, 0, -0.5];
+  const to = spine?.to ?? [0, 0, 0.5];
+  const via = spine?.via;
+  if (!via) {
+    const d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+    const length = Math.hypot(d[0], d[1], d[2]) || 1;
+    const tangent = [d[0] / length, d[1] / length, d[2] / length];
+    return ats.map((at) => ({
+      point: [from[0] + d[0] * at, from[1] + d[1] * at, from[2] + d[2] * at],
+      tangent,
+    }));
+  }
+  const at = (t: number) => {
+    const u = 1 - t;
+    return [0, 1, 2].map(
+      (a) => u * u * from[a] + 2 * u * t * via[a] + t * t * to[a],
+    );
+  };
+  const slope = (t: number) => {
+    const d = [0, 1, 2].map(
+      (a) => 2 * (1 - t) * (via[a] - from[a]) + 2 * t * (to[a] - via[a]),
+    );
+    const length = Math.hypot(d[0], d[1], d[2]) || 1;
+    return [d[0] / length, d[1] / length, d[2] / length];
+  };
+  // `at` is a fraction of the spine's length, not of the bezier's parameter,
+  // so the stations of a curved spine stay evenly spread instead of bunching
+  // where the curve is tight. A fixed table keeps it deterministic.
+  const steps = 128;
+  const run = new Float64Array(steps + 1);
+  let last = at(0);
+  for (let i = 1; i <= steps; i++) {
+    const here = at(i / steps);
+    run[i] =
+      run[i - 1] + Math.hypot(here[0] - last[0], here[1] - last[1], here[2] - last[2]);
+    last = here;
+  }
+  const total = run[steps] || 1;
+  const parameter = (want: number) => {
+    const target = want * total;
+    let i = 0;
+    while (i < steps - 1 && run[i + 1] < target) i++;
+    const span = run[i + 1] - run[i];
+    const f = span > 1e-12 ? (target - run[i]) / span : 0;
+    return (i + f) / steps;
+  };
+  return ats.map((u) => {
+    const t = parameter(u);
+    return { point: at(t), tangent: slope(t) };
+  });
+}
+
+const dot3 = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/**
+ * A rotation-minimising frame along the spine, by double reflection.
+ *
+ * The obvious frame — Frenet's — spins about the tangent wherever the curve's
+ * curvature swings, and a hull skinned in it comes out with a twist in the
+ * middle that nobody asked for. Double reflection carries the reference vector
+ * from one station to the next with the least rotation any frame can have, and
+ * it is exact for a straight run rather than undefined there.
+ */
+function minimalFrames(path: Frame[]) {
+  const first = path[0].tangent;
+  // The world axis least aligned with the tangent, scanning x, y, z in order.
+  // For the default spine along +Z that is X, so the profile's own x and y land
+  // on the world x and y and the loft agrees with `extrude` axis for axis.
+  let pick = 0;
+  for (let a = 1; a < 3; a++)
+    if (Math.abs(first[a]) < Math.abs(first[pick])) pick = a;
+  const seed = [0, 0, 0];
+  seed[pick] = 1;
+  const project = (r: number[], t: number[]) => {
+    const k = dot3(r, t);
+    const out = [r[0] - t[0] * k, r[1] - t[1] * k, r[2] - t[2] * k];
+    const length = Math.hypot(out[0], out[1], out[2]) || 1;
+    return [out[0] / length, out[1] / length, out[2] / length];
+  };
+  let reference = project(seed, first);
+  const frames = [reference];
+  for (let i = 0; i < path.length - 1; i++) {
+    const v1 = [0, 1, 2].map((a) => path[i + 1].point[a] - path[i].point[a]);
+    const c1 = dot3(v1, v1);
+    let carried = reference;
+    if (c1 > 1e-18) {
+      const rl = [0, 1, 2].map((a) => reference[a] - (2 / c1) * dot3(v1, reference) * v1[a]);
+      const tl = [0, 1, 2].map(
+        (a) => path[i].tangent[a] - (2 / c1) * dot3(v1, path[i].tangent) * v1[a],
+      );
+      const v2 = [0, 1, 2].map((a) => path[i + 1].tangent[a] - tl[a]);
+      const c2 = dot3(v2, v2);
+      carried =
+        c2 > 1e-18 ? [0, 1, 2].map((a) => rl[a] - (2 / c2) * dot3(v2, rl) * v2[a]) : rl;
+    }
+    reference = project(carried, path[i + 1].tangent);
+    frames.push(reference);
+  }
+  return frames;
+}
+
+export type LoftMesh = {
+  positions: number[];
+  uvs: number[];
+  indices: number[];
+};
+
+/**
+ * Skin a loft's stations into triangles, fitted to the canonical unit box.
+ *
+ * Shared by both backends, exactly like `extrudeSection` and `latheSection`
+ * are: the faceted builder wraps these numbers in a `BufferGeometry` and scales
+ * them to `size`, and the field builds a BVH over the same numbers. There is
+ * no second implementation to drift, which matters more here than anywhere
+ * else in the file — a loft has no closed form for either side to check
+ * against.
+ *
+ * Returns null when there are not two stations to skin, which is the signal to
+ * fall back to a plain box.
+ */
+export function loftMesh(source: PrimSource): LoftMesh | null {
+  const stations = [...(source.stations ?? [])].sort((a, b) => a.at - b.at);
+  if (stations.length < 2) return null;
+  const closed = source.closed ?? 'mirror';
+  const outlines = stations.map((s) => stationOutline(s.profile, closed));
+  const count = Math.max(...outlines.map((o) => o.length));
+  const sections = outlines.map((o) => resampleContour(o, count));
+
+  const path = spinePath(
+    source.spine,
+    stations.map((s) => s.at),
+  );
+  const references = minimalFrames(path);
+
+  /** One station's contour lifted into the spine's frame there. */
+  const ringAt = (index: number) => {
+    const { point, tangent } = path[index];
+    const r = references[index];
+    // (tangent, r, s) right-handed, so a counter-clockwise contour in (r, s)
+    // faces along the tangent — the same convention as an extrude's caps.
+    const s = [
+      tangent[1] * r[2] - tangent[2] * r[1],
+      tangent[2] * r[0] - tangent[0] * r[2],
+      tangent[0] * r[1] - tangent[1] * r[0],
+    ];
+    const out: number[] = [];
+    for (const [x, y] of sections[index])
+      for (let a = 0; a < 3; a++) out.push(point[a] + r[a] * x + s[a] * y);
+    return out;
+  };
+
+  const base = stations.map((_, i) => ringAt(i));
+  // A loft's canonical frame is the unit box, whatever its stations draw in it,
+  // so the warp resolves exactly as a box's would. It is baked into the rings
+  // here rather than undone on the query point, because a loft's field reads
+  // these very triangles — warping them once is both backends done at a stroke.
+  const warp = warpFor('box', source.deform);
+  // A ruled band is linear in space, so splitting it by interpolating its two
+  // rings adds vertices without moving the surface — which is exactly what a
+  // bend needs, and costs nothing when there is no bend to draw.
+  const split = warp ? warp.segments : 1;
+  const rings: number[][] = [];
+  const levels: number[] = [];
+  for (let i = 0; i < base.length - 1; i++)
+    for (let k = 0; k < split; k++) {
+      const t = k / split;
+      rings.push(base[i].map((v, a) => v + (base[i + 1][a] - v) * t));
+      levels.push((i + t) / (base.length - 1));
+    }
+  rings.push(base[base.length - 1]);
+  levels.push(1);
+
+  if (warp) {
+    const point = [0, 0, 0];
+    for (const ring of rings)
+      for (let i = 0; i < ring.length; i += 3) {
+        point[0] = ring[i];
+        point[1] = ring[i + 1];
+        point[2] = ring[i + 2];
+        deformPoint(warp, point);
+        ring[i] = point[0];
+        ring[i + 1] = point[1];
+        ring[i + 2] = point[2];
+      }
+  }
+
+  // Into the canonical unit box, so the field can read the same triangles the
+  // builder draws and `size` still means the box the author asked for. The
+  // builder's own `fitToSize` then reduces to a plain scale by `size`.
+  const low = [Infinity, Infinity, Infinity];
+  const high = [-Infinity, -Infinity, -Infinity];
+  for (const ring of rings)
+    for (let i = 0; i < ring.length; i += 3)
+      for (let a = 0; a < 3; a++) {
+        if (ring[i + a] < low[a]) low[a] = ring[i + a];
+        if (ring[i + a] > high[a]) high[a] = ring[i + a];
+      }
+  const fit = [0, 1, 2].map((a) =>
+    high[a] - low[a] > 1e-9 ? 1 / (high[a] - low[a]) : 1,
+  );
+  const centre = [0, 1, 2].map((a) => (low[a] + high[a]) / 2);
+
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const stride = count + 1;
+  rings.forEach((ring, at) => {
+    // The seam column is duplicated so the uvs can run the whole way round,
+    // the same way the lathe does it.
+    for (let j = 0; j <= count; j++) {
+      const i = (j % count) * 3;
+      for (let a = 0; a < 3; a++)
+        positions.push((ring[i + a] - centre[a]) * fit[a]);
+      uvs.push(j / count, levels[at]);
+    }
+  });
+  for (let at = 0; at < rings.length - 1; at++)
+    for (let j = 0; j < count; j++) {
+      const low_ = at * stride + j;
+      const lowNext = low_ + 1;
+      const high_ = low_ + stride;
+      const highNext = lowNext + stride;
+      // The same diagonal on every quad, so a band reads as one surface rather
+      // than a herringbone of alternating splits.
+      indices.push(low_, lowNext, highNext, low_, highNext, high_);
+    }
+
+  const cap = (section: [number, number][]) =>
+    T.ShapeUtils.triangulateShape(
+      section.map(([x, y]) => new T.Vector2(x, y)),
+      [],
+    );
+  // Earcut keeps the contour's winding, so the far cap faces along the spine
+  // and the near one has to be turned around.
+  for (const [a, b, c] of cap(sections[0])) indices.push(a, c, b);
+  const last = (rings.length - 1) * stride;
+  for (const [a, b, c] of cap(sections[sections.length - 1]))
+    indices.push(last + a, last + b, last + c);
+
+  return { positions, uvs, indices };
+}
+
+/** [vertices, triangles, x, y, z, ..., i, j, k, ...] in the canonical unit box. */
+function loftArgs(source: PrimSource): number[] {
+  const mesh = loftMesh(source);
+  if (!mesh) return BOXLIKE;
+  const args: number[] = [mesh.positions.length / 3, mesh.indices.length / 3];
+  for (const v of mesh.positions) args.push(v);
+  for (const i of mesh.indices) args.push(i);
+  return args;
+}
+
+type LoftCache = { field: MeshField; geometry: T.BufferGeometry };
+
+/**
+ * One BVH per primitive per build, keyed on the argument array it was packed
+ * into — which `primFor` builds once and never replaces, so the cache lives
+ * exactly as long as the primitive does and dies with it.
+ */
+const loftCache = new WeakMap<number[], LoftCache>();
+
+function loftFieldOf(prim: Prim) {
+  let cached = loftCache.get(prim.args);
+  if (!cached) {
+    const a = prim.args;
+    const vertices = a[0];
+    const triangles = a[1];
+    const positions = new Float64Array(vertices * 3);
+    for (let i = 0; i < positions.length; i++) positions[i] = a[2 + i];
+    const indices = new Uint32Array(triangles * 3);
+    for (let i = 0; i < indices.length; i++) indices[i] = a[2 + positions.length + i];
+    const geometry = new T.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new T.Float32BufferAttribute(Array.from(positions), 3),
+    );
+    geometry.setIndex(Array.from(indices));
+    cached = { field: buildMeshField(positions, indices), geometry };
+    loftCache.set(a, cached);
+  }
+  prim.mesh = cached.geometry;
+  return cached.field;
 }

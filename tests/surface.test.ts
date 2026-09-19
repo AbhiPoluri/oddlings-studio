@@ -7,6 +7,7 @@ import {
   buildSpec,
   parseSpec,
   SHAPES,
+  type AssetSpec,
   type AssetSpecInput,
 } from '../lib/asset-spec';
 import { flatten } from '../lib/spec-edit';
@@ -502,6 +503,35 @@ describe('the block sampler matches a full scan', () => {
     compare(sampleGrid(prims, settings), sampleGrid(prims, settings, { brute: true }));
   });
 
+  test('and cuts identically too', () => {
+    // A cut breaks the block test's "inside" case: a primitive that swallows a
+    // block whole no longer caps the field below zero, because a subtractor
+    // reaching the same block can lift all of it back out of the solid. This
+    // is the case that catches a bound that forgot to say so — the brute scan
+    // has no block test to get wrong.
+    const { prims, settings } = primsFor({
+      version: 1,
+      name: 'Carved',
+      kind: 'prop',
+      surface: { blend: 0.03, detail: 72, budget: 4000, shading: 'flat' },
+      parts: [
+        { name: 'block', shape: 'box', size: [1, 0.6, 0.6] },
+        { name: 'bore', shape: 'cylinder', size: [0.3, 1, 0.3], subtract: true },
+        {
+          name: 'slot',
+          shape: 'box',
+          size: [1.2, 0.2, 0.2],
+          position: [0, 0.16, 0],
+          subtract: true,
+        },
+        // Added after both cuts, so it fills part of the slot back in and the
+        // fold order has to survive the block walk as well as the full scan.
+        { name: 'peg', shape: 'sphere', size: [0.3, 0.3, 0.3], position: [0.3, 0.16, 0] },
+      ],
+    });
+    compare(sampleGrid(prims, settings), sampleGrid(prims, settings, { brute: true }));
+  });
+
   test('and produces the same mesh, vertex for vertex', () => {
     for (const file of ['wizard.spec.json', 'octopod-walker.spec.json']) {
       const base = JSON.parse(readFileSync(`specs/${file}`, 'utf8'));
@@ -538,6 +568,52 @@ describe('the block sampler matches a full scan', () => {
     const prim = prims[0];
     expect(prim.jitter).toBe(0.8);
     expect(Math.abs(prim.jitter) * 0.06 * Math.max(0.01, prim.lipschitz)).toBeGreaterThan(0);
+  });
+
+  test('a bent, twisted, tapered spec samples identically too', () => {
+    // A deform is undone on the query point rather than applied to the shape,
+    // and an inverse warp moves faster than the point that entered it. `warpFor`
+    // divides that factor back out of the reported distance; if it ever stopped
+    // doing so, the fast path would reject a block the surface runs through and
+    // this comparison — not the shape of the model — is what would notice.
+    const { prims, settings } = primsFor({
+      version: 1,
+      name: 'Bent',
+      kind: 'prop',
+      surface: { blend: 0.03, detail: 72, budget: 4000, shading: 'flat' },
+      parts: [
+        {
+          name: 'horn',
+          shape: 'cylinder',
+          size: [0.3, 1, 0.3],
+          detail: 12,
+          deform: { axis: 'y', bend: 80, twist: 120, taper: 0.5 },
+        },
+        {
+          name: 'sheer',
+          shape: 'box',
+          size: [0.9, 0.2, 0.4],
+          position: [0.2, 0.1, 0],
+          rotation: [0, 20, 0],
+          deform: { axis: 'x', bend: 45, twist: 0, taper: 0.7 },
+        },
+        {
+          name: 'hull',
+          shape: 'loft',
+          size: [0.5, 0.3, 1.1],
+          position: [0, -0.3, 0.1],
+          closed: 'mirror',
+          spine: { from: [0, 0, -0.5], via: [0, 0.08, 0.1], to: [0, 0.02, 0.5] },
+          stations: [
+            { at: 0, profile: [[0, -0.4], [0.3, -0.3], [0.32, 0.3], [0, 0.4]] },
+            { at: 0.5, profile: [[0, -0.5], [0.5, -0.2], [0.44, 0.34], [0, 0.45]] },
+            { at: 1, profile: [[0, -0.15], [0.1, -0.08], [0.09, 0.3], [0, 0.42]] },
+          ],
+        },
+      ],
+    });
+    expect(prims.length).toBe(3);
+    compare(sampleGrid(prims, settings), sampleGrid(prims, settings, { brute: true }));
   });
 });
 
@@ -598,5 +674,248 @@ describe('every distance function is 1-Lipschitz', () => {
       worst = Math.max(worst, moved / apart);
     }
     expect(worst).toBeLessThanOrEqual(1 + 1e-6);
+  });
+});
+
+/**
+ * Cuts.
+ *
+ * A subtracted part is the one thing in the spec that removes rather than
+ * adds, so every test here is about something that has to be *absent*: a hole
+ * a ray goes through, a plug that the cut after it erased, a rim that is
+ * chamfered rather than knife-edged.
+ */
+describe('subtract carves the field', () => {
+  const wall = {
+    name: 'wall',
+    shape: 'box' as const,
+    size: [0.8, 0.8, 0.4] as [number, number, number],
+    color: '#3366cc',
+  };
+  const bore = {
+    name: 'bore',
+    shape: 'cylinder' as const,
+    // Longer than the wall is deep, so the cut goes all the way through
+    // rather than leaving a membrane a voxel thick at the back.
+    size: [0.3, 0.8, 0.3] as [number, number, number],
+    rotation: [90, 0, 0] as [number, number, number],
+    subtract: true,
+    color: '#ff0000',
+  };
+  const plug = {
+    name: 'plug',
+    shape: 'sphere' as const,
+    size: [0.32, 0.32, 0.32] as [number, number, number],
+    color: '#00ff00',
+  };
+
+  const bored = (
+    parts: AssetSpecInput['parts'],
+    blend = 0.02,
+  ): AssetSpecInput => ({
+    version: 1,
+    name: 'Bored',
+    kind: 'prop',
+    surface: { blend, detail: 96, budget: 100000, shading: 'flat' },
+    parts,
+  });
+
+  /** How many times a ray down the bore's own axis meets the shell. */
+  function hitsAlongAxis(model: T.Object3D) {
+    return new T.Raycaster(
+      new T.Vector3(0, 0, 2),
+      new T.Vector3(0, 0, -1),
+    ).intersectObject(meshOf(model), true).length;
+  }
+
+  test('cuts a hole that goes all the way through', () => {
+    const model = buildSpec(bored([wall, bore]));
+    const geometry = meshOf(model).geometry;
+    // Closed, still one piece, and a genus-1 solid: a slab with a hole in it
+    // has Euler characteristic 0, the same as a torus. A cut that stopped
+    // short would leave a blind recess and read as 2.
+    expect(boundaryEdges(geometry)).toBe(0);
+    expect(euler(geometry)).toBe(0);
+    // And the hole is really open, not filled with a membrane the Euler count
+    // would miss: nothing at all stands on the axis.
+    expect(hitsAlongAxis(model)).toBe(0);
+  });
+
+  test('paints the cut walls with the subtractor colour', () => {
+    // Ownership has to follow the CSG, not the nearest surface. A vertex on
+    // the bore wall is deep inside the wall part and exactly on the bore, so
+    // plain nearest-primitive hands it to the wall and the hole comes out
+    // painted like solid stone.
+    const geometry = meshOf(buildSpec(bored([wall, bore]))).geometry;
+    const color = geometry.attributes.color as T.BufferAttribute;
+    const position = geometry.attributes.position as T.BufferAttribute;
+    let onWall = 0;
+    let red = 0;
+    for (let i = 0; i < color.count; i++) {
+      const radius = Math.hypot(position.getX(i), position.getY(i));
+      // The bore's own wall: at its radius, and inside the slab's depth.
+      if (radius < 0.13 || radius > 0.17) continue;
+      if (Math.abs(position.getZ(i)) > 0.15) continue;
+      onWall++;
+      if (
+        new T.Color(color.getX(i), color.getY(i), color.getZ(i)).getHexString() ===
+        'ff0000'
+      )
+        red++;
+    }
+    expect(onWall).toBeGreaterThan(100);
+    expect(red).toBe(onWall);
+  });
+
+  test('the rim is as soft as the blend, and a zero blend is a knife edge', () => {
+    // `smax` rounds the cut's rim by the same radius `smin` rounds a join by,
+    // so the face around the hole is chamfered back from the flat front. With
+    // no blend it meets the face at a corner and nothing is chamfered at all.
+    const drop = (blend: number) => {
+      const geometry = meshOf(buildSpec(bored([wall, bore], blend))).geometry;
+      const position = geometry.attributes.position as T.BufferAttribute;
+      let face = -Infinity;
+      for (let i = 0; i < position.count; i++)
+        face = Math.max(face, position.getZ(i));
+      let deepest = 0;
+      for (let i = 0; i < position.count; i++) {
+        // A ring outside the bore wall and inside the slab's own edge, so the
+        // only thing measured is the lip around the hole.
+        const radius = Math.hypot(position.getX(i), position.getY(i));
+        if (radius < 0.17 || radius > 0.26) continue;
+        if (position.getZ(i) <= 0) continue;
+        deepest = Math.max(deepest, face - position.getZ(i));
+      }
+      return deepest;
+    };
+    expect(drop(0)).toBeLessThan(1e-6);
+    expect(drop(0.06)).toBeGreaterThan(0.005);
+  });
+
+  test('cuts and adds fold in the order the spec lists them', () => {
+    // A part after a cut fills the hole back in; a cut after that part takes
+    // it away again. Nothing else about the two specs differs.
+    const filled = buildSpec(bored([wall, bore, plug]));
+    expect(euler(meshOf(filled).geometry)).toBe(2);
+    expect(hitsAlongAxis(filled)).toBe(2);
+
+    const emptied = buildSpec(bored([wall, plug, bore]));
+    expect(euler(meshOf(emptied).geometry)).toBe(0);
+    expect(hitsAlongAxis(emptied)).toBe(0);
+    // And the plug left nothing behind at all: no vertex carries its colour.
+    const color = meshOf(emptied).geometry.attributes.color as T.BufferAttribute;
+    const seen = new Set<string>();
+    for (let i = 0; i < color.count; i++)
+      seen.add(
+        new T.Color(color.getX(i), color.getY(i), color.getZ(i)).getHexString(),
+      );
+    expect(seen.has('00ff00')).toBe(false);
+  });
+
+  test('a leading cut has nothing to cut', () => {
+    // Otherwise `smax` against an empty field inverts it and the whole grid
+    // fills in solid outside the subtractor.
+    const model = buildSpec(bored([bore, wall]));
+    expect(boundaryEdges(meshOf(model).geometry)).toBe(0);
+    const [x, y, z] = stats(model).size;
+    expect(x).toBeLessThan(0.9);
+    expect(y).toBeLessThan(0.9);
+    expect(z).toBeLessThan(0.5);
+  });
+
+  test('the audit stays quiet about a cut that removed nothing', () => {
+    // A subtractor owns no surface when its cut never broke through. That is
+    // a note about the cut, not a part the author forgot to expose, so
+    // `no-surface` must not name it.
+    const audit = auditModel(
+      buildSpec(
+        bored([
+          wall,
+          {
+            ...bore,
+            name: 'missed',
+            // Well clear of the wall, so it carves nothing at all.
+            size: [0.1, 0.1, 0.1],
+            position: [2, 0, 0] as [number, number, number],
+          },
+        ]),
+      ),
+    );
+    expect(audit.findings.map((f) => f.code)).not.toContain('no-surface');
+    expect(audit.ok).toBe(true);
+  });
+});
+
+/**
+ * Small features against the decimator.
+ *
+ * The decimator ranks collapses by the error they add to the whole mesh, and
+ * an eye is a rounding error next to a shoulder. Before the vertex lock the
+ * wizard's eyes came out of an 8k budget holding six vertices each, which is
+ * not a sphere, it is a dent.
+ */
+describe('small features survive the budget', () => {
+  /** How many surface vertices each authored part actually owns. */
+  function ownedByName(model: T.Object3D, spec: AssetSpec) {
+    const labels = new Map(
+      flatten(spec).map((row) => [
+        row.path.join('.'),
+        row.part.name ?? row.part.shape,
+      ]),
+    );
+    const owners = meshOf(model).geometry.userData.surfaceOwners as {
+      index: Uint16Array;
+      paths: (number[] | undefined)[];
+    };
+    // Keyed by primitive, not by name: a mirrored eye is two primitives and
+    // both of them have to survive, so summing them would let one vouch for
+    // the other.
+    const counts = new Map<number, number>();
+    for (let i = 0; i < owners.index.length; i++)
+      counts.set(owners.index[i], (counts.get(owners.index[i]) ?? 0) + 1);
+    const byName = new Map<string, number[]>();
+    for (const [prim, count] of counts) {
+      const name = labels.get((owners.paths[prim] ?? []).join('.')) ?? '?';
+      byName.set(name, [...(byName.get(name) ?? []), count]);
+    }
+    return byName;
+  }
+
+  test('the wizard keeps its eyes at two thirds of its own budget', () => {
+    const base = JSON.parse(readFileSync('specs/wizard.spec.json', 'utf8'));
+    const spec = parseSpec({
+      ...base,
+      surface: { ...base.surface, budget: 8000 },
+    });
+    const model = buildSpec(spec, { uv: false });
+    const owned = ownedByName(model, spec);
+    for (const part of ['eye', 'cheek', 'buckle-gem', 'hem-rune']) {
+      const copies = owned.get(part);
+      expect(copies, `${part} owns no surface at all`).toBeDefined();
+      for (const count of copies!)
+        expect(count, `${part} kept only ${count} vertices`).toBeGreaterThanOrEqual(20);
+    }
+    // Both eyes, not one of them standing in for the pair.
+    expect(owned.get('eye')).toHaveLength(2);
+    // And the protection is paid for out of the budget, not on top of it.
+    const triangles = stats(model).triangles;
+    expect(triangles).toBeLessThanOrEqual(8000 * 1.02);
+    expect(triangles).toBeGreaterThanOrEqual(8000 * 0.98);
+  });
+
+  test('the lich keeps its teeth at well under half of its own', () => {
+    const base = JSON.parse(readFileSync('specs/lich.spec.json', 'utf8'));
+    const spec = parseSpec({
+      ...base,
+      surface: { ...base.surface, budget: 12000 },
+    });
+    const model = buildSpec(spec, { uv: false });
+    const owned = ownedByName(model, spec);
+    for (const part of ['fang-upper', 'upper-tooth', 'lower-tooth'])
+      for (const count of owned.get(part) ?? [0])
+        expect(count, `${part} kept only ${count} vertices`).toBeGreaterThanOrEqual(15);
+    const triangles = stats(model).triangles;
+    expect(triangles).toBeLessThanOrEqual(12000 * 1.02);
+    expect(triangles).toBeGreaterThanOrEqual(12000 * 0.98);
   });
 });
