@@ -127,7 +127,6 @@ class NodeOffscreenCanvas {
         this.pixels.data.byteOffset,
         this.pixels.data.byteLength,
       ),
-      covered: 0,
     });
     return Promise.resolve(new Blob([png as unknown as BlobPart], { type }));
   }
