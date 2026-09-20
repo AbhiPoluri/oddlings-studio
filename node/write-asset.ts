@@ -222,6 +222,8 @@ export async function inspectGLB(path: string) {
     path: resolve(path),
     stats: stats(gltf.scene),
     bones,
+    /** The skeleton hand-off block. See lib/asset-rig-extras.ts. */
+    extras: gltf.scene.userData.oddlings ?? null,
     animations: gltf.animations.map((c) => ({
       name: c.name,
       duration: Number(c.duration.toFixed(3)),
