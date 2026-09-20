@@ -776,7 +776,24 @@ export function distanceTo(prim: Prim, x: number, y: number, z: number) {
   // the point it is evaluated at faster than the query point moves, and the
   // block test only stays sound while the reported distance cannot outrun the
   // step that produced it.
-  const metres = warp ? (d * prim.lipschitz) / warp.lipschitz : d * prim.lipschitz;
+  // The two shapes measured in local metres (an extrude, a bevelled box) pay
+  // one more factor under a warp. Their query point goes canonical (divided by
+  // the stretch), through the inverse warp, and back to metres (multiplied by
+  // the stretch): a bend can turn a step along the part's thin axis into one
+  // along its long axis, so the round trip stretches by up to the ratio of
+  // the two, and a 4.5 cm plate bent 12° was changing five times faster than
+  // distance. Canonical shapes never leave the divided frame, so the min
+  // stretch `prim.lipschitz` already covers them.
+  const metricShape =
+    (prim.shape === 'extrude' && a[0] >= 3) ||
+    ((prim.shape === 'box' || prim.shape === 'plane') && a.length > 3 && a[3] > 0);
+  const anisotropy =
+    warp && metricShape
+      ? Math.max(...prim.stretch) / Math.max(1e-9, Math.min(...prim.stretch))
+      : 1;
+  const metres = warp
+    ? (d * prim.lipschitz) / (warp.lipschitz * anisotropy)
+    : d * prim.lipschitz;
   const targets = prim.wrapTargets;
   if (!targets || !targets.length || !prim.wrap) return metres;
   // A wrapped part is the intersection of its own solid with a shell of its
