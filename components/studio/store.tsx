@@ -22,6 +22,7 @@ import {
   type RefObject,
 } from 'react';
 import { parseRecipe } from '@/lib/asset-recipe';
+import { DEFAULT_FILTERS, readFilters } from './filters';
 import {
   DEFAULT_LAYOUT,
   initialState,
@@ -34,6 +35,7 @@ import {
 
 export const LAYOUT_KEY = 'oddlings-studio-layout-v2';
 export const LIBRARY_KEY = 'oddlings-studio-library-v1';
+export const FILTERS_KEY = 'oddlings-studio-filters-v1';
 
 type Store = {
   state: StudioState;
@@ -105,6 +107,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     });
     const library = storedLibrary();
     if (library.length) dispatch({ type: 'library', items: library });
+    // A look someone set up is worth more than a layout: the whole point of a
+    // pixel-art preview is reviewing every asset through it, and having to
+    // rebuild the stack on each reload is how a filter panel goes unused.
+    try {
+      const filters = readFilters(localStorage.getItem(FILTERS_KEY));
+      if (filters) dispatch({ type: 'filters', patch: filters });
+    } catch {
+      // Storage switched off. The studio opens on the defaults.
+    }
   }, []);
 
   // Written back on every change, which is cheap: this is six numbers.
@@ -123,6 +134,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       // A browser with storage switched off still gets a working studio.
     }
   }, [layout]);
+
+  // Same identity check as the layout, for the same reason: the first flush
+  // runs before the restore above lands, and writing the defaults then would
+  // make the restore a no-op for everyone who had ever opened the studio.
+  const filters = state.filters;
+  useEffect(() => {
+    if (filters === DEFAULT_FILTERS) return;
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify(filters));
+    } catch {
+      // A browser with storage switched off still gets a working studio.
+    }
+  }, [filters]);
 
   const store = useMemo<Store>(() => ({ state, dispatch, ref }), [state]);
   return (

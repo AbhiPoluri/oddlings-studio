@@ -1,12 +1,40 @@
 import * as T from 'three';
 import { random } from './world';
 import type { Recipe } from './asset-recipe';
+/**
+ * Release a model's geometry, materials and textures.
+ *
+ * Textures are named one slot at a time because `Material.dispose` does not
+ * touch them: three assumes an image might be shared, and in this studio it
+ * never is — every model bakes its own atlas. Without this, editing a painted
+ * spec would hand the GPU a fresh megabyte of texels on every keystroke and
+ * never take one back.
+ */
+const MAPS = [
+  'map',
+  'normalMap',
+  'roughnessMap',
+  'metalnessMap',
+  'emissiveMap',
+] as const;
+
 export function disposeScene(root: T.Object3D) {
+  const seen = new Set<T.Texture>();
   root.traverse((o) => {
     if (o instanceof T.Mesh) {
       o.geometry.dispose();
       const mats = Array.isArray(o.material) ? o.material : [o.material];
-      mats.forEach((m) => m.dispose());
+      mats.forEach((m) => {
+        const standard = m as T.MeshStandardMaterial;
+        for (const slot of MAPS) {
+          const texture = standard[slot];
+          if (texture && !seen.has(texture)) {
+            seen.add(texture);
+            texture.dispose();
+          }
+        }
+        m.dispose();
+      });
     }
   });
 }

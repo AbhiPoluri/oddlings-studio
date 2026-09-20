@@ -8,6 +8,7 @@ import {
 } from 'react';
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { Move3d, Rotate3d, Scale3d } from 'lucide-react';
 import { stats } from '@/lib/asset-export';
@@ -30,6 +31,21 @@ import {
   type Vec3,
 } from '@/lib/spec-edit';
 import { disposeScene, lighting } from '@/lib/three-world';
+import {
+  atlasTextures,
+  dressTextures,
+  unpackMaps,
+  type BakedMaps,
+} from '@/lib/asset-bake';
+import { applyMaterial, splitUvSeams, type SurfaceMaterial } from '@/lib/asset-uv';
+import {
+  filtersActive,
+  type Filters,
+} from '@/components/studio/filters';
+import {
+  createFilterChain,
+  type FilterChain,
+} from '@/components/viewport-filters';
 import { skeletonOf } from '@/lib/asset-rig';
 import { boneLayout, clipsOf } from '@/lib/asset-joints';
 import type { Recipe } from '@/lib/asset-recipe';
@@ -70,7 +86,16 @@ type Props = {
   onMoveBone?: (name: string, at: Vec3) => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
-  pixel: boolean;
+  /**
+   * The post-processing stack, or a stack with everything off.
+   *
+   * This replaced a `pixel: boolean` that shrank the drawing buffer to 0.45×
+   * and let the browser magnify it. With every filter off the viewport renders
+   * exactly as it did before there was a composer at all — no render target is
+   * allocated and no extra pass runs — so the cost of the feature is paid only
+   * by the people using it.
+   */
+  filters: Filters;
   wireframe: boolean;
   grid: boolean;
   rotate: boolean;
@@ -233,6 +258,16 @@ type Runtime = {
   ghost: T.Group | null;
   grid: T.GridHelper;
   floor: T.Mesh;
+  /** The filter stack, built the first time a filter is switched on. */
+  chain: FilterChain | null;
+  /**
+   * Draw one frame: through the stack when a filter is on, plainly otherwise.
+   *
+   * Everything that puts a frame on the canvas goes through this rather than
+   * calling `renderer.render` — except the thumbnail grab, which wants the
+   * asset and not the look someone is previewing it through.
+   */
+  draw: () => void;
   fit: () => void;
   resize: () => void;
   /**
@@ -527,6 +562,93 @@ function sliceOf(source: T.Mesh, kept: number[]) {
   return slice;
 }
 
+/**
+ * Put the baked atlas on the fused mesh, so the studio draws what an engine
+ * will.
+ *
+ * Until now the preview drew vertex colours and nothing else, which meant that
+ * every per-texel pattern, every millimetre of relief and every rough or
+ * polished patch was invisible in the one place an author is actually looking.
+ * The worker bakes the atlas beside the model and parks it on the geometry;
+ * this hangs it on the material.
+ *
+ * Called after the model has been handed to `onModel`, and that order is the
+ * whole trick. A textured mesh needs one vertex per chart, `splitUvSeams` is
+ * what makes those vertices, and a split vertex is a torn index — which the
+ * audit would read as a hole in the shell. So the audit sees the welded mesh,
+ * the screen sees the split one, and everything keyed by vertex comes across
+ * the split with it: `surfaceOwners.index`, `rigParts` and the skin weights
+ * are all remapped, so selecting a part and framing a bone still work on
+ * exactly the geometry they did before.
+ */
+/**
+ * A small indoor environment, built once per renderer.
+ *
+ * Metal is a mirror, and a mirror with nothing to reflect is black: without
+ * this, `material: "gold"` would draw as a dark ring and read as a bug rather
+ * than as the absence of a sky. Only meshes carrying a baked atlas get it, so
+ * every asset that authored no material looks exactly as it did, and the
+ * intensity is low enough that a matte part is lifted rather than washed out.
+ */
+const environments = new WeakMap<T.WebGLRenderer, T.Texture>();
+
+function environmentFor(renderer: T.WebGLRenderer) {
+  const known = environments.get(renderer);
+  if (known) return known;
+  const pmrem = new T.PMREMGenerator(renderer);
+  const made = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+  environments.set(renderer, made);
+  return made;
+}
+
+function dressPreview(model: T.Object3D, renderer: T.WebGLRenderer) {
+  let maps: BakedMaps | undefined;
+  model.traverse((object) => {
+    if (!maps && object instanceof T.Mesh)
+      maps = object.geometry.userData.bakedMaps as BakedMaps | undefined;
+  });
+  if (!maps) return;
+  splitUvSeams(model);
+  model.traverse((object) => {
+    if (!(object instanceof T.Mesh) || Array.isArray(object.material)) return;
+    // The worker's channel carries one material per mesh and only the fields a
+    // standard material has, so a preset's transmission, clearcoat or sheen
+    // arrives as the tuple on `userData` and is rebuilt here. Only where the
+    // whole shell shares one material: a fused mesh of several is drawn with
+    // one material and its per-texel roughness and metalness, which is most of
+    // the difference and none of the risk of handing the viewport an array.
+    const tuples = object.geometry.userData.surfaceMaterials as
+      | SurfaceMaterial[]
+      | undefined;
+    if (tuples?.length === 1)
+      object.material = applyMaterial(
+        object.material as T.MeshStandardMaterial,
+        tuples[0],
+      );
+  });
+  dressTextures(model, atlasTextures(unpackMaps(maps)));
+  const environment = environmentFor(renderer);
+  model.traverse((object) => {
+    if (!(object instanceof T.Mesh)) return;
+    if (!object.geometry.userData.surfacePaint) return;
+    for (const material of Array.isArray(object.material)
+      ? object.material
+      : [object.material]) {
+      const standard = material as T.MeshStandardMaterial;
+      if (!standard.isMeshStandardMaterial) continue;
+      standard.envMap = environment;
+      standard.envMapIntensity = 0.55;
+      standard.needsUpdate = true;
+    }
+  });
+  // The bytes are on the GPU now, and leaving four megabytes of them on
+  // `userData` would keep them alive for as long as the model is on screen.
+  model.traverse((object) => {
+    if (object instanceof T.Mesh) delete object.geometry.userData.bakedMaps;
+  });
+}
+
 /** The ghost a part-owning mesh is drawn as while something else is isolated. */
 function ghostOf(material: T.Material) {
   const ghost = material.clone();
@@ -718,6 +840,16 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        /**
+         * A picture of the asset, deliberately unfiltered.
+         *
+         * `renderer.render` rather than `v.draw()`: the thumbnail is of the
+         * thing, and a pixelated or scanlined one would be wrong in the
+         * Projects list for as long as it was cached — the same reasoning that
+         * already hides the grid, the gizmo and the comparison ghost below.
+         * `components/studio/offscreen.ts` has its own renderer and never had
+         * a composer, so the bulk thumbnail run is unfiltered for free.
+         */
         capture() {
           const v = runtime.current;
           if (!v) throw Error('The 3D viewport is unavailable.');
@@ -755,7 +887,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           v.hoverBox.visible = o;
           if (v.ghost) v.ghost.visible = w;
           v.transform.getHelper().visible = t;
-          v.renderer.render(v.scene, v.camera);
+          // Back to whatever the viewport was showing, filters and all —
+          // otherwise the canvas holds this bare, unfiltered frame until
+          // something else happens to want one.
+          v.draw();
           return output;
         },
         home() {
@@ -912,6 +1047,12 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         ghost: null,
         grid,
         floor,
+        chain: null,
+        draw() {
+          const chain = filtersActive(live.current.filters) ? filters() : null;
+          if (chain) chain.render();
+          else renderer.render(scene, camera);
+        },
         fit() {
           if (!v.model) return;
           // A bottom view lifts the orbit ceiling; a refit is a fresh start and
@@ -953,9 +1094,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           if (!el) return;
           const width = Math.max(1, el.clientWidth);
           const height = Math.max(1, el.clientHeight);
-          const ratio = live.current.pixel
-            ? 0.45
-            : Math.min(devicePixelRatio, 1.5);
+          // One ratio for every look now. Pixelate is a size the composer
+          // renders at, not a drawing buffer someone else has to magnify, so
+          // the canvas is always the canvas.
+          const ratio = Math.min(devicePixelRatio, 1.5);
           renderer.setSize(
             Math.max(1, Math.round(width * ratio)),
             Math.max(1, Math.round(height * ratio)),
@@ -963,6 +1105,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           );
           camera.aspect = width / height;
           camera.updateProjectionMatrix();
+          v.chain?.setSize(width, height, ratio);
         },
         /**
          * Put the proxy on a part: union centre of every copy, turned to the
@@ -1337,6 +1480,54 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         },
       };
       runtime.current = v;
+
+      /**
+       * Hide the editing furniture, and hand back the way to put it back.
+       *
+       * The Outline filter paints the scene with one normal material to read
+       * its shape out of, and a `GridHelper` painted that way is a shape too —
+       * forty lines' worth of edges across the floor. Same list `capture()`
+       * hides, and the same reason: none of this is the asset.
+       */
+      function hideFurniture(): () => void {
+        const hidden: T.Object3D[] = [
+          grid,
+          floor,
+          proxy,
+          handles,
+          bound,
+          hoverBox,
+          transform.getHelper(),
+        ];
+        if (v.ghost) hidden.push(v.ghost);
+        if (v.helper) hidden.push(v.helper);
+        const was = hidden.map((object) => object.visible);
+        for (const object of hidden) object.visible = false;
+        return () => {
+          for (let i = 0; i < hidden.length; i++) hidden[i].visible = was[i];
+        };
+      }
+
+      /**
+       * The filter stack, built on first use.
+       *
+       * Three render targets and five compiled programs is not much, but it is
+       * not nothing either, and a studio nobody has switched a filter on in
+       * should not be holding any of it.
+       */
+      function filters(): FilterChain {
+        if (v.chain) return v.chain;
+        const chain = createFilterChain({
+          renderer,
+          scene,
+          camera,
+          hideFurniture,
+        });
+        v.chain = chain;
+        chain.apply(live.current.filters);
+        v.resize();
+        return chain;
+      }
 
       /**
        * Which snap grid the modifiers are asking for, and the gizmo set to it.
@@ -1893,7 +2084,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         // A turntable turning under a drag drags the gizmo plane with it.
         controls.autoRotate = live.current.rotate && !transform.dragging;
         controls.update();
-        renderer.render(scene, camera);
+        v.draw();
         drawn++;
         if (!second) second = now;
         else if (now - second >= 1000) {
@@ -1933,6 +2124,8 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         scene.remove(transform.getHelper());
         transform.dispose();
         v.mixer?.stopAllAction();
+        v.chain?.dispose();
+        v.chain = null;
         if (v.ghost) skeletonOf(v.ghost)?.dispose();
         if (v.model) skeletonOf(v.model)?.dispose();
         v.helper?.dispose();
@@ -2067,6 +2260,9 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         // Last, so whoever audits this is reading a model that is fully wired
         // up — skinned, posed and measured.
         live.current.onModel?.(model);
+        // And only then the texture, which tears the index the audit just
+        // read. See `dressPreview`.
+        dressPreview(model, v.renderer);
         // The isolate and gizmo effects below watch the same spec, but React
         // ran them when the spec changed rather than when the model landed.
         // Asking for one more pass is how they get to see what arrived.
@@ -2249,7 +2445,27 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           (o.material as T.MeshStandardMaterial).wireframe = props.wireframe;
       });
       v.resize();
-    }, [props.grid, props.pixel, props.wireframe]);
+    }, [props.grid, props.wireframe]);
+    /**
+     * Push the filter settings into the stack.
+     *
+     * Cheap by construction: the passes are built once and this writes
+     * uniforms and `enabled` flags, so dragging a slider costs one object
+     * compare and a dozen assignments rather than a rebuilt composer. A stack
+     * that has never been switched on is not built at all — `filtersActive`
+     * is what the render loop asks before it reaches for one.
+     */
+    useEffect(() => {
+      const v = runtime.current;
+      if (!v) return;
+      if (!v.chain && !filtersActive(props.filters)) return;
+      const chain = v.chain;
+      if (chain) {
+        chain.apply(props.filters);
+        v.resize();
+      }
+      v.wake();
+    }, [props.filters]);
     // Only the bone-ness of the selection matters here: re-posing on every
     // part click would restart the clip each time one was picked.
     const onBone = props.selected?.kind === 'bone';
@@ -2284,7 +2500,16 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           ref={canvas}
           tabIndex={0}
           aria-label="3D asset preview. Click a part to select it. Drag to orbit, right-drag to pan, scroll to zoom."
-          style={{ imageRendering: props.pixel ? 'pixelated' : 'auto' }}
+          // The composer already magnifies with nearest taps, but the drawing
+          // buffer is capped at 1.5× and the browser scales it once more on
+          // the way to a 2× screen. Without this that last step is bilinear,
+          // and the blocks come out with soft edges after all the work.
+          style={{
+            imageRendering:
+              props.filters.on && props.filters.pixelate.on
+                ? 'pixelated'
+                : 'auto',
+          }}
         />
         {editable && (
           <div className="gizmo-modes" role="group" aria-label="Gizmo mode">

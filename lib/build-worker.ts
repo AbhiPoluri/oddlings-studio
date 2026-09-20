@@ -2,6 +2,7 @@
 import { buildSpec, type AssetSpec } from './asset-spec';
 import { buildAsset } from './asset-build';
 import { readySurface, type BuildPhase } from './asset-surface';
+import { bakePreview } from './asset-bake';
 import { disposeScene } from './three-world';
 import {
   serializeModel,
@@ -39,6 +40,15 @@ export type BuildAsk =
       lane: string;
       /** Plan the texture atlas. Previews do not; exports do. */
       uv?: boolean;
+      /**
+       * Bake that atlas and send it back with the model.
+       *
+       * Only the lane the studio draws asks for this, and only for a spec that
+       * paints something: rasterising a quarter of a million texels is worth a
+       * brick wall that stays crisp and is not worth anything at all for a
+       * model of flat parts, which its vertex colours already describe exactly.
+       */
+      bake?: boolean;
     } & BuildSource)
   | { type: 'cancel'; lane: string };
 
@@ -99,6 +109,10 @@ function drain() {
             } satisfies BuildSay),
         })
       : buildAsset(ask.recipe);
+    // The bake rides back on the geometry's userData, which the channel below
+    // carries as plain data. It happens here rather than on the other side
+    // because here is the thread nobody is drawing with.
+    if (ask.bake) bakePreview(model);
     const serial = serializeModel(model);
     scope.postMessage(
       { type: 'built', id: ask.id, lane, model: serial } satisfies BuildSay,

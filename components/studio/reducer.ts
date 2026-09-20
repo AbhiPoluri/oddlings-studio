@@ -16,6 +16,14 @@ import { initialRecipe, type Recipe } from '@/lib/asset-recipe';
 import type { AssetSpec } from '@/lib/asset-spec';
 import { clipsOf } from '@/lib/asset-joints';
 import { diffSpecs, sameSelection, type Selection } from '@/lib/spec-edit';
+import {
+  applyPreset,
+  DEFAULT_FILTERS,
+  patchFilters,
+  type Filters,
+  type FiltersPatch,
+  type PresetId,
+} from './filters';
 import { BIND_POSE } from '@/components/timeline';
 import type { SpecRow } from '@/node/studio-api';
 
@@ -72,7 +80,6 @@ export type Overlays = {
   wireframe: boolean;
   grid: boolean;
   skeleton: boolean;
-  pixel: boolean;
   rotate: boolean;
   /** Draw the previous agent build behind this one, as a ghost. */
   compare: boolean;
@@ -131,6 +138,15 @@ export type StudioState = {
   /** A mirror of the viewport's own gizmo mode; see `actions.ts`. */
   gizmo: GizmoMode;
   overlays: Overlays;
+  /**
+   * The viewport's post-processing stack.
+   *
+   * Beside `overlays` rather than inside it because an overlay is a boolean and
+   * these are a dozen numbers with ranges — and because they are the one part
+   * of the view that is persisted between sessions, which a toggle that says
+   * "draw the grid" has no business being caught up in.
+   */
+  filters: Filters;
   playback: Playback;
   follow: Follow;
   builds: BuildEntry[];
@@ -237,10 +253,10 @@ export const initialState: StudioState = {
     wireframe: false,
     grid: true,
     skeleton: false,
-    pixel: false,
     rotate: false,
     compare: false,
   },
+  filters: DEFAULT_FILTERS,
   playback: { clip: BIND_POSE, playing: false, time: 0, speed: 1, clips: [] },
   follow: {
     status: 'waiting',
@@ -313,6 +329,10 @@ export type StudioAction =
   | { type: 'isolate'; selection: Selection }
   | { type: 'gizmo'; mode: GizmoMode }
   | { type: 'overlay'; key: keyof Overlays; value?: boolean }
+  /** Change some part of the filter stack. Anything left out keeps its value. */
+  | { type: 'filters'; patch: FiltersPatch }
+  /** Replace the whole stack with one of the named looks. */
+  | { type: 'filterPreset'; preset: PresetId }
   | { type: 'clip'; name: string }
   | { type: 'playing'; playing: boolean }
   | { type: 'time'; time: number }
@@ -602,6 +622,17 @@ export function reducer(
           [action.key]: action.value ?? !state.overlays[action.key],
         },
       };
+
+    case 'filters': {
+      const filters = patchFilters(state.filters, action.patch);
+      // `patchFilters` hands the same object back when a slider was dragged to
+      // where it already was, which is what keeps the store from writing to
+      // `localStorage` and the viewport from pushing uniforms for nothing.
+      return filters === state.filters ? state : { ...state, filters };
+    }
+
+    case 'filterPreset':
+      return { ...state, filters: applyPreset(action.preset) };
 
     case 'clip':
       // The clock belongs to the clip, so switching rewinds rather than

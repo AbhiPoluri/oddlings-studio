@@ -106,7 +106,12 @@ export type Piece = {
  */
 export function sampleMesh(mesh: T.Mesh) {
   const position = mesh.geometry.attributes.position as T.BufferAttribute;
-  const triangles = Math.floor(position.count / 3);
+  // An indexed geometry (a lathe, a loft) lists its triangles through the
+  // index; reading positions in threes there walks vertex columns instead, and
+  // a stride that lands on the ring count samples one ring of the whole part.
+  const index = mesh.geometry.index;
+  const vertex = (k: number) => (index ? index.getX(k) : k);
+  const triangles = Math.floor((index ? index.count : position.count) / 3);
   // Points are sampled; faces never are. Distance and containment are both
   // measured against the surface, and a surface missing four faces in five is
   // a sieve: rays pass through the gaps and the parity test lies.
@@ -116,13 +121,21 @@ export function sampleMesh(mesh: T.Mesh) {
   const a = new T.Vector3(),
     b = new T.Vector3(),
     c = new T.Vector3();
+  // One sample per window of `step` triangles, at a scrambled offset inside
+  // the window. A fixed stride aliases with structured meshes: a lathe emits
+  // its triangles column by column, and a stride equal to the column length
+  // samples the same ring of every column and reports a dome as a disc.
+  let window = 0;
+  let next = 0;
   for (let t = 0; t < triangles; t++) {
     const i = t * 3;
-    a.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld);
-    b.fromBufferAttribute(position, i + 1).applyMatrix4(mesh.matrixWorld);
-    c.fromBufferAttribute(position, i + 2).applyMatrix4(mesh.matrixWorld);
+    a.fromBufferAttribute(position, vertex(i)).applyMatrix4(mesh.matrixWorld);
+    b.fromBufferAttribute(position, vertex(i + 1)).applyMatrix4(mesh.matrixWorld);
+    c.fromBufferAttribute(position, vertex(i + 2)).applyMatrix4(mesh.matrixWorld);
     faces.push(new T.Triangle(a.clone(), b.clone(), c.clone()));
-    if (t % step) continue;
+    if (t !== next) continue;
+    window++;
+    next = Math.min(triangles - 1, window * step + ((window * 7919) % step));
     points.push(
       a.clone(),
       b.clone(),
@@ -564,6 +577,9 @@ function burialHints(
     surface: undefined,
     rig: undefined,
     joints: undefined,
+    // The whole point is to find a part buried in its neighbour, which is
+    // exactly what trimming would remove.
+    trim: false,
   });
   try {
     const byKey = new Map<string, Piece>();
@@ -637,7 +653,17 @@ export function auditModel(
   options: AuditOptions = {},
 ): Audit {
   const findings: Finding[] = [];
-  const { pieces, grouped } = collect(model);
+  // Contact and burial are questions about the authored solids. A trimmed
+  // faceted model has had its hidden faces removed — exactly the faces that
+  // touch a neighbour — so those checks run on an untrimmed rebuild of the
+  // same spec. The rebuild is disposed at the end; every finding still points
+  // at the model that was passed in.
+  const authored = model.userData.spec as AssetSpec | undefined;
+  const solid =
+    model.userData.trimmed && authored
+      ? buildSpec({ ...authored, trim: false, rig: undefined, joints: undefined })
+      : model;
+  const { pieces, grouped } = collect(solid);
   const size = new T.Box3().setFromObject(model).getSize(new T.Vector3());
   const name = (key: string) => options.labels?.get(key) ?? key;
   // Geometry is measured in world space, which carries the display scale;
@@ -717,6 +743,73 @@ export function auditModel(
         code: 'connected',
         message: `All ${pieces.length} meshes hang together.`,
       });
+    const trimmed = model.userData.trimmed as { removed: number; kept: number } | undefined;
+    if (trimmed?.removed)
+      findings.push({
+        severity: 'info',
+        code: 'trimmed',
+        value: trimmed.removed,
+        message: `Trimmed ${trimmed.removed} hidden triangles (${Math.round((100 * trimmed.removed) / (trimmed.removed + trimmed.kept))}% of the kitbash) that were buried in, or lying flat on, parts that move with them.`,
+      });
+  }
+
+  // --- where the triangle budget went ------------------------------------
+  // Per authored part, for either backend: a part that takes a fifth of the
+  // triangles for a hundredth of the surface is a rivet or a fillet that the
+  // decimator could not let go of, and the number is the argument for
+  // `surface.feature`, a larger `blend`, or simply dropping the part.
+  {
+    const tris = new Map<string, number>();
+    const area = new Map<string, number>();
+    const va = new T.Vector3(), vb = new T.Vector3(), vc = new T.Vector3();
+    let totalTris = 0, totalArea = 0;
+    const tally = (key: string, t: number, a: number) => {
+      tris.set(key, (tris.get(key) ?? 0) + t);
+      area.set(key, (area.get(key) ?? 0) + a);
+      totalTris += t;
+      totalArea += a;
+    };
+    model.traverse((object) => {
+      if (!(object instanceof T.Mesh)) return;
+      const geometry = object.geometry;
+      const position = geometry.attributes.position as T.BufferAttribute | undefined;
+      if (!position) return;
+      const owners = geometry.userData.surfaceOwners as
+        | { index: Uint16Array; paths: (number[] | undefined)[] }
+        | undefined;
+      const index = geometry.index;
+      const count = index ? index.count : position.count;
+      const at = (i: number) => (index ? index.getX(i) : i);
+      const meshKey = (object.userData.specPath as number[] | undefined)?.join('.') ?? object.name;
+      for (let i = 0; i < count; i += 3) {
+        const a = at(i), b = at(i + 1), c = at(i + 2);
+        va.fromBufferAttribute(position, a);
+        vb.fromBufferAttribute(position, b).sub(va);
+        vc.fromBufferAttribute(position, c).sub(va);
+        const tri = vb.cross(vc).length() / 2;
+        const key = owners ? (owners.paths[owners.index[a]] ?? []).join('.') : meshKey;
+        tally(key, 1, tri);
+      }
+    });
+    if (totalTris > 0 && tris.size > 1) {
+      const rows = [...tris.entries()]
+        .map(([key, t]) => ({ key, t, share: t / totalTris, areaShare: (area.get(key) ?? 0) / Math.max(totalArea, 1e-9) }))
+        .sort((x, y) => y.t - x.t);
+      const top = rows.slice(0, 4).map((r) => `${name(r.key)} ${Math.round(r.share * 100)}%`).join(', ');
+      // The worst offender by triangles per unit of surface, among parts big
+      // enough to matter.
+      const greedy = rows
+        .filter((r) => r.share >= 0.02)
+        .sort((x, y) => y.share / Math.max(y.areaShare, 1e-6) - x.share / Math.max(x.areaShare, 1e-6))[0];
+      let note = '';
+      if (greedy && greedy.share / Math.max(greedy.areaShare, 1e-6) > 3)
+        note = ` "${name(greedy.key)}" takes ${Math.round(greedy.share * 100)}% of the triangles for ${Math.max(1, Math.round(greedy.areaShare * 100))}% of the surface; raise surface.feature or blend, or simplify it.`;
+      findings.push({
+        severity: 'info',
+        code: 'budget',
+        message: `Triangles by part: ${top}.${note}`,
+      });
+    }
   }
 
   // --- one mesh, but is it one piece? ------------------------------------
@@ -874,10 +967,20 @@ export function auditModel(
   // plain solid it was authored as — which puts a window-shaped block where the
   // window should be. Nothing about the geometry says that went wrong, so the
   // spec has to.
+  const unfielded = new Map<string, { path?: number[]; copies: number }>();
   const uncut = new Map<string, { path?: number[]; copies: number }>();
   model.traverse((object) => {
     if (!(object instanceof T.Mesh) || object.userData.surface) return;
-    const prim = object.userData.prim as { subtract?: boolean } | undefined;
+    const prim = object.userData.prim as
+      | { subtract?: boolean; shape?: string }
+      | undefined;
+    if (prim?.shape === 'field' || (prim as { wrap?: unknown } | undefined)?.wrap) {
+      const path = object.userData.specPath as number[] | undefined;
+      const key = path ? path.join('.') : object.name;
+      const entry = unfielded.get(key) ?? { path, copies: 0 };
+      entry.copies++;
+      unfielded.set(key, entry);
+    }
     if (!prim?.subtract) return;
     const path = object.userData.specPath as number[] | undefined;
     const key = path ? path.join('.') : object.name;
@@ -892,6 +995,14 @@ export function auditModel(
       ...(path ? { part: path } : {}),
       value: copies,
       message: `"${name(key)}" asks to be subtracted, but this asset is built from stacked solids, so it was added as one instead of cut away${copies > 1 ? ` (${copies} copies)` : ''}. Give the spec a surface block to get the cut, or drop the subtract flag.`,
+    });
+  for (const [key, { path, copies }] of unfielded)
+    findings.push({
+      severity: 'warn',
+      code: 'field-needs-surface',
+      ...(path ? { part: path } : {}),
+      value: copies,
+      message: `"${name(key)}" is a field or wrapped part, and the faceted builder has no field to mesh or wrap, so it drew the plain shape${copies > 1 ? ` (${copies} copies)` : ''}. Give the spec a surface block to build it.`,
     });
 
   // --- rig weighting ----------------------------------------------------
@@ -971,6 +1082,7 @@ export function auditModel(
     message: `${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m, height-to-width ${flat.toFixed(2)}${flat < 0.5 ? ' — reads flat from the side' : ''}.`,
   });
 
+  if (solid !== model) disposeScene(solid);
   return { ok: !findings.some((f) => f.severity === 'error'), findings };
 }
 

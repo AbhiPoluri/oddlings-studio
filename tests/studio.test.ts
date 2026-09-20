@@ -25,12 +25,28 @@ import {
   sparkPoints,
   type BuildRow,
 } from '../components/studio/builds';
-import { COMMANDS, COMMAND_BY_ID } from '../components/studio/actions';
+import {
+  COMMANDS,
+  COMMAND_BY_ID,
+  type ActionContext,
+} from '../components/studio/actions';
 import {
   chordOf,
   commandFor,
   keyConflicts,
 } from '../components/studio/keymap';
+import {
+  DEFAULT_FILTERS,
+  FILTER_KINDS,
+  activeFilters,
+  applyPreset,
+  filterCount,
+  filtersActive,
+  matchingPreset,
+  patchFilters,
+  readFilters,
+  type Filters,
+} from '../components/studio/filters';
 
 /**
  * The studio's rules, without a browser.
@@ -831,5 +847,156 @@ describe('edit pace', () => {
 
   test('and neither does a freshly loaded document', () => {
     expect(following(rifle).lastEdit).toBe('load');
+  });
+});
+
+/**
+ * The viewport's filter stack.
+ *
+ * Every rule worth having here is one that can only otherwise be checked by
+ * looking at a rendered canvas: that a preset is the same look whatever was on
+ * screen before it, that the master switch does not forget the stack it was
+ * switched off over, and that a stored blob from an older build — or from the
+ * console — cannot put a shader uniform out of range.
+ */
+describe('viewport filters', () => {
+  const filters = (state: StudioState): Filters => state.filters;
+
+  test('the stack starts off, and off means no work for the viewport', () => {
+    expect(filtersActive(initialState.filters)).toBe(false);
+    expect(filterCount(initialState.filters)).toBe(0);
+  });
+
+  test('a preset replaces the stack rather than inheriting from it', () => {
+    const fiddled = run(
+      initialState,
+      { type: 'filters', patch: { on: true, vignette: { on: true, mix: 0.9 } } },
+      { type: 'filterPreset', preset: 'pixel-art' },
+    );
+    expect(activeFilters(filters(fiddled))).toStrictEqual([
+      'pixelate',
+      'posterize',
+      'dither',
+    ]);
+    // The vignette someone had switched on is not carried into the preset.
+    expect(filters(fiddled).vignette.on).toBe(false);
+    expect(filters(fiddled)).toStrictEqual(applyPreset('pixel-art'));
+  });
+
+  test('Pixel art is pixelate 4, posterize 8 and a 4×4 Bayer matrix', () => {
+    const preset = applyPreset('pixel-art');
+    expect(preset.pixelate.size).toBe(4);
+    expect(preset.posterize.levels).toBe(8);
+    expect(preset.dither.matrix).toBe(4);
+  });
+
+  test('the presets are the only looks that report as a preset', () => {
+    expect(matchingPreset(applyPreset('retro-crt'))).toBe('retro-crt');
+    expect(matchingPreset(DEFAULT_FILTERS)).toBe('off');
+    const nudged = patchFilters(applyPreset('retro-crt'), {
+      scanlines: { spacing: 9 },
+    });
+    expect(matchingPreset(nudged)).toBe(null);
+  });
+
+  test('the master switch keeps the stack it was switched off over', () => {
+    const on = run(initialState, { type: 'filterPreset', preset: 'ink-outline' });
+    const off = run(on, { type: 'filters', patch: { on: false } });
+    expect(filtersActive(filters(off))).toBe(false);
+    // Still configured, just not drawing — which is the whole reason the
+    // master switch is separate from the seven per-filter ones.
+    expect(filters(off).outline.on).toBe(true);
+    const again = run(off, { type: 'filters', patch: { on: true } });
+    expect(filters(again)).toStrictEqual(filters(on));
+  });
+
+  test('every parameter is clamped to what the shader can take', () => {
+    const wild = patchFilters(DEFAULT_FILTERS, {
+      on: true,
+      outline: { thickness: 99, threshold: -4, color: 'rgb(1,2,3)' },
+      pixelate: { size: 0, mix: 12 },
+      posterize: { levels: 500 },
+      scanlines: { spacing: -1 },
+    });
+    expect(wild.outline.thickness).toBe(3);
+    expect(wild.outline.threshold).toBe(0.05);
+    // Not a `#rrggbb`, so it is not a colour: the default stands rather than
+    // `THREE.Color` being handed something it will warn about and ignore.
+    expect(wild.outline.color).toBe(DEFAULT_FILTERS.outline.color);
+    expect(wild.pixelate.size).toBe(1);
+    expect(wild.pixelate.mix).toBe(1);
+    expect(wild.posterize.levels).toBe(32);
+    expect(wild.scanlines.spacing).toBe(2);
+  });
+
+  test('a patch that changes nothing changes nothing', () => {
+    const state = run(initialState, { type: 'filterPreset', preset: 'pixel-art' });
+    // Identity, not equality: the store persists on a new object and the
+    // viewport pushes uniforms on one, so a slider dropped back where it
+    // started must not produce either.
+    const again = run(state, {
+      type: 'filters',
+      patch: { pixelate: { size: state.filters.pixelate.size } },
+    });
+    expect(again.filters).toBe(state.filters);
+    expect(again).toBe(state);
+  });
+
+  test('a restored blob is read field by field, never trusted whole', () => {
+    expect(readFilters(null)).toBe(null);
+    expect(readFilters('{')).toBe(null);
+    expect(readFilters('[]')).toBe(null);
+    const stored = JSON.stringify({
+      on: true,
+      posterize: { on: true, levels: 4 },
+      // A filter this build does not have, a field of the wrong type, and a
+      // level that would divide by zero in the quantiser.
+      bloom: { on: true },
+      dither: { matrix: 'huge', mix: 0.5 },
+      pixelate: { size: 1e9 },
+    });
+    const read = readFilters(stored);
+    expect(read).not.toBe(null);
+    expect(read!.posterize.levels).toBe(4);
+    expect(read!.dither.matrix).toBe(DEFAULT_FILTERS.dither.matrix);
+    expect(read!.pixelate.size).toBe(16);
+    expect(activeFilters(read!)).toStrictEqual(['posterize']);
+  });
+
+  test('every filter has a command, and P still toggles the stack', () => {
+    for (const kind of FILTER_KINDS)
+      expect(COMMAND_BY_ID.has(`filter.${kind}`)).toBe(true);
+    const toggle = COMMAND_BY_ID.get('toggle.filters');
+    expect(toggle?.keys).toStrictEqual(['P']);
+  });
+
+  test('turning one filter on from the palette brings the stack with it', () => {
+    const command = COMMAND_BY_ID.get('filter.scanlines')!;
+    let state = initialState;
+    // Only the two fields this command touches; the rest of the context is
+    // the shell's and none of it is reachable from here.
+    const context = {
+      get state() {
+        return state;
+      },
+      dispatch: (action: StudioAction) => {
+        state = reducer(state, action);
+      },
+    } as ActionContext;
+    command.run(context);
+    expect(state.filters.on).toBe(true);
+    expect(activeFilters(state.filters)).toStrictEqual(['scanlines']);
+    // Switching one off is not a reason to switch the stack on. Only the
+    // "on" direction carries the master with it — otherwise turning a filter
+    // off from the palette would light up a stack nobody asked for.
+    state = run(state, { type: 'filters', patch: { on: false } });
+    command.run(context);
+    expect(state.filters.scanlines.on).toBe(false);
+    expect(state.filters.on).toBe(false);
+  });
+
+  test('a stored blob with nothing usable in it is not a stored stack', () => {
+    expect(readFilters('{}')).toBe(null);
+    expect(readFilters('{"bloom":{"on":true}}')).toBe(null);
   });
 });

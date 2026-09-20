@@ -8,7 +8,8 @@ import { toGLB, clipsFor, unityReadme } from '../lib/asset-bundle';
 import { buildSpec, type AssetSpec } from '../lib/asset-spec';
 import { auditModel, type Audit } from '../lib/asset-audit';
 import { readySurface } from '../lib/asset-surface';
-import { bakeColorAtlas, splitUvSeams } from '../lib/asset-uv';
+import { splitUvSeams } from '../lib/asset-uv';
+import { bakeSurface } from '../lib/asset-bake';
 import { encodePng } from '../lib/asset-png';
 import { markActive } from './active-spec';
 import { flatten } from '../lib/spec-edit';
@@ -83,11 +84,13 @@ export async function writeAsset(
           ]),
         ),
   });
-  // Cut the uv seams and bake the vertex colours into an atlas. After the
-  // audit on purpose: the audit reads the welded index to prove the shell is
-  // closed, and a uv seam is a tear in that index.
+  // Bake the atlas, then cut the uv seams. After the audit on purpose: the
+  // audit reads the welded index to prove the shell is closed, and a uv seam
+  // is a tear in that index. The bake comes first because it reads the uv plan
+  // rather than the cut uvs, and because the welded triangles are the ones the
+  // paint expressions were written against.
+  const atlas = bakeSurface(model);
   splitUvSeams(model);
-  const atlas = bakeColorAtlas(model);
   const png = atlas ? encodePng(atlas) : null;
   // Faceted assets have flat materials and no vertex colours, so there is
   // nothing for a texture to carry and no PNG is written.
@@ -96,7 +99,7 @@ export async function writeAsset(
   // varies. A spec with no `material` block produces none of them, so what
   // lands on disk is exactly what used to.
   const extras: { name: string; data: Uint8Array }[] = [];
-  for (const channel of ['roughness', 'metalness', 'emissive'] as const) {
+  for (const channel of ['roughness', 'metalness', 'emissive', 'normal'] as const) {
     const map = atlas?.maps?.[channel];
     if (map) extras.push({ name: `${base}-${channel}.png`, data: encodePng(map) });
   }
@@ -125,13 +128,18 @@ export async function writeAsset(
           isRecipe ? undefined : source.spec.color,
           texture,
           emissiveTexture,
+          {
+            ...(atlas?.maps?.normal ? { normal: `${base}-normal.png` } : {}),
+            ...(atlas?.maps?.roughness ? { roughness: `${base}-roughness.png` } : {}),
+            ...(atlas?.maps?.metalness ? { metalness: `${base}-metalness.png` } : {}),
+          },
         );
         if (formats.includes('obj')) {
           files.push(await put(join(outDir, `${base}.obj`), bundle.obj));
           files.push(await put(join(outDir, `${base}.mtl`), bundle.mtl));
         }
         if (formats.includes('unity')) {
-          const glb = await toGLB(model, clips);
+          const glb = await toGLB(model, clips, atlas);
           const zip = zipSync(
             {
               [`${base}/${base}.glb`]: new Uint8Array(glb),
@@ -164,15 +172,15 @@ export async function writeAsset(
     }
 
     if (formats.includes('glb')) {
-      const glb = await toGLB(model, clips);
+      const glb = await toGLB(model, clips, atlas);
       files.push(await put(join(outDir, `${base}.glb`), new Uint8Array(glb)));
     }
 
     // Last, so callers that reach for `files[0]` still find the model rather
-    // than its texture. A GLB cannot embed this: GLTFExporter needs an image
-    // source it can only get from a canvas, which neither the CLI nor the
-    // worker has — so the atlas ships beside the model and the GLB keeps its
-    // vertex colours.
+    // than its texture. The GLB embeds the same atlas when the asset paints —
+    // `lib/node-shims.ts` gives the exporter the canvas it insists on — and
+    // the PNGs still ship beside the model for the OBJ, which has no way to
+    // carry an image inside itself.
     if (png && formats.some((format) => format !== 'json')) {
       files.push(await put(join(outDir, `${base}.png`), png));
       for (const extra of extras)

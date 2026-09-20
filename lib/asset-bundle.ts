@@ -1,10 +1,20 @@
+import './node-shims';
 import * as T from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { zipSync, strToU8 } from 'fflate';
 import { buildAsset, dressSurfaceMaterials, objBundle } from './asset-build';
 import { buildSpec, type AssetSpec } from './asset-spec';
 import { readySurface } from './asset-surface';
-import { bakeColorAtlas, splitUvSeams } from './asset-uv';
+import { splitUvSeams, type ColorAtlas } from './asset-uv';
+import {
+  alreadyTextured,
+  atlasTextures,
+  bakeSurface,
+  dressTextures,
+  dropVertexColours,
+  paintsTexels,
+  stripBakeData,
+} from './asset-bake';
 import { encodePng } from './asset-png';
 import { rigClips } from './asset-rig';
 import { clipsOf, specClips } from './asset-joints';
@@ -18,6 +28,14 @@ import { type Recipe, fileName } from './asset-recipe';
 export async function toGLB(
   model: T.Object3D,
   animations: T.AnimationClip[] = [],
+  /**
+   * The atlas to embed, when the caller has already baked one.
+   *
+   * `null` says "do not embed", and leaving it out bakes here. The CLI bakes
+   * before it splits, because it writes the same atlas out as PNGs beside the
+   * model, and baking it twice would be a second or two for identical bytes.
+   */
+  atlas?: ColorAtlas | null,
 ) {
   // Cut the uv seams surface mode planned. Deferred to here on purpose: the
   // welded index is what the audit reads, so the tear happens once, on the way
@@ -30,6 +48,18 @@ export async function toGLB(
   // and the same boundary: the studio's worker channel carries one material
   // per mesh, so the array is built here rather than at build time.
   dressSurfaceMaterials(model);
+  // Then the maps, after the materials, because every one of them is a factor
+  // the texture multiplies and `dressTextures` has to be the last word on the
+  // factors. Only an asset that paints gets them: a model of flat parts is
+  // exactly its vertex colours, and a megabyte of PNG saying so is a megabyte.
+  if (paintsTexels(model) && !alreadyTextured(model)) {
+    const baked = atlas === undefined ? bakeSurface(model) : atlas;
+    if (baked) {
+      dressTextures(model, atlasTextures(baked));
+      dropVertexColours(model);
+    }
+  }
+  stripBakeData(model);
   const scene = new T.Scene();
   scene.add(model);
   const output = await new GLTFExporter().parseAsync(scene, {
@@ -73,15 +103,15 @@ UNITY IMPORT
 Scale: numeric coordinates are meters; Y is up. The model faces +Z before any importer axis conversion.
 The OBJ is a static mesh with flat normals and solid-color materials. The GLB includes a 14-bone skinned Generic rig and Idle, Walk, Jump, Wave, and Attack clips when the creature rig is enabled. Environments are static. Every mesh carries a UV0 channel.${
     textured
-      ? ` A baked color atlas ships beside the model as ${fileName(name)}.png, wired to the OBJ through map_Kd. The GLB keeps the same colors as vertex colors and does not embed the image, so point a material at the PNG after import if you want it there too.`
+      ? ` A baked color atlas ships beside the model as ${fileName(name)}.png, wired to the OBJ through map_Kd. An asset that paints its surface carries the same atlas inside the GLB as a real texture, in place of vertex colors — glTF multiplies the two, so a model with both would show every pattern twice over. An asset of flat parts keeps its vertex colors and embeds nothing.`
       : ''
   }${
     channels.length
       ? ` Material maps for ${channels.join(', ')} ship beside it as ${channels
           .map((channel) => `${fileName(name)}-${channel}.png`)
-          .join(', ')}; the GLB carries the same values on its own materials, and the MTL wires the emissive one through map_Ke. Assign the rest to the imported material's matching slots.`
+          .join(', ')}; the GLB carries them as its own textures, and the MTL wires them through map_Ke, norm, map_Pr and map_Pm. Assign any your importer skips to the imported material's matching slots.`
       : ''
-  } No collision shapes, LODs, ${channels.length ? 'normal maps' : 'normal/roughness maps'} or lightmap UVs are included. Generate colliders and lightmap UVs in Unity as needed.
+  } No collision shapes, LODs${channels.includes('normal') ? '' : ', normal maps'} or lightmap UVs are included. Generate colliders and lightmap UVs in Unity as needed.
 The pixelated viewport is a preview effect, not baked into the model.
 
 EDIT AGAIN
@@ -162,13 +192,13 @@ export async function specUnityPack(spec: AssetSpec) {
     const base = fileName(spec.name);
     // Bake before the OBJ is written: the material library has to name the
     // texture, and only a surface asset has one to name.
+    const atlas = bakeSurface(staticModel);
     splitUvSeams(staticModel);
-    const atlas = bakeColorAtlas(staticModel);
     const png = atlas ? encodePng(atlas) : null;
     // The material channels ride along the same way, one file per channel the
     // asset actually varies in. None of them exist for a spec with no
     // `material` block.
-    const extras = (['roughness', 'metalness', 'emissive'] as const).flatMap(
+    const extras = (['roughness', 'metalness', 'emissive', 'normal'] as const).flatMap(
       (channel) => {
         const map = atlas?.maps?.[channel];
         return map
@@ -182,6 +212,11 @@ export async function specUnityPack(spec: AssetSpec) {
       spec.color,
       png ? `${base}.png` : undefined,
       atlas?.maps?.emissive ? `${base}-emissive.png` : undefined,
+      {
+        ...(atlas?.maps?.normal ? { normal: `${base}-normal.png` } : {}),
+        ...(atlas?.maps?.roughness ? { roughness: `${base}-roughness.png` } : {}),
+        ...(atlas?.maps?.metalness ? { metalness: `${base}-metalness.png` } : {}),
+      },
     );
     const glb = await toGLB(model, specClips(spec));
     const zip = zipSync(

@@ -5,6 +5,8 @@ import { buildAsset } from './asset-build';
 import { readySurface, type BuildPhase } from './asset-surface';
 import { deserializeModel } from './build-serial';
 import type { BuildAsk, BuildSay, BuildSource } from './build-worker';
+import { bakePreview } from './asset-bake';
+import { flatten } from './spec-edit';
 import { mark, measure } from './perf';
 
 /**
@@ -38,6 +40,25 @@ export type BuildClient = {
 };
 
 type Waiting = { id: number; handlers: BuildHandlers; started: number };
+
+/**
+ * Should this build plan and bake a texture atlas?
+ *
+ * Only a fused surface has an atlas at all, and only a spec that mentions
+ * `paint` or `material` has anything to put in one — a model of flat parts is
+ * described exactly by the vertex colours it already carries, and unwrapping
+ * and rasterising it between keystrokes would buy an identical picture for a
+ * few hundred milliseconds of every edit.
+ */
+function wantsTextures(lane: string, source: BuildSource): boolean {
+  // The lane the studio draws, and no other. The comparison ghost is a tinted
+  // translucent shell and the Projects queue is building thumbnails; neither
+  // would show a texel of this.
+  if (lane !== 'model') return false;
+  const spec = source.spec;
+  if (!spec?.surface) return false;
+  return flatten(spec).some((row) => row.part.paint || row.part.material);
+}
 
 /**
  * Whether this page can run the builder somewhere else.
@@ -138,6 +159,7 @@ export function createBuildClient(): BuildClient {
    * worker existing.
    */
   function locally(lane: string, source: BuildSource, id: number) {
+    const textured = wantsTextures(lane, source);
     const run = () => {
       const waiting = lanes.get(lane);
       if (!waiting || waiting.id !== id) return;
@@ -145,10 +167,11 @@ export function createBuildClient(): BuildClient {
       try {
         const model = source.spec
           ? buildSpec(source.spec, {
-              uv: false,
+              uv: textured,
               onPhase: (phase) => waiting.handlers.onPhase?.(phase),
             })
           : buildAsset(source.recipe);
+        if (textured) bakePreview(model);
         lanes.delete(lane);
         measure(`build.${lane}`, started);
         waiting.handlers.onModel(model);
@@ -175,12 +198,14 @@ export function createBuildClient(): BuildClient {
       const displaced = lanes.get(lane);
       lanes.set(lane, { id, handlers, started: mark() });
       displaced?.handlers.onFailed?.('superseded');
+      const textured = wantsTextures(lane, source);
       if (worker && !broken)
         worker.postMessage({
           type: 'build',
           id,
           lane,
-          uv: false,
+          uv: textured,
+          bake: textured,
           ...source,
         } satisfies BuildAsk);
       else locally(lane, source, id);

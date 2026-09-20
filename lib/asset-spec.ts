@@ -1,5 +1,7 @@
 import * as T from 'three';
 import { z } from 'zod';
+import { compilePaint } from './asset-paint';
+import { isPreset, PRESET_NAMES } from './asset-materials';
 import { random } from './world';
 import { finishModel } from './asset-build';
 import { surfaceModel, type SurfaceOptions } from './asset-surface';
@@ -7,6 +9,7 @@ import { mark, measure } from './perf';
 import { disposeScene } from './three-world';
 import { JOINTS, rigCreature } from './asset-rig';
 import { jointBinder, rigJoints } from './asset-joints';
+import { trimHidden } from './asset-trim';
 import {
   canonicalExtent,
   deformPoint,
@@ -17,6 +20,8 @@ import {
   signedArea,
   warpFor,
   type Warp,
+  compileField,
+  DEFAULT_FIELD,
 } from './asset-sdf';
 import {
   contactTravel,
@@ -60,6 +65,7 @@ export const SHAPES = [
   'lathe',
   'extrude',
   'loft',
+  'field',
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
@@ -200,6 +206,28 @@ const basePart = {
     .min(2)
     .max(24)
     .optional(),
+  /**
+   * `field` only: the part's own signed distance, as a JavaScript expression
+   * over `x`, `y`, `z` in the part's unit box (-0.5..0.5 across `size`), with
+   * the toolkit `s` (sphere, box, rbox, cyl, capsule, torus, cone, smin, smax,
+   * noise, fbm, rep, onion, ...) and `M` (Math). Negative inside. A field with
+   * no expression is a sphere.
+   */
+  field: z.string().min(1).max(4000).optional(),
+  /**
+   * `field` only: how fast the expression can change per unit of distance.
+   * 1 for an exact distance; a displaced field (noise, ridges) changes faster
+   * and must say by how much, or the sampler can skip cells it crosses.
+   */
+  lipschitz: z.number().min(1).max(64).optional(),
+  /**
+   * The part's colour as code, evaluated per vertex of the fused surface: a
+   * JavaScript expression over `x`, `y`, `z` in the part's unit box, with the
+   * `field` toolkit `s` plus colour helpers (rgb, blend, shade, step), `M`
+   * (Math) and `base`, the part's own colour as [r, g, b]. Returns an
+   * [r, g, b] array in 0..1 or a hex string. Stripes, spots, gradients, grime.
+   */
+  paint: z.string().min(1).max(4000).optional(),
   /** `loft` only: the curve the stations sit along. Straight along Z when omitted. */
   spine: z.object({ from: vec3, to: vec3, via: vec3.optional() }).strict().optional(),
   /**
@@ -242,15 +270,46 @@ const basePart = {
    * inner walls take this part's colour.
    */
   subtract: z.boolean().optional(),
-  /** Surface response. Defaults reproduce the studio's matte look. */
-  material: z
+  /**
+   * Surface mode only: make this part a shell that hugs the named part(s).
+   * The part keeps its own extent — height, angular range, footprint — and
+   * becomes a band of `thickness` metres sitting `gap` metres off the target's
+   * surface wherever it overlaps it. A belt wrapped on the torso and thighs
+   * follows their real outline instead of being a round ring the hips poke
+   * through; the same for straps, cuffs, collars and plates.
+   */
+  wrap: z
     .object({
-      roughness: z.number().min(0).max(1).default(1),
-      metalness: z.number().min(0).max(1).default(0),
-      emissive: hex.optional(),
-      emissiveStrength: z.number().min(0).max(10).default(1),
+      on: z.union([z.string().min(1), z.array(z.string().min(1)).min(1).max(8)]),
+      thickness: z.number().min(0.002).max(0.5).default(0.02),
+      gap: z.number().min(0).max(0.5).default(0),
     })
     .strict()
+    .optional(),
+  /**
+   * Surface response: a preset name, or the numbers themselves.
+   *
+   * "stone", "iron", "rust", "glass", "cloth", "lava" and the rest of the
+   * library each set roughness, metalness, the glTF extensions the look needs,
+   * and a default `paint` pattern the part uses unless it writes its own.
+   * `{ "preset": "rust", "roughness": 0.9 }` is the preset with one field
+   * moved. The bare block — roughness (default 1), metalness (0), emissive
+   * (none), emissiveStrength (1) — is the matte finish every asset had before
+   * the library existed and still means exactly what it meant.
+   */
+  material: z
+    .union([
+      z.string().min(1).max(40),
+      z
+        .object({
+          preset: z.string().min(1).max(40).optional(),
+          roughness: z.number().min(0).max(1).optional(),
+          metalness: z.number().min(0).max(1).optional(),
+          emissive: hex.optional(),
+          emissiveStrength: z.number().min(0).max(10).optional(),
+        })
+        .strict(),
+    ])
     .optional(),
   /** Pin this part and its children to one bone. */
   rigPart: z.enum(RIG_PARTS).optional(),
@@ -293,6 +352,38 @@ function checkPart(part: Part, ctx: z.RefinementCtx) {
         path: [key],
         message: `"${key}" belongs to loft, not to ${shape}. Skin sections along a spine with "loft".`,
       });
+  for (const key of ['field', 'lipschitz'] as const)
+    if (part[key] !== undefined && shape !== 'field')
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: `"${key}" belongs to field, not to ${shape}. Write the distance yourself with "field".`,
+      });
+  if (part.paint !== undefined) {
+    try {
+      compilePaint(part.paint);
+    } catch (error) {
+      ctx.addIssue({ code: 'custom', path: ['paint'], message: (error as Error).message });
+    }
+  }
+  // A preset is a name from a list, and a list is the one thing a typo cannot
+  // survive. Refused here rather than in the union so the message can say what
+  // the names are instead of "invalid input".
+  const preset =
+    typeof part.material === 'string' ? part.material : part.material?.preset;
+  if (preset !== undefined && !isPreset(preset))
+    ctx.addIssue({
+      code: 'custom',
+      path: typeof part.material === 'string' ? ['material'] : ['material', 'preset'],
+      message: `"${preset}" is not a material preset. Pick one of: ${PRESET_NAMES.join(', ')} — or write the numbers yourself with { "roughness": ..., "metalness": ... }.`,
+    });
+  if (shape === 'field') {
+    try {
+      compileField(part.field ?? DEFAULT_FIELD);
+    } catch (error) {
+      ctx.addIssue({ code: 'custom', path: ['field'], message: (error as Error).message });
+    }
+  }
   if (part.bevel !== undefined && shape !== 'box' && shape !== 'extrude')
     ctx.addIssue({
       code: 'custom',
@@ -469,6 +560,12 @@ export const specSchema = z
     /** Drives jitter and any other randomness, so specs stay reproducible. */
     seed: z.number().int().min(0).max(2147483647).default(0),
     scale: z.number().min(0.01).max(100).default(1),
+    /**
+     * Faceted builds only: drop the faces buried inside neighbouring parts,
+     * or lying flat on them, that move with the same bone. On by default;
+     * false keeps every part a closed solid.
+     */
+    trim: z.boolean().optional(),
     /** Fallback color for parts that do not set one. */
     color: hex.default('#93cec8'),
     /** Omit for a static mesh; supply to skin the result to the 14-bone rig. */
@@ -514,6 +611,13 @@ export const specSchema = z
          * machines, 80 or more a creature.
          */
         crease: z.number().min(0).max(180).optional(),
+        /**
+         * Feature size in metres: how far the decimator may let the surface
+         * drift from the field. Fillets, ridges and bumps smaller than this
+         * flatten and their triangles go to silhouette and large forms. 0 or
+         * unset keeps the tight default (2% of the model's extent).
+         */
+        feature: z.number().min(0).max(1).optional(),
       })
       .strict()
       .optional(),
@@ -1025,7 +1129,11 @@ function geometryFor(
     case 'loft':
       return loftGeometry(part);
     case 'sphere':
-      return new T.SphereGeometry(0.5, detail * 2, detail);
+      // At the default detail a subdivided icosahedron reads rounder than a
+      // 12 x 6 lat-long sphere and costs 80 triangles against 132.
+      return detail <= 6
+        ? new T.IcosahedronGeometry(0.5, 1)
+        : new T.SphereGeometry(0.5, detail * 2, detail);
     case 'icosahedron':
       return new T.IcosahedronGeometry(0.5, detail > 8 ? 2 : detail > 4 ? 1 : 0);
     case 'octahedron':
@@ -1381,6 +1489,10 @@ function makeMesh(part: PlacedPart, context: BuildContext, rigPart?: string) {
     deform: part.deform,
     subtract: part.subtract,
     material: part.material,
+    field: part.field,
+    lipschitz: part.lipschitz,
+    paint: part.paint,
+    wrap: part.wrap,
   };
   return mesh;
 }
@@ -2034,6 +2146,20 @@ export function buildSpec(input: unknown, options: SurfaceOptions = {}) {
     // No finishing pass here: it would weld the vertex colours into one flat
     // material and recompute the normals the field already got right.
   } else {
+    if (spec.trim !== false) {
+      // Faces hidden inside a neighbour that moves with them are waste; see
+      // `trimHidden` for why the group matters.
+      const t = mark();
+      const binder = spec.joints?.length ? jointBinder(spec) : null;
+      trimHidden(model, {
+        group: (mesh) => {
+          if (binder) return String(binder(mesh.userData.specPath as number[] | undefined));
+          if (spec.rig) return (mesh.userData.rigPart as string | undefined) ?? null;
+          return 'all';
+        },
+      });
+      measure('build.trim', t);
+    }
     finishModel(model, spec.kind);
   }
   if (spec.rig || spec.joints?.length) options.onPhase?.('skinning');

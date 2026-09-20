@@ -2578,3 +2578,135 @@ button.bar-button.overlay-menu {
 .perf td:nth-child(3) {
   color: #5f7274;
 }
+
+/* ── Viewport filters ─────────────────────────────────────────────────────
+   The post-processing stack's controls. The trigger lives in the view bar
+   beside Frame and the overlay toggles; everything else is inside a popover,
+   because the viewport has to stay visible while a strength is dragged. */
+button.bar-button.filters-button {
+  gap: 5px;
+}
+button.bar-button.filters-button[data-on] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+/* A count rather than a plain dot: "on" is not the useful fact once a preset
+   has switched three things on at once. */
+.filters-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--primary);
+  color: var(--background);
+  font: 9px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.filters-popover {
+  width: 268px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: 10px;
+  gap: 0;
+  border: 1px solid var(--line);
+  background: var(--panel, var(--popover));
+}
+.filters-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.filters-head kbd {
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font: 9px var(--mono);
+  color: var(--dim);
+}
+.filters-count {
+  font: 10px var(--mono);
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.filters-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.filters-presets .bar-button {
+  justify-content: center;
+}
+.filters-presets .bar-button[aria-pressed='true'] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+/* Dimmed, not disabled: a look can be set up with the stack off and then
+   switched on in one press to see the whole of it arrive at once. */
+.filters-rows[data-off] {
+  opacity: 0.5;
+}
+.filter-row {
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+.filter-row:first-child {
+  border-top: none;
+}
+.filter-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.filter-title span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.filter-title em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--dim);
+}
+.filter-row[data-on] .filter-title > span > :first-child {
+  color: var(--primary);
+}
+.filter-body {
+  margin: 8px 0 2px 25px;
+}
+.filter-colour,
+.filter-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.filter-colour input[type='color'] {
+  width: 34px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+}
+.filter-choice .segmented button {
+  padding: 1px 6px;
+  font: 9.5px var(--mono);
+}
+.filter-body .filter-check {
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--dim);
+}

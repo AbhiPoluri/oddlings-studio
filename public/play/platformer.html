@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Grave Walker: Ascent</title>
+<style>
+  :root { --bg: #14121c; --ink: #e8e2d8; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 ui-monospace, Menlo, monospace; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; image-rendering: crisp-edges; }
+  #hud { position: fixed; left: 16px; top: 12px; text-shadow: 0 1px 0 #000; pointer-events: none; }
+  #hud b { font-size: 22px; display: block; }
+  #help { position: fixed; left: 16px; bottom: 12px; opacity: 0.75; text-shadow: 0 1px 0 #000; }
+  #jump { position: fixed; right: 16px; bottom: 16px; width: 14px; height: 120px; border: 1px solid #6a6072; background: #0008; }
+  #jump i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: #ff5a2a; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><b id="score">0 embers</b><span id="alt"></span></div>
+<div id="help">WASD or arrows to walk · shift to sprint · hold space to charge a jump, release to leap · R to respawn</div>
+<div id="jump"><i id="jumpbar"></i></div>
+<div id="loading">loading the walker…</div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as T from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ---------------------------------------------------------------- scene
+const canvas = document.getElementById('c');
+const renderer = new T.WebGLRenderer({ canvas, antialias: false });
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = T.PCFShadowMap;
+renderer.toneMapping = T.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+const PIXEL = 0.35;
+function resize() {
+  renderer.setSize(Math.round(innerWidth * PIXEL), Math.round(innerHeight * PIXEL), false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+const scene = new T.Scene();
+scene.background = new T.Color('#2a2438');
+scene.fog = new T.Fog('#2a2438', 22, 70);
+const camera = new T.PerspectiveCamera(42, 1, 0.05, 200);
+scene.add(new T.HemisphereLight('#c9c2e0', '#2b2230', 1.3));
+const sun = new T.DirectionalLight('#ffd9b0', 2.4);
+sun.position.set(-6, 14, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -16; sun.shadow.camera.right = 16;
+sun.shadow.camera.top = 16; sun.shadow.camera.bottom = -16;
+sun.shadow.camera.far = 60;
+sun.shadow.normalBias = 0.05;
+scene.add(sun);
+scene.add(sun.target);
+
+// ground: dark flagstones, gently rolling
+const tile = document.createElement('canvas');
+tile.width = tile.height = 64;
+const g2 = tile.getContext('2d');
+for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+  g2.fillStyle = (x + y) % 2 ? '#3b3544' : '#332e3b';
+  g2.fillRect(x * 8, y * 8, 8, 8);
+}
+const groundTex = new T.CanvasTexture(tile);
+groundTex.wrapS = groundTex.wrapT = T.RepeatWrapping;
+groundTex.repeat.set(60, 60);
+groundTex.magFilter = T.NearestFilter;
+groundTex.colorSpace = T.SRGBColorSpace;
+function groundY(x, z) {
+  return 0.12 * Math.sin(x * 0.5 + 1.3) * Math.cos(z * 0.45) + 0.06 * Math.sin(x * 1.3 - z * 0.9 + 0.7);
+}
+const groundGeo = new T.PlaneGeometry(140, 140, 120, 120);
+groundGeo.rotateX(-Math.PI / 2);
+{
+  const p = groundGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, groundY(p.getX(i), p.getZ(i)));
+  groundGeo.computeVertexNormals();
+}
+const ground = new T.Mesh(groundGeo, new T.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ---------------------------------------------------------------- level
+// Platforms are axis-aligned slabs. The walker stands on tops, is pushed out
+// of sides, and reads every surface through surfaceAt(), the way the feet
+// read the heightfield in the playground.
+const platforms = []; // {x, z, hw, hd, top, bottom, mesh}
+const slabMat = new T.MeshStandardMaterial({ color: '#5a5266', roughness: 0.95, flatShading: true });
+const slabEdge = new T.MeshStandardMaterial({ color: '#7a6f8a', roughness: 0.9, flatShading: true });
+function slab(x, z, w, d, top, thickness = 0.5) {
+  const mesh = new T.Mesh(new T.BoxGeometry(w, thickness, d), slabMat);
+  mesh.position.set(x, top - thickness / 2, z);
+  mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(mesh);
+  const lip = new T.Mesh(new T.BoxGeometry(w + 0.16, 0.12, d + 0.16), slabEdge);
+  lip.position.set(x, top - 0.06, z);
+  lip.receiveShadow = true;
+  scene.add(lip);
+  platforms.push({ x, z, hw: w / 2, hd: d / 2, top, bottom: top - thickness, mesh });
+  return platforms[platforms.length - 1];
+}
+// A climb: tap-height steps first, then gaps that need a held jump, then a
+// spire of small pads. Heights are in metres; the walker stands 0.95 tall
+// at the body and jumps ~1.1 m on a tap, ~2.8 m held.
+const course = [
+  [0, 6, 5, 4, 0.9], [0, 12, 4, 4, 1.8], [4.5, 15, 4, 3.5, 2.6], [9.5, 15, 4, 3.5, 3.2],
+  [14, 10, 4, 4, 4.4], [14, 4, 3.5, 3.5, 5.6], [10, 0, 3.5, 3.5, 6.4], [5, -4, 3, 3, 7.6],
+  [2, -9, 3, 3, 9.0], [-4, -11, 3, 3, 9.8], [-10, -8, 3, 3, 11.4], [-14, -2, 3, 3, 12.4],
+  [-13, 4, 2.6, 2.6, 13.6], [-10, 9, 2.6, 2.6, 15.2], [-6, 13, 2.4, 2.4, 16.4], [0, 16, 4, 4, 17.6],
+];
+for (const [x, z, w, d, top] of course) slab(x, z, w, d, top);
+// pillars under the tall pads so they read as a structure, not floating tiles
+const pillarMat = new T.MeshStandardMaterial({ color: '#2e2936', roughness: 1, flatShading: true });
+for (const p of platforms) {
+  if (p.top < 2) continue;
+  const col = new T.Mesh(new T.CylinderGeometry(0.28, 0.4, p.bottom - groundY(p.x, p.z), 6), pillarMat);
+  col.position.set(p.x, (p.bottom + groundY(p.x, p.z)) / 2, p.z);
+  col.castShadow = col.receiveShadow = true;
+  scene.add(col);
+}
+// Highest surface under (x, z) whose top is not above `limit`; the ground if none.
+function surfaceAt(x, z, limit = Infinity, margin = 0) {
+  let y = groundY(x, z);
+  for (const p of platforms) {
+    if (Math.abs(x - p.x) <= p.hw + margin && Math.abs(z - p.z) <= p.hd + margin && p.top <= limit && p.top > y) y = p.top;
+  }
+  return y;
+}
+// The body may hang this far past a pad's edge and still be held by its feet,
+// but only if at least two of those feet actually have pad under them.
+const GRIP = 0.55;
+function standSurface(x, z, limit = Infinity, margin = GRIP, needHeld = 2) {
+  let y = groundY(x, z);
+  for (const p of platforms) {
+    if (p.top > limit || p.top <= y) continue;
+    if (Math.abs(x - p.x) > p.hw + margin || Math.abs(z - p.z) > p.hd + margin) continue;
+    if (Math.abs(x - p.x) > p.hw || Math.abs(z - p.z) > p.hd) {
+      let held = 0;
+      for (const leg of legs) {
+        const fx = x + (leg.footLocal.x * Math.cos(body.yaw) + leg.footLocal.z * Math.sin(body.yaw)) * stanceScale;
+        const fz = z + (-leg.footLocal.x * Math.sin(body.yaw) + leg.footLocal.z * Math.cos(body.yaw)) * stanceScale;
+        if (Math.abs(fx - p.x) <= p.hw - 0.05 && Math.abs(fz - p.z) <= p.hd - 0.05) held++;
+      }
+      if (held < needHeld) continue;
+    }
+    y = p.top;
+  }
+  return y;
+}
+// embers to collect: one over each pad, plus a few in the air between pads
+const embers = [];
+const emberGeo = new T.OctahedronGeometry(0.2, 0);
+const emberMat = new T.MeshStandardMaterial({ color: '#ff5a2a', emissive: '#ff3a10', emissiveIntensity: 2.5, roughness: 0.4 });
+function ember(x, y, z) {
+  const m = new T.Mesh(emberGeo, emberMat);
+  m.position.set(x, y, z);
+  m.add(new T.PointLight('#ff5a2a', 1.2, 4));
+  scene.add(m);
+  embers.push(m);
+}
+for (const p of platforms) ember(p.x, p.top + 1.2, p.z);
+ember(2.2, 3.6, 15); ember(12, 3.9, 12.2); ember(14, 7.3, 7); ember(-7, 11.9, -10); ember(-3, 18.2, 14.5);
+const TOTAL = embers.length;
+
+// ---------------------------------------------------------------- walker
+const loader = new GLTFLoader();
+const [gltf, rigData] = await Promise.all([
+  loader.loadAsync('./grave-walker.glb'),
+  fetch('./walker-rig.json').then((r) => r.json()),
+]);
+const rig = gltf.scene;
+scene.add(rig);
+rig.traverse((o) => { if (o.isSkinnedMesh) { o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true; } });
+const bodyBone = rig.getObjectByName('Body');
+const BODY0 = new T.Vector3(...rigData.body);
+const STAND = BODY0.y - 0.11; // body height above the feet when standing tall
+const legs = rigData.legs.map((l) => {
+  const hip = new T.Vector3(...l.hip), knee = new T.Vector3(...l.knee), ankle = new T.Vector3(...l.ankle), foot = new T.Vector3(...l.foot);
+  const femur0 = knee.clone().sub(hip), tibia0 = ankle.clone().sub(knee);
+  const n0 = femur0.clone().cross(tibia0).normalize();
+  return {
+    tag: l.tag,
+    hipBone: rig.getObjectByName(`Hip_${l.tag}`), kneeBone: rig.getObjectByName(`Knee_${l.tag}`), ankleBone: rig.getObjectByName(`Ankle_${l.tag}`),
+    hipLocal: hip.clone().sub(BODY0), footLocal: foot.clone().sub(BODY0),
+    L1: femur0.length(), L2: tibia0.length(), femur0: femur0.normalize(), tibia0: tibia0.normalize(), n0,
+    ankleDrop: ankle.y - foot.y, bindReach: hip.distanceTo(ankle),
+    planted: foot.clone(), from: foot.clone(), to: foot.clone(), swing: -1, duration: 0.3,
+    side: l.tag[1], end: l.tag[0],
+  };
+});
+const neighboursOf = (leg) => legs.filter((o) => o !== leg && (o.side === leg.side || o.end === leg.end));
+document.getElementById('loading').remove();
+
+// ---------------------------------------------------------------- state
+const GRAVITY = 22, HOP_V = 3.6, LEAP_V = 9.2, CHARGE_TIME = 0.7, SQUAT = 0.5;
+let body, surge = 0, crouch = 0, score = 0, time = 0, spawn = { x: 0, z: 0 }, airTime = 0;
+let charge = 0, charging = false, needRelease = false, fell = 0, stanceScale = 1;
+const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+function respawn() {
+  const y = surfaceAt(spawn.x, spawn.z);
+  body = { x: spawn.x, z: spawn.z, heading: 0, yaw: 0, speed: 0, y: y + STAND + 0.03, vy: 0, grounded: true, pitch: 0, roll: 0, floor: y, vx: 0, vz: 0 };
+  for (const leg of legs) {
+    const x = spawn.x + leg.footLocal.x, z = spawn.z + leg.footLocal.z;
+    leg.planted.set(x, surfaceAt(x, z, y + 0.5) + 0.03, z);
+    leg.swing = -1;
+  }
+  charging = false; charge = 0; crouch = 0; airTime = 0; stanceScale = 1;
+  for (const leg of legs) leg.airborne = false;
+}
+respawn();
+const keys = new Set();
+addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (k === ' ') e.preventDefault();
+  keys.add(k);
+});
+addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+addEventListener('resize', resize);
+resize();
+window.dbg = { body: () => body, keys, legs, platforms, surfaceAt, resolveFoot, legBlocked, trace: [] };
+
+const tmpM = new T.Matrix4(), inv = new T.Matrix4(), m0 = new T.Matrix4(), m1 = new T.Matrix4();
+const q = new T.Quaternion(), qBody = new T.Quaternion(), scl = new T.Vector3(1, 1, 1);
+const v1 = new T.Vector3(), v2 = new T.Vector3(), v3 = new T.Vector3(), v4 = new T.Vector3(), pos = new T.Vector3(), up = new T.Vector3(0, 1, 0);
+const euler = new T.Euler();
+const scoreEl = document.getElementById('score'), altEl = document.getElementById('alt'), jumpBar = document.getElementById('jumpbar');
+function placeBoneWorld(bone, position, quaternion) {
+  tmpM.compose(position, quaternion, scl);
+  bone.parent.updateWorldMatrix(true, false);
+  inv.copy(bone.parent.matrixWorld).invert();
+  tmpM.premultiply(inv);
+  tmpM.decompose(bone.position, bone.quaternion, bone.scale);
+  bone.updateMatrixWorld(true);
+}
+function frameQuat(f0, n0, f1, n1, out) {
+  m0.makeBasis(f0, n0, v4.crossVectors(f0, n0));
+  m1.makeBasis(f1, n1, v4.crossVectors(f1, n1));
+  m0.transpose();
+  return out.setFromRotationMatrix(m1.multiply(m0));
+}
+// Push a circle of radius r at (x, z) out of any slab whose side it overlaps
+// while the body is below that slab's top.
+function pushOut(o, r, feetLevel) {
+  for (const p of platforms) {
+    if (feetLevel > p.top - 0.12 || feetLevel + 2.1 < p.bottom) continue;
+    // a slab whose underside is below knee height must clear the knees too
+    const tall = p.top > feetLevel + 1.25, overhang = p.bottom < feetLevel + 2.1 && p.bottom > feetLevel + 0.6;
+    const rr = o === body && (tall || overhang) ? 0.95 : r;
+    const dx = o.x - p.x, dz = o.z - p.z;
+    const ox = p.hw + rr - Math.abs(dx), oz = p.hd + rr - Math.abs(dz);
+    if (ox <= 0 || oz <= 0) continue;
+    if (ox < oz) o.x = p.x + Math.sign(dx || 1) * (p.hw + rr);
+    else o.z = p.z + Math.sign(dz || 1) * (p.hd + rr);
+    if (o === body) body.speed *= 0.5;
+  }
+  return o;
+}
+
+// Where a segment from a to b first enters a slab grown by r, as a fraction
+// of the segment; -1 when it misses.
+function segmentEntersSlab(a, b, p, r = 0.08) {
+  let t0 = 0, t1 = 1;
+  const lo = [p.x - p.hw - r, p.bottom - r, p.z - p.hd - r], hi = [p.x + p.hw + r, p.top + r, p.z + p.hd + r];
+  const A = [a.x, a.y, a.z], B = [b.x, b.y, b.z];
+  for (let i = 0; i < 3; i++) {
+    const d = B[i] - A[i];
+    if (Math.abs(d) < 1e-9) { if (A[i] < lo[i] || A[i] > hi[i]) return -1; continue; }
+    let ta = (lo[i] - A[i]) / d, tb = (hi[i] - A[i]) / d;
+    if (ta > tb) { const t = ta; ta = tb; tb = t; }
+    if (ta > t0) t0 = ta;
+    if (tb < t1) t1 = tb;
+    if (t0 > t1) return -1;
+  }
+  return t0;
+}
+// Two-bone solve: the knee sits where the leg bends up and (by poleOut)
+// outward from the hip. Writes K (knee) and Tgt (ankle, pulled in if the
+// foot is out of reach); dir and perp are the solve's frame.
+const K = new T.Vector3(), Tgt = new T.Vector3(), dir = new T.Vector3(), perp = new T.Vector3();
+function solveLeg(leg, H, foot, poleOut = 1) {
+  Tgt.set(foot.x, foot.y + leg.ankleDrop, foot.z);
+  dir.subVectors(Tgt, H);
+  const reach = leg.L1 + leg.L2 - 0.01;
+  let d = dir.length();
+  if (d > reach) { dir.multiplyScalar(reach / d); d = reach; Tgt.copy(H).add(dir); }
+  dir.normalize();
+  const out = v4.set(leg.hipLocal.x, 0, leg.hipLocal.z).normalize().applyQuaternion(qBody);
+  const pole = out.multiplyScalar(poleOut).addScaledVector(up, 0.8).normalize();
+  perp.copy(pole).addScaledVector(dir, -pole.dot(dir)).normalize();
+  const cosA = clampf((leg.L1 * leg.L1 + d * d - leg.L2 * leg.L2) / (2 * leg.L1 * d), -1, 1);
+  const sinA = Math.sqrt(1 - cosA * cosA);
+  K.copy(H).addScaledVector(dir, leg.L1 * cosA).addScaledVector(perp, leg.L1 * sinA);
+}
+// Does the leg, solved to this foot, pass through a slab? Tests femur and
+// tibia as the bones will actually lie, not the straight hip-to-foot line,
+// because the knee bows outward and it is usually the knee that clips.
+// `r` is the clearance: targets are chosen with a generous one (0.14) and
+// planted feet are only flagged with a slim one (0.03), so a leg that was
+// placed clear stays clear through the body's small bobs and tilts instead
+// of flipping between "fine" and "blocked" every few frames.
+function legBlocked(H, leg, foot, poleOut, r = 0.06) {
+  solveLeg(leg, H, foot, poleOut ?? leg.poleOut ?? 1);
+  let best = null, bt = 2, seg = null;
+  for (const p of platforms) {
+    let t = segmentEntersSlab(H, K, p, r);
+    if (t >= 0 && t < bt) { bt = t; best = p; seg = [H, K]; }
+    t = segmentEntersSlab(K, Tgt, p, r);
+    if (t >= 0 && t + 1 < bt) { bt = t + 1; best = p; seg = [K, Tgt]; }
+  }
+  if (!best) return null;
+  const t = bt % 1, a = seg[0], b = seg[1];
+  return { slab: best, x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+}
+const clampf = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+// A foot may only go where a straight leg from the hip can reach it without
+// passing through a slab. A ledge under the hip is climbed: the foot lands on
+// it just inside the edge the leg crossed. A slab at or above the hip is an
+// overhang or a wall: the foot pulls in toward the body until the leg clears.
+function resolveFoot(H, leg, foot, lvl) {
+  for (let i = 0; i < 4; i++) {
+    const hit = legBlocked(H, leg, foot, undefined, 0.14);
+    if (!hit) break;
+    const p = hit.slab;
+    const reach = (leg.L1 + leg.L2) * 0.92;
+    // how high a ledge a foot will take: judged from where the hip sits when
+    // the body stands on its floor, not from a hip already lifted by other
+    // feet on ledges - otherwise the legs ratchet the body up any wall
+    const hipY = body.grounded ? body.floor + STAND + leg.hipLocal.y : H.y;
+    if (p.top <= hipY + 0.35 && p.top > foot.y - 0.02 && Math.hypot(p.top + 0.03 + leg.ankleDrop - H.y, Math.max(0, Math.hypot(foot.x - H.x, foot.z - H.z) - 0.3)) < reach) {
+      const dx = foot.x - H.x, dz = foot.z - H.z, len = Math.hypot(dx, dz) || 1;
+      foot.x = clampf(hit.x + (dx / len) * 0.18, p.x - p.hw + 0.12, p.x + p.hw - 0.12);
+      foot.z = clampf(hit.z + (dz / len) * 0.18, p.z - p.hd + 0.12, p.z + p.hd - 0.12);
+      foot.y = p.top + 0.03;
+    } else {
+      if (Math.hypot(foot.x - H.x, foot.z - H.z) < 0.6) break; // any closer folds the knee flat
+      foot.x = H.x + (foot.x - H.x) * 0.72;
+      foot.z = H.z + (foot.z - H.z) * 0.72;
+      foot.y = surfaceAt(foot.x, foot.z, lvl + 0.35) + 0.03;
+    }
+  }
+  return foot;
+}
+function pointInSlab(o, r = 0.1) {
+  for (const p of platforms) {
+    if (Math.abs(o.x - p.x) <= p.hw + r && Math.abs(o.z - p.z) <= p.hd + r && o.y >= p.bottom - r && o.y <= p.top + r) return p;
+  }
+  return null;
+}
+// The pad the body is standing on, if any.
+function padUnder(lvl) {
+  const y = standSurface(body.x, body.z, lvl + 0.2);
+  for (const p of platforms) if (p.top === y && Math.abs(body.x - p.x) <= p.hw + GRIP && Math.abs(body.z - p.z) <= p.hd + GRIP) return p;
+  return null;
+}
+const hipWorld = (leg, out) => out.copy(leg.hipLocal).applyQuaternion(qBody).add(pos);
+const hipTmp = new T.Vector3();
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  time += dt;
+  // --- intent ---
+  const forward = keys.has('w') || keys.has('arrowup'), back = keys.has('s') || keys.has('arrowdown');
+  const left = keys.has('a') || keys.has('arrowleft'), right = keys.has('d') || keys.has('arrowright');
+  const target = forward ? (keys.has('shift') ? 4.6 : 2.6) : back ? -1.3 : 0;
+  if (body.grounded) {
+    body.speed += (target - body.speed) * Math.min(1, dt * 3);
+    body.heading += ((left ? 1 : 0) - (right ? 1 : 0)) * dt * 1.4;
+  }
+  if (keys.has('r')) { spawn = { x: 0, z: 0 }; respawn(); }
+  const moving = Math.min(1, Math.abs(body.speed) / 1.5);
+  const sign = body.speed < 0 ? -1 : 1;
+  surge *= Math.max(0, 1 - dt * 5);
+
+  // --- jump: holding space is the wind-up. The body squats lower the longer
+  // you hold, the feet spread to brace, and letting go is the leap: a tap is
+  // a hop, a full squat clears a wall. There is no mid-air float; the height
+  // is decided on the ground, the way a real jumper commits before leaving it.
+  const feetLevel = () => body.y - STAND;
+  // Leaving the ground freezes the run: whatever the feet were pushing with
+  // is the velocity you fly with, and there is nothing up there to push on.
+  const leaveGround = (push = 0) => {
+    // a leap throws the body the way you are leaning: forward held adds a
+    // push that grows with the charge, so a standing full squat still clears
+    // a gap, and a run-up keeps whatever speed it had
+    let run = body.speed * (1 + surge * 0.5) * (1 - crouch * 0.75);
+    if (push > 0 && forward) run = Math.max(run, push);
+    if (push > 0 && back) run = Math.min(run, -push * 0.4);
+    body.vx = Math.sin(body.heading) * run; body.vz = Math.cos(body.heading) * run;
+    charging = false;
+  };
+  if (!keys.has(' ')) needRelease = false;
+  if (keys.has(' ') && body.grounded && !charging && !needRelease && crouch < 0.35) { charging = true; charge = 0; }
+  if (charging) {
+    charge = Math.min(1, charge + dt / CHARGE_TIME);
+    crouch += (charge * SQUAT * 1.7 - crouch) * Math.min(1, dt * 10);
+    if (!keys.has(' ') || !body.grounded) {
+      charging = false;
+      needRelease = true;
+      if (body.grounded) {
+        body.vy = HOP_V + (LEAP_V - HOP_V) * charge + Math.abs(body.speed) * 0.1;
+        body.grounded = false;
+        leaveGround(1.2 + 1.6 * charge);
+        airTime = 0;
+        crouch = 0; surge = 0;
+        // feet stay planted: the legs straighten under the rising body and
+        // each foot leaves the ground only once its leg is fully extended
+        for (const leg of legs) { leg.airborne = false; leg.swing = -1; }
+      }
+    }
+  } else {
+    // landing impact recovers slowly, a heavy machine settling on its knees
+    crouch += (0 - crouch) * Math.min(1, dt * 2.8);
+  }
+  if (!body.grounded) {
+    airTime += dt;
+    body.vy -= GRAVITY * dt;
+    const before = feetLevel();
+    body.y += body.vy * dt;
+    // ceiling: rising into a slab's underside
+    if (body.vy > 0) {
+      for (const p of platforms) {
+        if (Math.abs(body.x - p.x) <= p.hw + 0.2 && Math.abs(body.z - p.z) <= p.hd + 0.2 && body.y + 0.9 > p.bottom && before + 0.9 <= p.bottom + 0.01) {
+          body.y = p.bottom - 0.9; body.vy = 0;
+        }
+      }
+    }
+    // landing: feet cross a surface top on the way down
+    if (body.vy <= 0) {
+      const floor = standSurface(body.x, body.z, before + 0.15, 0.3, 3);
+      if (feetLevel() <= floor + 0.03) {
+        body.y = floor + STAND + 0.03;
+        body.grounded = true;
+        body.floor = floor;
+        body.speed = body.vx * Math.sin(body.heading) + body.vz * Math.cos(body.heading);
+        const impact = Math.min(1, -body.vy / 11);
+        crouch = Math.max(crouch, 0.2 + impact * 0.75);
+        surge = 0;
+        body.vy = 0;
+        for (const leg of legs) {
+          leg.airborne = false;
+          const hx = leg.footLocal.x * Math.cos(body.yaw) + leg.footLocal.z * Math.sin(body.yaw);
+          const hz = -leg.footLocal.x * Math.sin(body.yaw) + leg.footLocal.z * Math.cos(body.yaw);
+          const s = surfaceAt(leg.planted.x, leg.planted.z, floor + 0.2);
+          // a braced foot that is over solid ground simply takes the weight;
+          // one hanging past an edge hops in to a spot that holds
+          if (s > floor - 0.5 && Math.hypot(leg.planted.x - body.x - hx, leg.planted.z - body.z - hz) < 0.9) {
+            leg.planted.y = s + 0.03;
+          } else {
+            const to = { x: body.x + hx, z: body.z + hz };
+            to.y = surfaceAt(to.x, to.z, floor + 0.2) + 0.03;
+            resolveFoot(hipWorld(leg, v1), leg, to, floor);
+            leg.from.copy(leg.planted);
+            leg.to.set(to.x, to.y, to.z);
+            leg.swing = 0; leg.duration = 0.1;
+          }
+        }
+        for (const p of platforms) if (Math.abs(floor - p.top) < 0.01 && p.top > 0.5) spawn = { x: p.x, z: p.z };
+      }
+    }
+    if (body.y < -6) { fell = 0.6; respawn(); }
+  }
+  // brace: the stance widens while squatting for a jump and again when a
+  // landing is coming, so the legs meet the ground spread, not folded
+  const wantStance = body.grounded ? 1 + charge * 0.18 : 1.12;
+  stanceScale += (wantStance - stanceScale) * Math.min(1, dt * 6);
+  let v = body.speed * (1 + surge * 0.5) * (1 - crouch * 0.75);
+  if (body.grounded) {
+    body.x += Math.sin(body.heading) * v * dt;
+    body.z += Math.cos(body.heading) * v * dt;
+  } else {
+    body.x += body.vx * dt;
+    body.z += body.vz * dt;
+    v = Math.hypot(body.vx, body.vz);
+  }
+  const bx0 = body.x, bz0 = body.z;
+  // while standing or still rising off the launch pad the squat has not
+  // unwound yet, so the pad under the body is judged by the floor stood on
+  pushOut(body, 0.45, body.grounded || body.vy > 0 ? Math.max(feetLevel(), body.floor) : feetLevel());
+  // a wall met while rising holds the body against it but keeps its drive,
+  // so the moment the feet clear the top the body carries on over the edge;
+  // a wall met while falling is a bonk and kills it
+  if (!body.grounded && body.vy <= 0 && (body.x !== bx0 || body.z !== bz0)) { body.vx *= 0.2; body.vz *= 0.2; }
+  if (body.grounded) {
+    // walked off an edge?
+    // walking off an edge means the surface under the body dropped away,
+    // judged against the floor stood on rather than the body's own height,
+    // which rises when two feet are up on a ledge
+    const floor = standSurface(body.x, body.z, body.floor + 0.35);
+    const dropped = floor < body.floor - 0.35;
+    if (!dropped) body.floor = floor;
+    if (dropped) { body.grounded = false; body.vy = 0; airTime = 0; leaveGround(); for (const leg of legs) leg.airborne = true; }
+  }
+  body.yaw += wrapAngle(body.heading - body.yaw) * Math.min(1, dt * 4);
+
+  // --- legs ---
+  const stride = 0.4 + 0.22 * Math.abs(body.speed);
+  // feet reason from the floor the body stands on, not from a body that has
+  // squatted below the edge of its own pad
+  const lvl = body.grounded ? Math.max(feetLevel(), body.floor) : feetLevel();
+  qBody.setFromEuler(euler.set(body.pitch, body.yaw, body.roll, 'YXZ'));
+  pos.set(body.x, body.y, body.z);
+  const pad = body.grounded ? padUnder(lvl) : null;
+  if (body.grounded) {
+    for (const leg of legs) {
+      const H = hipWorld(leg, v1);
+      const hx = (leg.footLocal.x * Math.cos(body.yaw) + leg.footLocal.z * Math.sin(body.yaw)) * stanceScale;
+      const hz = (-leg.footLocal.x * Math.sin(body.yaw) + leg.footLocal.z * Math.cos(body.yaw)) * stanceScale;
+      const home = { x: body.x + hx, z: body.z + hz };
+      if (leg.swing < 0) {
+        // where this foot would rest right now: its home, resolved against
+        // the slabs (climbed onto a ledge, or pulled in from a wall)
+        const rest = resolveFoot(H, leg, { x: home.x, y: surfaceAt(home.x, home.z, lvl + 0.35) + 0.03, z: home.z }, lvl);
+        if (pad && rest.y < lvl - 0.6) {
+          rest.x = clampf(rest.x, pad.x - pad.hw + 0.12, pad.x + pad.hw - 0.12);
+          rest.z = clampf(rest.z, pad.z - pad.hd + 0.12, pad.z + pad.hd - 0.12);
+          rest.y = pad.top + 0.03;
+        }
+        const dx = leg.planted.x - home.x, dz = leg.planted.z - home.z;
+        const far = Math.hypot(leg.planted.x - rest.x, leg.planted.z - rest.z, (leg.planted.y - rest.y) * 0.5);
+        const backward = -(dx * Math.sin(body.yaw) + dz * Math.cos(body.yaw)) * sign;
+        const threshold = stride * 0.5;
+        const busy = neighboursOf(leg).some((o) => o.swing >= 0);
+        // a slab between hip and planted foot means the body moved past a
+        // wall or under a ledge: the foot must let go and re-plant
+        const blocked = !!legBlocked(H, leg, leg.planted, undefined, 0.03) && (leg.cooldown ?? 0) <= 0;
+        leg.cooldown = Math.max(0, (leg.cooldown ?? 0) - dt);
+        const must = far > threshold * 2.2 || (blocked && far > 0.12);
+        if (window.dbg.tracing) window.dbg.trace.push([+time.toFixed(2), leg.tag, +leg.planted.x.toFixed(2), +leg.planted.y.toFixed(2), +leg.planted.z.toFixed(2), 'rest', +rest.x.toFixed(2), +rest.y.toFixed(2), +rest.z.toFixed(2), +far.toFixed(2), blocked ? 'B' : '-', +leg.poleOut.toFixed(2)]);
+        if ((moving > 0.02 && backward > threshold && !busy) || (far > threshold && !busy && moving < 0.02) || must) {
+          leg.swing = 0;
+          leg.duration = Math.max(0.16, 0.34 - Math.abs(body.speed) * 0.04);
+          leg.from.copy(leg.planted);
+          let to = rest;
+          if (moving > 0.02) {
+            const dir = body.heading;
+            to = { x: home.x + Math.sin(dir) * stride * 0.5 * sign * moving, z: home.z + Math.cos(dir) * stride * 0.5 * sign * moving };
+            to.y = surfaceAt(to.x, to.z, lvl + 0.35) + 0.03;
+            if (pad && to.y < lvl - 0.6) {
+              to.x = clampf(to.x, pad.x - pad.hw + 0.12, pad.x + pad.hw - 0.12);
+              to.z = clampf(to.z, pad.z - pad.hd + 0.12, pad.z + pad.hd - 0.12);
+              to.y = pad.top + 0.03;
+            }
+            resolveFoot(H, leg, to, lvl);
+          }
+          leg.to.set(to.x, to.y, to.z);
+          leg.cooldown = 0.3;
+          // a step onto or off a ledge is a deliberate move, not a stride:
+          // slower, and the body dips first so the weight visibly shifts
+          if (Math.abs(to.y - leg.from.y) > 0.25) { leg.duration = 0.48; crouch = Math.max(crouch, 0.14); }
+        } else {
+          // a foot hanging past an edge dangles; one on a surface stays glued to
+          // it - the surface under the foot itself, which may be a ledge above
+          // the body's own floor
+          const s = surfaceAt(leg.planted.x, leg.planted.z, Math.max(lvl + 0.35, leg.planted.y + 0.05));
+          if (s < lvl - 0.6) {
+            if (pad) {
+              leg.planted.x = clampf(leg.planted.x, pad.x - pad.hw + 0.12, pad.x + pad.hw - 0.12);
+              leg.planted.z = clampf(leg.planted.z, pad.z - pad.hd + 0.12, pad.z + pad.hd - 0.12);
+              leg.planted.y = pad.top + 0.03;
+            } else leg.planted.y = lvl - 0.55;
+          } else leg.planted.y = s + 0.03;
+        }
+      }
+      if (leg.swing >= 0) {
+        leg.swing += dt / leg.duration;
+        const t = Math.min(1, leg.swing);
+        const rise = leg.to.y - leg.from.y;
+        const ease = (u) => u * u * (3 - 2 * u);
+        if (rise > 0.25) {
+          // climbing: gather the foot slightly back while it lifts clear of
+          // the ledge, then carry it over and set it down
+          const tl = ease(Math.min(1, t / 0.45)), tc = ease(Math.max(0, (t - 0.45) / 0.55));
+          const gx = leg.from.x + (leg.from.x - leg.to.x) * 0.08, gz = leg.from.z + (leg.from.z - leg.to.z) * 0.08;
+          leg.planted.x = tc > 0 ? gx + (leg.to.x - gx) * tc : leg.from.x + (gx - leg.from.x) * tl;
+          leg.planted.z = tc > 0 ? gz + (leg.to.z - gz) * tc : leg.from.z + (gz - leg.from.z) * tl;
+          const clear = leg.to.y + 0.22;
+          leg.planted.y = tc > 0 ? clear + (leg.to.y - clear) * tc : leg.from.y + (clear - leg.from.y) * tl;
+        } else if (rise < -0.25) {
+          // stepping down: reach out over the edge first, then lower
+          const tc = ease(Math.min(1, t / 0.5)), td = ease(Math.max(0, (t - 0.5) / 0.5));
+          leg.planted.x = leg.from.x + (leg.to.x - leg.from.x) * tc;
+          leg.planted.z = leg.from.z + (leg.to.z - leg.from.z) * tc;
+          leg.planted.y = leg.from.y + Math.sin(tc * Math.PI) * 0.12 + (leg.to.y - leg.from.y) * td;
+        } else {
+          leg.planted.lerpVectors(leg.from, leg.to, t);
+          const lift = Math.max(leg.from.y, leg.to.y);
+          leg.planted.y = Math.max(leg.planted.y, lift) + Math.sin(t * Math.PI) * (leg.duration < 0.12 ? 0.08 : 0.3);
+        }
+        if (t >= 1) { leg.swing = -1; leg.planted.copy(leg.to); if (leg.duration >= 0.12) surge = Math.min(0.4, surge + 0.15); }
+      }
+    }
+  } else {
+    // In the air, three things and none of them a fold. Push-off: a foot
+    // stays on the ground until its leg is straight. Flight: the legs hang
+    // spread and slightly gathered, trailing the motion. Brace: once the
+    // body is falling and a floor is coming, every foot reaches down for its
+    // landing spot so the legs meet the ground extended and take the weight.
+    const floor = standSurface(body.x, body.z, lvl + 0.15, 0.3, 3);
+    const coming = body.vy < 0 ? Math.max(0, Math.min(1, 1 - (lvl - floor) / 2.2)) : 0;
+    const rise = Math.max(-1, Math.min(1, body.vy / 8));
+    const hipOf = (leg) => hipWorld(leg, hipTmp);
+    for (const leg of legs) {
+      const hx = (leg.footLocal.x * Math.cos(body.yaw) + leg.footLocal.z * Math.sin(body.yaw)) * stanceScale;
+      const hz = (-leg.footLocal.x * Math.sin(body.yaw) + leg.footLocal.z * Math.cos(body.yaw)) * stanceScale;
+      if (!leg.airborne) {
+        // push-off: still planted; leaves when the leg runs out of length
+        const H = hipOf(leg);
+        const d = Math.hypot(leg.planted.x - H.x, leg.planted.y + leg.ankleDrop - H.y, leg.planted.z - H.z);
+        if (d >= Math.min((leg.L1 + leg.L2) * 0.985, leg.bindReach * 1.18) || airTime > 0.3 || body.vy < 0) leg.airborne = true;
+        else continue;
+      }
+      const flight = v2.set(body.x + hx * 0.98, body.y - STAND + 0.32 - rise * 0.12 + (leg.end === 'f' ? 0.06 : -0.04), body.z + hz * 0.98);
+      flight.x -= Math.sin(body.heading) * v * 0.06; flight.z -= Math.cos(body.heading) * v * 0.06;
+      const bx = body.x + hx, bz = body.z + hz;
+      const under = surfaceAt(bx, bz, lvl + 0.4);
+      const brace = v3.set(bx, (under < lvl - 1.5 ? lvl - 1.0 : under) + 0.03, bz);
+      const goal = flight.lerp(brace, coming);
+      const H = hipOf(leg);
+      resolveFoot(H, leg, goal, lvl);
+      leg.planted.lerp(goal, Math.min(1, dt * 12));
+      leg.swing = -1;
+    }
+  }
+
+  // --- body ---
+  if (body.grounded) {
+    const stance = legs.filter((l) => l.swing < 0 && l.planted.y > lvl - 0.3);
+    const feetY = (stance.length ? stance : legs).reduce((a, l) => a + l.planted.y, 0) / (stance.length || legs.length);
+    // the body stands STAND above its floor and follows the feet only a
+    // little: two feet up on a step lift it a hand's width, not half a step
+    const feetRef = body.floor + clampf(feetY - 0.03 - body.floor, -0.2, 0.2);
+    const wantY = feetRef + STAND - crouch * SQUAT + surge * 0.04;
+    body.y += (wantY - body.y) * Math.min(1, dt * (charging ? 6 : 8));
+  }
+  const front = legs.filter((l) => l.end === 'f'), backL = legs.filter((l) => l.end === 'b');
+  const lefts = legs.filter((l) => l.side === 'l'), rights = legs.filter((l) => l.side === 'r');
+  const avgY = (list) => list.reduce((a, l) => a + l.planted.y, 0) / list.length;
+  const wantPitch = body.grounded
+    ? Math.atan2(avgY(backL) - avgY(front), 1.6) * 0.7 - crouch * 0.08 - (charging ? charge * 0.12 : 0)
+    : Math.max(-0.3, Math.min(0.3, -body.vy * 0.03)) - Math.abs(v) * 0.02;
+  body.pitch += (wantPitch - body.pitch) * Math.min(1, dt * 5);
+  body.roll += ((body.grounded ? Math.atan2(avgY(lefts) - avgY(rights), 1.6) * 0.7 : 0) - body.roll) * Math.min(1, dt * 5);
+  const bob = body.grounded ? Math.sin(time * 9) * 0.01 * moving : 0;
+  qBody.setFromEuler(euler.set(body.pitch, body.yaw, body.roll, 'YXZ'));
+  pos.set(body.x, body.y + bob, body.z);
+  placeBoneWorld(bodyBone, pos, qBody);
+
+  // --- two-bone IK per leg ---
+  // A leg that would pass through a slab first straightens its knee up
+  // (poleOut -> 0) and, if that is not enough, pulls its foot in toward the
+  // body; both ease over a few frames so nothing snaps.
+  for (const leg of legs) {
+    const H = v1.copy(leg.hipLocal).applyQuaternion(qBody).add(pos);
+    leg.poleOut ??= 1;
+    const wantPole = legBlocked(H, leg, leg.planted, 1, 0.03) && !legBlocked(H, leg, leg.planted, 0.25, 0.03) ? 0.25 : 1;
+    leg.poleOut += (wantPole - leg.poleOut) * Math.min(1, dt * 8);
+    for (let i = 0; i < 4; i++) {
+      if (i === 3 || !legBlocked(H, leg, leg.planted, leg.poleOut, 0.03)) break;
+      if (Math.hypot(leg.planted.x - H.x, leg.planted.z - H.z) < 0.6) break;
+      leg.planted.x = H.x + (leg.planted.x - H.x) * 0.8;
+      leg.planted.z = H.z + (leg.planted.z - H.z) * 0.8;
+      if (body.grounded) leg.planted.y = surfaceAt(leg.planted.x, leg.planted.z, Math.max(lvl + 0.35, leg.planted.y + 0.05)) + 0.03;
+    }
+    solveLeg(leg, H, leg.planted, leg.poleOut);
+    const f1 = v2.subVectors(K, H).normalize();
+    const t1 = v3.subVectors(Tgt, K).normalize();
+    const n1 = new T.Vector3().crossVectors(f1, t1).normalize();
+    if (n1.lengthSq() < 1e-6) n1.crossVectors(perp, dir).normalize();
+    placeBoneWorld(leg.hipBone, H, frameQuat(leg.femur0, leg.n0, f1, n1, q));
+    placeBoneWorld(leg.kneeBone, K, frameQuat(leg.tibia0, leg.n0, t1, n1, q));
+    placeBoneWorld(leg.ankleBone, Tgt, q.identity());
+  }
+
+  // --- embers, HUD, camera ---
+  for (let i = embers.length - 1; i >= 0; i--) {
+    const e = embers[i];
+    e.rotation.y += dt * 2;
+    e.position.y += Math.sin(time * 3 + i) * 0.002;
+    if (Math.hypot(e.position.x - body.x, e.position.z - body.z) < 1.0 && Math.abs(e.position.y - body.y) < 1.1) {
+      scene.remove(e); embers.splice(i, 1); score++;
+      scoreEl.textContent = score === TOTAL ? `all ${TOTAL} embers — you win` : `${score} / ${TOTAL} embers`;
+    }
+  }
+  fell = Math.max(0, fell - dt);
+  altEl.textContent = fell > 0 ? 'fell — back to the last pad' : `height ${Math.max(0, feetLevel()).toFixed(1)} m`;
+  jumpBar.style.height = `${Math.round((charging ? charge : 0) * 100)}%`;
+  const camTarget = v1.set(body.x - Math.sin(body.heading) * 8, body.y + 3.2, body.z - Math.cos(body.heading) * 8);
+  camera.position.lerp(camTarget, Math.min(1, dt * 3));
+  camera.lookAt(body.x, body.y + 0.4, body.z);
+  sun.position.set(body.x - 6, body.y + 14, body.z + 8);
+  sun.target.position.set(body.x, body.y, body.z);
+  renderer.render(scene, camera);
+  schedule();
+}
+// a hidden tab gets no animation frames; keep simulating on a timer so the
+// game state stays live (and testable) while the tab is in the background
+function schedule() {
+  if (document.hidden) setTimeout(() => frame(performance.now()), 16);
+  else requestAnimationFrame(frame);
+}
+schedule();
+Object.assign(window.dbg, { hip: (leg) => hipWorld(leg, new T.Vector3()).toArray(), solve: (leg, H, foot, po) => { solveLeg(leg, H, foot, po); return { K: K.toArray(), Tgt: Tgt.toArray() }; }, pole: () => legs.map((l) => l.poleOut) });
+</script>
+</body>
+</html>

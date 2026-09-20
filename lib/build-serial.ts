@@ -130,6 +130,15 @@ export function transfersOf(model: SerialModel): ArrayBuffer[] {
       | undefined;
     if (owners?.index && owners.index.byteOffset === 0)
       buffers.add(owners.index.buffer as ArrayBuffer);
+    // And the baked atlas, which is megabytes of texels and the one thing in
+    // this message that would actually hurt to copy.
+    const maps = geometry.userData.bakedMaps as
+      | Record<string, ArrayBufferView | number>
+      | undefined;
+    if (maps)
+      for (const value of Object.values(maps))
+        if (typeof value !== 'number' && value.byteOffset === 0)
+          buffers.add(value.buffer as ArrayBuffer);
   }
   return [...buffers];
 }

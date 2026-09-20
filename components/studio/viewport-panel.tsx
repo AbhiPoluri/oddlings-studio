@@ -19,6 +19,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { filterCount } from './filters';
+import { FiltersPanel } from './filters-panel';
+import {
   AssetViewport,
   type AssetStats,
   type ViewHandle,
@@ -47,7 +54,6 @@ const OVERLAYS: { key: keyof Overlays; id: string; label: string }[] = [
   { key: 'wireframe', id: 'toggle.wireframe', label: 'Wire' },
   { key: 'grid', id: 'toggle.grid', label: 'Grid' },
   { key: 'skeleton', id: 'toggle.skeleton', label: 'Bones' },
-  { key: 'pixel', id: 'toggle.pixel', label: 'Pixel' },
   { key: 'rotate', id: 'toggle.rotate', label: 'Spin' },
 ];
 
@@ -91,6 +97,8 @@ export function ViewportPanel({
   }, [triangles, doc, dispatch]);
 
   const spec = state.doc.spec;
+  /** How many filters are actually drawing, for the toolbar's badge. */
+  const filters = filterCount(state.filters);
 
   /**
    * Park the playhead in the store when a clip stops.
@@ -202,8 +210,34 @@ export function ViewportPanel({
                 {state.overlays[overlay.key] ? '✓' : '  '} {overlay.label}
               </DropdownMenuItem>
             ))}
+            {/* The stack's master switch, so the narrow layout can reach what
+                `P` reaches even with the popover's trigger crowded out. The
+                parameters stay in the popover. */}
+            <DropdownMenuItem
+              onClick={() => runCommand('toggle.filters', context)}
+            >
+              {state.filters.on ? '✓' : '  '} Filters
+              {filters > 0 ? ` (${filters})` : ''}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {/* Outside the segmented group on purpose: that group is hidden at
+            narrow widths in favour of the dropdown above, and a popover the
+            layout can hide is a panel with no way into it. */}
+        <Popover>
+          <PopoverTrigger
+            className="bar-button filters-button"
+            title="Viewport filters (P)"
+            data-on={filters > 0 ? '' : undefined}
+          >
+            Filters
+            {filters > 0 && <span className="filters-badge">{filters}</span>}
+            <ChevronDown size={12} />
+          </PopoverTrigger>
+          <PopoverContent align="start" className="filters-popover">
+            <FiltersPanel />
+          </PopoverContent>
+        </Popover>
         <dl className="stats" aria-label="Asset statistics">
           <div>
             <dt>tris</dt>
@@ -255,7 +289,7 @@ export function ViewportPanel({
           onMoveBone={moveBoneTo}
           onDelete={removeSelected}
           onDuplicate={duplicateSelected}
-          pixel={state.overlays.pixel}
+          filters={state.filters}
           wireframe={state.overlays.wireframe}
           grid={state.overlays.grid}
           rotate={state.overlays.rotate}

@@ -158,9 +158,9 @@ The kaiju, same spec both ways:
 | Surface, `detail: 144`, `budget: 6000` | **1** | **1** | 6,000 | 156 ms |
 
 Surface mode also changes three things downstream. Part colours become vertex
-colours on the single mesh, so the whole asset is one draw call — but OBJ has
-no vertex colours, so the `.obj`/`.mtl` in a Unity pack carries the spec's base
-colour only; use the `.glb` for the painted version. Skin weights are assigned
+colours on the single mesh, so the whole asset is one draw call — and because
+OBJ has no vertex colours, the `.obj`/`.mtl` reads its colour from the baked
+atlas instead, or from the spec's base colour when there is no atlas to read. Skin weights are assigned
 per vertex from the part each vertex came from, rather than per mesh, so a
 single body mesh still binds its head to the head bone and its shins to the
 shins. And a part's own `detail` stops mattering, because parts are never
@@ -239,11 +239,18 @@ That makes the studio the review step in an agent loop: the agent writes, you lo
 ## Output
 
 - **GLB** — scene hierarchy, skin weights, a 14-bone Generic rig and Idle, Walk, Jump, Wave and Attack clips. Unity needs a glTF importer such as [glTFast](https://github.com/Unity-Technologies/com.unity.cloud.gltfast). Treat the rig as Generic, not Humanoid.
-- **OBJ + MTL** — static mesh, flat normals, solid-color materials.
+- **OBJ + MTL** — static mesh, flat normals, and the baked maps wired through `map_Kd`, `map_Ke`, `norm`, `map_Pr` and `map_Pm`.
 - **Unity zip** — both of the above plus the recipe or spec and import notes.
 - **Recipe / spec JSON** — reopen in the studio, or feed back to `mutate_recipe` / `build_from_spec`.
 
-No textures, UVs, colliders or LODs. Generate those in-engine.
+Every mesh carries a UV0 channel. An asset that paints its surface — a `paint`
+expression or a `material` preset on any part — also ships a baked atlas: one
+PNG per channel beside the OBJ, and the same images inside the GLB as
+baseColorTexture, normalTexture, metallicRoughnessTexture and emissiveTexture.
+A textured GLB drops its vertex colours, since glTF multiplies those into the
+base colour and a file carrying both would show every pattern twice; an asset
+of flat colours ships no images and keeps them. No colliders or LODs; generate
+those in-engine.
 
 ## Development
 

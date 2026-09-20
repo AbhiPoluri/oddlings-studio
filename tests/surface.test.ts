@@ -24,6 +24,7 @@ import { stats } from '../lib/asset-build';
 import { toGLB } from '../lib/asset-bundle';
 import { auditModel } from '../lib/asset-audit';
 import { rigClips } from '../lib/asset-rig';
+import { weldByPosition } from '../lib/asset-smooth';
 
 beforeAll(async () => {
   await readySurface();
@@ -61,9 +62,12 @@ function meshOf(model: T.Object3D) {
 function edgeUse(geometry: T.BufferGeometry) {
   const index = geometry.index;
   if (!index) throw Error('expected an indexed mesh');
+  // Seams and creases duplicate vertices along their lines; topology is
+  // about points, so read the mesh welded by position.
+  const canon = weldByPosition(geometry);
   const uses = new Map<string, number>();
   for (let i = 0; i < index.count; i += 3) {
-    const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+    const tri = [canon[index.getX(i)], canon[index.getX(i + 1)], canon[index.getX(i + 2)]];
     for (let e = 0; e < 3; e++) {
       const a = tri[e];
       const b = tri[(e + 1) % 3];
@@ -77,7 +81,7 @@ function edgeUse(geometry: T.BufferGeometry) {
 /** V - E + F. A single closed shell with no handles gives 2. */
 function euler(geometry: T.BufferGeometry) {
   const index = geometry.index as T.BufferAttribute;
-  const vertices = (geometry.attributes.position as T.BufferAttribute).count;
+  const vertices = new Set(weldByPosition(geometry)).size;
   return vertices - edgeUse(geometry).size + index.count / 3;
 }
 
