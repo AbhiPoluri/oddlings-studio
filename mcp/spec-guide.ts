@@ -176,6 +176,31 @@ COMPOSITION
   tail, teeth along a jaw, rivets down a seam - and add "rest" as well when
   the row has to touch a body lumpier than the path's own surface.
 
+PREFABS
+A part you are about to write out for the ninth time goes in "defs" instead,
+and each place it belongs becomes { "use": "<name>" }. The def's whole subtree
+lands there - children, colours, rig bindings and all - before anything is
+validated, so the rivet you fix once is fixed in all nine.
+A use site may set name, position, rotation, size, color, material, rigPart,
+mirror, repeat, rest and children, and nothing else: it places a copy, it does
+not redraw it. Arrays replace whole - a "size" is a size, not three numbers to
+patch - and "children" are ADDED to the def's rather than swapped for them, so
+one copy can carry a lamp the others do not. "mirror" and "repeat" mean what
+they mean anywhere: a mirrored use reflects the whole subtree and swaps the
+_l/_r bindings inside it, a repeat copies the subtree as a whole. Give each use
+its own "name" if anything resolves by name - "rest.on", "repeat.path",
+"joints.binds" - or two copies called "bracket" both answer to it. Defs may use
+defs; a loop is refused by name. In the studio, nudging one copy is written
+back onto its use site, and an edit INSIDE a copy is refused rather than
+quietly moved into the def and applied to all nine.
+
+    { "defs": { "rivet": { "name": "rivet", "shape": "sphere",
+                           "size": [0.05, 0.05, 0.05], "color": "#2f3336" } },
+      "parts": [ { "name": "pauldron", "shape": "sphere", "size": [0.3, 0.26, 0.3],
+                   "mirror": "x", "children": [
+          { "use": "rivet", "position": [0.22, 0, 0] },
+          { "use": "rivet", "position": [0.17, 0.03, 0.14] } ] } ] }
+
 LOOK
 Keep "detail" low (4-8). The studio's look is faceted and flat-shaded, and a
 low-poly primitive reads better than a smooth one. "jitter" (0.1-0.4) erodes a
@@ -418,6 +443,22 @@ A spec may declare at most 64 joints, which is an eight-legged walker with a
 hip, a knee and an ankle on every leg and room left over. Past that, bind
 several parts to one joint rather than giving each its own.
 
+SKELETON IN THE GLB
+Every rigged export ("rig" or "joints") carries the skeleton as data at
+scenes[0].extras.oddlings - in three.js, gltf.scene.userData.oddlings; the
+inspect tool returns it as "extras". No sidecar file is needed to drive the
+model from a game. Shape: { version: 1, units: "m", scale, root: { name, at },
+bones: [{ name, index, parent, at, end? }], chains: [{ leaf, bones: [root
+... leaf] }] }. "at" is the pivot in model space before "scale", the same
+numbers as the bind pose; "index" is the skeleton index the skin weights point
+at. "end" appears on leaf bones only: how far the geometry bound to that bone
+reaches along the chain - the sole under an ankle, the crown of a head -
+measured from the built mesh, and covering everything bound to the bone, so a
+staff pinned to a forearm puts that forearm's "end" at the staff's tip.
+"chains" is one entry per leaf, root first: a humanoid rig always has five
+(Head, Forearm_L/R, Foot_L/R); a joints mechanism has one per childless joint.
+Static specs and recipe-built models carry no oddlings block.
+
 MESH BACKEND
 By default each part is exported as its own closed solid, and the model is a
 pile of primitives pushed into each other. That reads fine but it is not a game
@@ -556,6 +597,43 @@ A detached-part hint moves the part until it touches the body; a no-surface
 hint pushes it out along its neighbour's normal until one grid cell of it
 stands proud. Apply the move and re-audit rather than guessing a second time.
 
+CLIP-THROUGH
+A clip-through finding means one part crosses another once the asset moves:
+each clip is sampled at eight frames, every part is posed on the bone that
+carries it, and the depth parts on DIFFERENT bones reach inside each other is
+measured. The message names the clip, the worst frame and the depth in
+millimetres - a warning past 5 mm, an error past 25 mm. Fix it in the spec:
+cut "spin.degrees" until the arc clears, move the joint's "at" so the part
+swings past its neighbour instead of into it, or move the part and leave the
+clearance the arc needs. Parts meant to move as one belong on the same joint -
+add the name to that joint's "binds" and they are never compared. Overlap
+already there in the bind pose is ignored, so a rope sunk into its bough is
+fine; only what the motion adds is reported. A surface asset or a rigged
+character gets one note instead of a fault, because its parts are blended, or
+skinned onto limbs that are meant to sweep through the body.
+
+LOOKING AT THE ASSET
+Do not open a browser and do not take screenshots. "render_spec" (MCP) and
+"oddlings render <spec> --views front,side" (CLI) write PNGs of the model and
+return their paths - front, three-quarter, side and top by default; the full
+set is front, back, side, left, top, bottom, three-quarter. A whole turnaround
+takes a few hundred milliseconds and is byte-identical for the same spec, so
+two renders can be diffed directly. Surface assets render with their baked
+paint. Read the files back as images when you need to see the thing.
+
+"audit_spec" with "visual": true (CLI: "oddlings audit <spec> --visual") is
+cheaper than looking and says more. It adds three findings. "silhouette"
+reports the fraction of the frame the model covers from each angle - a number
+to interpret, not a complaint. "low-contrast" warns about a pair of parts that
+meet along a long border and differ by less than a colour difference of 10
+there: they read as one shape, so change one colour or put a lip, a groove or
+a darker trim between them. "unseen-triangles" is the share of the mesh that
+shows in none of the six axis views, with the parts wasting the most; a part
+at 100% is sealed inside another, so delete it or make it proud of its
+neighbour. Work the numbers first and render only to confirm: two rounds of
+"audit_spec" with "visual": true plus one render replaces six rounds of
+screenshots.
+
 MEASURING
 Do not write a script to measure your own model. "measure_spec" (MCP) and
 "oddlings measure" (CLI) report, for every authored part: its world bounding
@@ -584,6 +662,23 @@ change, then close each note with "resolve_note" (MCP) or
 "oddlings notes <spec> --resolve <id> --reply \\"...\\"". The reply is not
 optional politeness: it is the only thing the reviewer sees, and a note
 resolved without one reads as a note ignored.
+
+A note may also carry a "mark": a stroke the human drew straight onto the
+model in the studio, resolved into geometry the moment they drew it.
+"mark.gesture" is one of four. "circle" rings the parts it encloses. "remove"
+is a scribble or a cross over something that should go. "arrow" points at the
+part its tip landed on. "sketch" is a shape drawn in empty space for something
+that is not there yet. "mark.parts" lists what the stroke is about, as spec
+paths with the names they had - act on those paths, do not re-derive them from
+the points; for a circle or a remove the first entry is whatever sat under the
+middle of the stroke. "mark.worldPoints" is the stroke in world metres, on the
+model's surface for a circle, a remove or an arrow, and on a plane facing the
+camera for a sketch: an arrow's last point is the thing it points at, and a
+sketch's extent is the size of the thing being asked for, with its first point
+where it goes. "mark.cameraPose" (position, target, fov) is where the reviewer
+was standing, which says which side of the model they were judging. The note's
+text is the instruction; the mark is the location. An unlabelled mark takes
+its own description as its text.
 
 BUDGET
 Specs cap at 200 top-level parts and 4000 meshes after mirrors and repeats
