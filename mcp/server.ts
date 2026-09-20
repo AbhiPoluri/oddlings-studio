@@ -41,6 +41,10 @@ import {
   TEMPLATE_KINDS,
   type TemplateKind,
 } from './spec-guide';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { fileName } from '../lib/asset-recipe';
+import { renderPngs, VIEWS, type ViewName } from '../lib/asset-render';
 
 /**
  * Oddlings Studio as an MCP server.
@@ -95,7 +99,7 @@ const server = new McpServer(
   { name: 'oddlings-studio', version: '1.0.0' },
   {
     instructions:
-      'Procedural 3D game assets generated entirely from local code. Use list_blueprints + generate_from_blueprint for fast variations on built-in creature, person, prop and environment generators. Use get_spec_guide + build_from_spec to author an asset from scratch out of primitives, transforms, repeats and rig bindings. Add a `surface` block to a spec and those primitives are blended into one continuous manifold polygon mesh instead of being exported as separate stacked solids — use it for creatures, characters and anything that has to deform. Rigged characters export with a 14-bone skeleton and Idle, Walk, Jump, Wave and Attack clips. Every build returns an `audit` of the geometry it produced: when `audit.ok` is false the model has a real defect — parts hanging in mid-air, a model in separate pieces, a body bound to the head bone. Read the findings, fix the spec and build again rather than shipping it. Use audit_spec to iterate without writing files. Findings carry a `hint` with the fix as numbers — a translation to add to the position of the part, and the part it should move toward — so apply that rather than guessing a direction. Start from spec_template rather than a blank page. Use measure_spec instead of writing a script to find a bounding box, a gap between two parts, or which bone owns what. And read review_notes for the comments a human reviewer left before calling an asset finished, then close each one with resolve_note and a reply.',
+      'Procedural 3D game assets generated entirely from local code. Use list_blueprints + generate_from_blueprint for fast variations on built-in creature, person, prop and environment generators. Use get_spec_guide + build_from_spec to author an asset from scratch out of primitives, transforms, repeats and rig bindings. Add a `surface` block to a spec and those primitives are blended into one continuous manifold polygon mesh instead of being exported as separate stacked solids — use it for creatures, characters and anything that has to deform. Rigged characters export with a 14-bone skeleton and Idle, Walk, Jump, Wave and Attack clips. Every build returns an `audit` of the geometry it produced: when `audit.ok` is false the model has a real defect — parts hanging in mid-air, a model in separate pieces, a body bound to the head bone. Read the findings, fix the spec and build again rather than shipping it. Use audit_spec to iterate without writing files, and audit_spec with visual: true — or render_spec, which writes PNGs of the model in a few hundred milliseconds — instead of opening a browser to look at it. Findings carry a `hint` with the fix as numbers — a translation to add to the position of the part, and the part it should move toward — so apply that rather than guessing a direction. Start from spec_template rather than a blank page. Use measure_spec instead of writing a script to find a bounding box, a gap between two parts, or which bone owns what. And read review_notes for the comments a human reviewer left before calling an asset finished, then close each one with resolve_note and a reply.',
   },
 );
 
@@ -363,25 +367,91 @@ server.registerTool(
 );
 
 server.registerTool(
-  'audit_spec',
+  'render_spec',
   {
-    title: 'Check a spec',
+    title: 'Render a spec to PNGs',
     description:
-      'Build a spec in memory and report its geometry problems without writing any files: parts left hanging in mid-air, a model that falls into separate pieces, geometry that would bind to the wrong bone, and the silhouette from each axis. Use this to iterate on a spec cheaply before committing it to disk.',
+      'Rasterise a spec to PNG files on disk and return their paths, so you can LOOK at the asset without a browser, a viewer or a screenshot. Pure software rendering: a few hundred milliseconds for a whole turnaround, and the same spec always produces the same bytes. Default views are front, three-quarter, side and top; the full set is ' +
+      VIEWS.join(', ') +
+      '. Read the returned files as images. When you only want the numbers — which parts read as one shape, which triangles nothing can see — call audit_spec with visual set to true instead, which is cheaper than looking and says more.',
     inputSchema: {
       spec: z
         .record(z.string(), z.unknown())
         .describe('An asset spec object. See get_spec_guide for the schema.'),
+      outDir: outDirSchema,
+      size: z
+        .number()
+        .int()
+        .min(16)
+        .max(2048)
+        .optional()
+        .describe('Frame edge in pixels, square. Default 512.'),
+      views: z
+        .array(z.enum(VIEWS as unknown as [ViewName, ...ViewName[]]))
+        .optional()
+        .describe('Which angles to render. Default front, three-quarter, side, top.'),
+    },
+  },
+  async ({ spec, outDir, size, views }) => {
+    try {
+      const parsed = parseSpec(spec);
+      const rendered = renderPngs(buildSpec(parsed), {
+        size: size ?? 512,
+        ...(views?.length ? { views } : {}),
+      });
+      const dir = resolve(outDir ?? OUT_DIR_DEFAULT);
+      await mkdir(dir, { recursive: true });
+      const base = fileName(parsed.name);
+      const files = [];
+      for (const image of rendered.images) {
+        const file = join(dir, `${base}-${image.view}.png`);
+        await writeFile(file, image.png);
+        files.push({
+          view: image.view,
+          file,
+          silhouetteFill: Number(image.fill.toFixed(3)),
+        });
+      }
+      return ok({
+        name: parsed.name,
+        size: size ?? 512,
+        triangles: rendered.triangles,
+        ms: rendered.ms,
+        views: files,
+      });
+    } catch (error) {
+      return problem(error);
+    }
+  },
+);
+
+server.registerTool(
+  'audit_spec',
+  {
+    title: 'Check a spec',
+    description:
+      'Build a spec in memory and report its geometry problems without writing any files: parts left hanging in mid-air, a model that falls into separate pieces, geometry that would bind to the wrong bone, and the silhouette from each axis. Use this to iterate on a spec cheaply before committing it to disk. Pass visual: true to add what a picture of the model shows — pairs of parts that read as one shape because their colours are too close along the border they share, how much of the frame the silhouette fills from each angle, and the triangles no camera can see because they are buried inside another part.',
+    inputSchema: {
+      spec: z
+        .record(z.string(), z.unknown())
+        .describe('An asset spec object. See get_spec_guide for the schema.'),
+      visual: z
+        .boolean()
+        .optional()
+        .describe(
+          'Also rasterise the model and report what it looks like: low-contrast neighbours, silhouette fill, unseen triangles. Adds a few hundred milliseconds. Default false.',
+        ),
     },
     annotations: { readOnlyHint: true },
   },
-  ({ spec }) => {
+  ({ spec, visual }) => {
     try {
       const parsed = parseSpec(spec);
       return ok(
         auditModel(buildSpec(parsed), {
           rigged: Boolean(parsed.rig),
           scale: parsed.scale,
+          visual: Boolean(visual),
           labels: new Map(
             flatten(parsed).map((row) => [
               row.path.join('.'),

@@ -2,6 +2,7 @@ import * as T from 'three';
 import { weldByPosition } from './asset-smooth';
 import { AUTO_WEIGHT, autoBone } from './asset-rig';
 import { buildSpec, type AssetSpec } from './asset-spec';
+import { auditVisual, type VisualOptions } from './asset-audit-visual';
 import { disposeScene } from './three-world';
 
 /**
@@ -630,6 +631,13 @@ export type AuditOptions = {
   scale?: number;
   /** Part paths to readable names, for the messages. */
   labels?: Map<string, string>;
+  /**
+   * Also rasterise the model and report what a picture of it shows: parts
+   * that read as one shape, triangles no camera reaches. Off by default
+   * because it costs a few hundred milliseconds and this is the call an agent
+   * makes in a loop. See `asset-audit-visual`.
+   */
+  visual?: boolean | VisualOptions;
 };
 
 export function auditModel(
@@ -970,6 +978,16 @@ export function auditModel(
     value: Number(flat.toFixed(2)),
     message: `${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m, height-to-width ${flat.toFixed(2)}${flat < 0.5 ? ' — reads flat from the side' : ''}.`,
   });
+
+  // Pixels, on request. Everything it reports is a warning or a note, so `ok`
+  // still means what it meant: the geometry is sound.
+  if (options.visual)
+    findings.push(
+      ...auditVisual(model, model.userData.spec as AssetSpec | undefined, {
+        labels: options.labels,
+        ...(options.visual === true ? {} : options.visual),
+      }).findings,
+    );
 
   return { ok: !findings.some((f) => f.severity === 'error'), findings };
 }
