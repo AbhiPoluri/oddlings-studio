@@ -43,8 +43,19 @@ export function DrawOverlay({
 }) {
   const surface = useRef<HTMLDivElement | null>(null);
   const input = useRef<HTMLInputElement | null>(null);
-  /** The stroke being drawn, or null between strokes. */
-  const [stroke, setStroke] = useState<Point2[] | null>(null);
+  /**
+   * The stroke being drawn, or null between strokes.
+   *
+   * A ref and not state, with the state below holding only a copy to draw
+   * with. A pointer emits a move every frame and several in one task when the
+   * hand is quick, and React does not re-render between two events in the same
+   * task — so a handler reading the stroke out of state would read the stroke
+   * as it was one render ago, and a fast gesture would be resolved from the
+   * two points that happened to survive. The ref is the stroke; the state is a
+   * picture of it.
+   */
+  const stroke = useRef<Point2[] | null>(null);
+  const [ink, setInk] = useState<Point2[]>([]);
   /** A finished stroke waiting for its label. */
   const [pending, setPending] = useState<{ mark: Mark; at: Point2 } | null>(
     null,
@@ -55,7 +66,8 @@ export function DrawOverlay({
   // to reappear over the next stroke someone draws.
   useEffect(() => {
     if (active) return;
-    setStroke(null);
+    stroke.current = null;
+    setInk([]);
     setPending(null);
     setLabel('');
   }, [active]);
@@ -77,13 +89,14 @@ export function DrawOverlay({
     onMark(pending.mark, label);
     setPending(null);
     setLabel('');
-    setStroke(null);
+    setInk([]);
   }, [pending, label, onMark]);
 
   const cancel = useCallback(() => {
+    stroke.current = null;
     setPending(null);
     setLabel('');
-    setStroke(null);
+    setInk([]);
   }, []);
 
   if (!active) return null;
@@ -100,23 +113,40 @@ export function DrawOverlay({
         // label as it stands rather than throwing away the stroke they drew.
         if (pending) accept();
         if (event.button !== 0) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
+        // Capture so a stroke that runs off the panel is still one stroke.
+        // It throws for a pointer the browser no longer considers active,
+        // which is a lost capture and not a lost gesture.
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+          // Drawn without capture: fine until the pointer leaves the panel.
+        }
         surface.current?.focus({ preventScroll: true });
-        setStroke([local(event)]);
+        stroke.current = [local(event)];
+        setInk(stroke.current);
       }}
       onPointerMove={(event) => {
-        setStroke((points) => (points ? [...points, local(event)] : points));
+        if (!stroke.current) return;
+        stroke.current = [...stroke.current, local(event)];
+        setInk(stroke.current);
       }}
       onPointerUp={(event) => {
-        event.currentTarget.releasePointerCapture?.(event.pointerId);
-        const points = stroke ? [...stroke, local(event)] : null;
-        setStroke(points);
+        try {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+          // Never captured, or already released.
+        }
+        const points = stroke.current
+          ? [...stroke.current, local(event)]
+          : null;
+        stroke.current = null;
+        setInk([]);
         if (!points) return;
         const mark = resolve(points);
         // Not a gesture — a click that drifted, or a stroke drawn before the
         // model finished building. Silently dropped: the alternative is an
         // error message for having clicked.
-        if (!mark) return setStroke(null);
+        if (!mark) return;
         setPending({ mark, at: points[points.length - 1] });
       }}
       onKeyDown={(event) => {
@@ -126,13 +156,13 @@ export function DrawOverlay({
         // handler does not also clear the selection behind it.
         event.preventDefault();
         event.stopPropagation();
-        if (pending || stroke) cancel();
+        if (pending || stroke.current || ink.length) cancel();
         else onExit();
       }}
     >
       <svg className="draw-ink" aria-hidden="true">
-        {stroke && stroke.length > 1 && (
-          <polyline points={stroke.map((p) => `${p.x},${p.y}`).join(' ')} />
+        {ink.length > 1 && (
+          <polyline points={ink.map((p) => `${p.x},${p.y}`).join(' ')} />
         )}
       </svg>
       <p className="draw-hint">

@@ -261,9 +261,6 @@ export function centroid(points: Point2[]): Point2 {
   return { x: sum.x / points.length, y: sum.y / points.length };
 }
 
-const gap = (a: Vec3, b: Vec3) =>
-  Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-
 /** Part paths without repeats, in the order they were found. */
 function dedupe(parts: MarkPart[]): MarkPart[] {
   const seen = new Set<string>();
@@ -298,31 +295,57 @@ export function resolveStroke(
   const hits = points.map((point) => world.hit(point));
   const gesture = classifyStroke(points, hits.map(Boolean));
 
-  // The stroke is anchored to the first thing it actually touched: the model
-  // if it crossed it, the ground if it did not, and failing both the point the
-  // camera is looking at — which is the only place left that is in front of it.
+  /**
+   * Whether this stroke is about the model or about the space around it.
+   *
+   * The distinction decides where the parts that missed are put, and getting
+   * it wrong is loud: a ring round a head is mostly sky, and dropping that sky
+   * onto the ground plane sends the points that landed near the horizon four
+   * kilometres away. A ring drawn on the floor, on the other hand, belongs on
+   * the floor. So the stroke as a whole picks one surface, rather than each
+   * point picking its own.
+   */
+  const touched = hits.some(Boolean);
+
+  /** The part the stroke was drawn nearest to on screen, which is what "beside
+   *  the torso" means to the person drawing it. */
+  const beside = nearestOnScreen(points, parts, world);
+
+  /**
+   * Anchored to the first thing it actually touched.
+   *
+   * A sketch that touched nothing is anchored to the part it was drawn beside
+   * instead of to the ground, because the ground under a stroke aimed at the
+   * air beside a model's shoulder is metres behind it — and a shoulder plate
+   * sketched on a plane ten metres away is a shoulder plate ten metres wide.
+   * The part it is next to is the depth the reviewer was drawing at.
+   */
   const anchor: Vec3 =
     hits.find((hit) => hit)?.point ??
+    (gesture === 'sketch' ? beside?.centre : undefined) ??
     points.map((point) => world.ground(point)).find((p): p is Vec3 => Boolean(p)) ??
     world.pose().target;
 
   const kept = resample(points, MAX_POINTS);
   const worldPoints = kept
-    .map((point) =>
+    .map((point) => {
       // A sketch is a thing that does not exist yet, so it is drawn on a plane
       // facing the camera rather than smeared over whatever happens to be
       // behind it — that is the shape the reviewer meant.
-      gesture === 'sketch'
+      if (gesture === 'sketch') return world.onPlane(point, anchor);
+      const hit = world.hit(point)?.point;
+      if (hit) return hit;
+      return touched
         ? world.onPlane(point, anchor)
-        : (world.hit(point)?.point ?? world.ground(point) ?? world.onPlane(point, anchor)),
-    )
+        : (world.ground(point) ?? world.onPlane(point, anchor));
+    })
     .filter((point): point is Vec3 => Boolean(point))
     .map(tidy);
   if (worldPoints.length < 2) return null;
 
   return {
     gesture,
-    parts: markParts(gesture, points, hits, parts, world, anchor),
+    parts: markParts(gesture, points, hits, parts, world, beside),
     worldPoints,
     cameraPose: posed(world.pose()),
   };
@@ -345,13 +368,29 @@ function posed(pose: CameraPose): CameraPose {
  * An arrow means the one thing its tip landed on. A sketch means the part it
  * was drawn next to, which is the only way to say where a new thing goes.
  */
+/** The part whose centre is drawn closest to the middle of the stroke. */
+function nearestOnScreen(
+  points: Point2[],
+  parts: PartCentre[],
+  world: StrokeWorld,
+): PartCentre | null {
+  const middle = centroid(points);
+  let best: { part: PartCentre; away: number } | null = null;
+  for (const part of parts) {
+    const at = world.project(part.centre);
+    const away = Math.hypot(at.x - middle.x, at.y - middle.y);
+    if (!best || away < best.away) best = { part, away };
+  }
+  return best?.part ?? null;
+}
+
 function markParts(
   gesture: Gesture,
   points: Point2[],
   hits: ({ point: Vec3; path: Path | null } | null)[],
   parts: PartCentre[],
   world: StrokeWorld,
-  anchor: Vec3,
+  beside: PartCentre | null,
 ): MarkPart[] {
   const named = (path: Path): MarkPart => ({
     path: [...path],
@@ -363,13 +402,10 @@ function markParts(
     return tip?.path ? [named(tip.path)] : [];
   }
 
-  if (gesture === 'sketch') {
-    let nearest: PartCentre | null = null;
-    for (const part of parts)
-      if (!nearest || gap(part.centre, anchor) < gap(nearest.centre, anchor))
-        nearest = part;
-    return nearest ? [named(nearest.path)] : [];
-  }
+  // A sketch is about somewhere rather than something, so it names the part it
+  // was drawn beside — on screen, which is the only place the reviewer was
+  // judging "beside" from.
+  if (gesture === 'sketch') return beside ? [named(beside.path)] : [];
 
   const inside = parts
     .filter((part) => inPolygon(points, world.project(part.centre)))

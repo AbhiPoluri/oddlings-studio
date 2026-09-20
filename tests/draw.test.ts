@@ -255,6 +255,17 @@ describe('anchoring against a camera', () => {
     expect(mark.cameraPose.fov).toBe(45);
   });
 
+  test('a ring round a part keeps its sky at the part\'s depth, not the horizon', () => {
+    // The case that shows up the moment anyone rings a head: most of the loop
+    // is empty space behind the model, and letting each of those points find
+    // the ground on its own sends the ones near the horizon kilometres away.
+    const middle = world(slab()).project(PARTS[0].centre);
+    const wide = ring({ x: middle.x, y: middle.y, r: 150 });
+    const mark = resolveStroke(wide, world(slab()), PARTS)!;
+    for (const point of mark.worldPoints)
+      expect(new T.Vector3(...point).distanceTo(cam.position)).toBeLessThan(12);
+  });
+
   test('a loop round nothing encloses nothing, and is still a mark', () => {
     const mark = resolveStroke(ring({ x: 700, y: 520, r: 30 }), world(() => null), PARTS)!;
     expect(mark.gesture).toBe('circle');
@@ -283,7 +294,12 @@ describe('anchoring against a camera', () => {
     }));
     const mark = resolveStroke(stroke, world(() => null), PARTS)!;
     expect(mark.gesture).toBe('sketch');
-    expect(mark.parts).toHaveLength(1);
+    // Named after what it was drawn beside, and drawn at that thing's depth —
+    // not on the ground, which under a stroke aimed beside a model's shoulder
+    // is metres behind it and would make the sketch metres wide.
+    expect(mark.parts.map((p) => p.name)).toEqual(['head']);
+    for (const point of mark.worldPoints)
+      expect(new T.Vector3(...point).distanceTo(new T.Vector3(0, 2.4, 0))).toBeLessThan(3);
     // One plane: every point the same distance along the camera's forward
     // axis, which is what keeps a sketch the shape it was drawn as.
     const forward = new T.Vector3();

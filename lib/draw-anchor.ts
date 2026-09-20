@@ -11,6 +11,9 @@
 import * as T from 'three';
 import type { Point2, StrokeWorld, Vec3, Path } from './draw-marks';
 
+/** How far away a ground hit stops being a place and starts being the horizon. */
+const GROUND_LIMIT = 500;
+
 /**
  * Build a `StrokeWorld` from a camera and one model raycast.
  *
@@ -47,7 +50,11 @@ export function strokeWorld(options: {
     hit: options.hit,
     ground(at) {
       const plane = new T.Plane(new T.Vector3(0, 1, 0), 0);
-      return ray(at).intersectPlane(plane, out) ? vec(out) : null;
+      if (!ray(at).intersectPlane(plane, out)) return null;
+      // A ray aimed just under the horizon meets the ground kilometres away,
+      // and that point is not where anybody was pointing. Beyond this it is
+      // the sky, and a miss is a better answer than a number.
+      return out.distanceTo(camera.position) > GROUND_LIMIT ? null : vec(out);
     },
     onPlane(at, anchor) {
       // Square to the camera, so the sketch keeps the shape it was drawn with.
