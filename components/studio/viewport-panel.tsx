@@ -9,7 +9,7 @@
  * control stays where the viewport draws it, over the canvas, and the strip
  * does not pretend to own something it cannot read.
  */
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type * as T from 'three';
 import { ChevronDown } from 'lucide-react';
 import {
@@ -39,6 +39,9 @@ import { EmptyState } from './empty-state';
 import type { Overlays } from './reducer';
 import { useStudio } from './store';
 import { useDocument } from './use-document';
+import { DrawOverlay } from './draw-overlay';
+import { drawnMarks, markNote, noteId } from './notes';
+import type { Notes } from './use-notes';
 
 const VIEWS: { id: string; label: string; which: ViewName; key: string }[] = [
   { id: 'view.persp', label: 'Perspective', which: 'persp', key: '5' },
@@ -61,12 +64,21 @@ export function ViewportPanel({
   view,
   context,
   ghost,
+  notes,
   onModel,
 }: {
   view: RefObject<ViewHandle | null>;
   context: ActionContext;
   /** The previous agent build, drawn through when Compare is on. */
   ghost?: AssetSpec | null;
+  /**
+   * The review notes for the file on screen.
+   *
+   * Passed down rather than read here with a second `useNotes()`: two copies
+   * of that hook would be two lists autosaving over each other, and the marks
+   * the viewport draws have to be the same list the Notes panel shows.
+   */
+  notes: Notes;
   /**
    * The model the viewport just built, passed up for the shell to audit.
    *
@@ -99,6 +111,15 @@ export function ViewportPanel({
   const spec = state.doc.spec;
   /** How many filters are actually drawing, for the toolbar's badge. */
   const filters = filterCount(state.filters);
+
+  /**
+   * The open notes that were drawn, as lines for the viewport.
+   *
+   * Memoised on the list rather than rebuilt every render, because the
+   * viewport's side of this disposes and re-creates every line whenever the
+   * array's identity changes — which would be every frame of a gizmo drag.
+   */
+  const marks = useMemo(() => drawnMarks(notes.notes), [notes.notes]);
 
   /**
    * Park the playhead in the store when a clip stops.
@@ -181,6 +202,28 @@ export function ViewportPanel({
         >
           Frame all
         </button>
+        {/* Not routed through `runCommand`: the table's `tool.draw` is a
+            toggle, which is the right thing for a key and the wrong thing for
+            a pair of buttons that say which mode you are in. */}
+        <div className="segmented tool-bar" role="group" aria-label="Tool">
+          <button
+            type="button"
+            aria-pressed={state.tool === 'select'}
+            title="Select and orbit"
+            onClick={() => dispatch({ type: 'tool', tool: 'select' })}
+          >
+            Select
+          </button>
+          <button
+            type="button"
+            aria-pressed={state.tool === 'draw'}
+            disabled={!spec}
+            title="Draw a review mark (D)"
+            onClick={() => dispatch({ type: 'tool', tool: 'draw' })}
+          >
+            Draw
+          </button>
+        </div>
         {/* Five toggles and a six-column statistics table do not fit beside a
             camera menu on a narrow screen. Both are rendered and the stylesheet
             picks one, so the swap costs no measuring, no resize listener and no
@@ -308,6 +351,14 @@ export function ViewportPanel({
           onPlayToggle={() =>
             dispatch({ type: 'playing', playing: !state.playback.playing })
           }
+          marks={marks}
+          onMarkPick={(id) => {
+            const note = notes.notes.find((row) => row.id === id);
+            if (!note) return;
+            const path = note.mark?.parts[0]?.path ?? note.part;
+            if (path) dispatch({ type: 'select', selection: { kind: 'part', path } });
+            dispatch({ type: 'rightTab', tab: 'notes' });
+          }}
           onStats={setStats}
           lastEdit={state.lastEdit}
           onModel={onModel}
@@ -318,6 +369,22 @@ export function ViewportPanel({
                 : { type: 'building', id: event.id, since: event.since },
             )
           }
+        />
+        <DrawOverlay
+          active={state.tool === 'draw' && Boolean(spec)}
+          resolve={(points) => view.current?.resolveStroke(points) ?? null}
+          onMark={(mark, label) => {
+            notes.add(
+              markNote({
+                id: noteId(),
+                mark,
+                text: label,
+                at: new Date().toISOString(),
+              }),
+            );
+            dispatch({ type: 'rightTab', tab: 'notes' });
+          }}
+          onExit={() => dispatch({ type: 'tool', tool: 'select' })}
         />
         {boot && <BootScreen step={boot} />}
       </div>

@@ -19,6 +19,7 @@ import { markActive } from '../node/active-spec';
 import { flatten } from '../lib/spec-edit';
 import { measureSpec, type SpecMeasure } from '../lib/asset-measure';
 import {
+  describeMark,
   loadNotes,
   openNotes,
   resolveNote,
@@ -256,6 +257,10 @@ function printNoteList(
   for (const note of open) {
     const where = note.partName ?? (note.part ? note.part.join('.') : 'whole asset');
     console.log(`  ${note.id.padEnd(14)} ${where.padEnd(18)} ${note.text}`);
+    // Drawn rather than typed: the shape is the other half of what was said,
+    // and the full geometry is in the file for anything that wants it.
+    if (note.mark)
+      console.log(`  ${''.padEnd(14)} ${''.padEnd(18)} ↳ ${describeMark(note.mark)}`);
   }
   console.log(
     `  Close one with: oddlings notes ${specPath} --resolve <id> --reply "what you changed"`,

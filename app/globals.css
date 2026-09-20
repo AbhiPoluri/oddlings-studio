@@ -2710,3 +2710,110 @@ button.bar-button.filters-button[data-on] {
   margin-top: 8px;
   color: var(--dim);
 }
+
+/* ── Draw-to-instruct ──────────────────────────────────────────────────
+   The sheet a reviewer draws on, over the WebGL canvas. It exists only while
+   the Draw tool is on, which is what keeps orbiting exactly as it was: there
+   is nothing over the canvas to swallow a drag the rest of the time. */
+.draw-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  cursor: crosshair;
+  touch-action: none;
+}
+.draw-surface:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+.draw-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* Wet ink: the stroke in hand, before it has been resolved into the world.
+   Deliberately a different weight from the lines the viewport draws, so it is
+   obvious which marks are committed and which one is still being made. */
+.draw-ink polyline {
+  fill: none;
+  stroke: #dcecbb;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
+}
+.draw-hint {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  margin: 0;
+  max-width: 300px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--sunken) 88%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--faint);
+  pointer-events: none;
+}
+/* Anchored where the stroke ended, which is where the reviewer is looking.
+   Translated up and right so it never sits under the cursor that drew it. */
+.draw-prompt {
+  position: absolute;
+  transform: translate(10px, -50%);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 340px;
+  padding: 6px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--sunken);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
+}
+.draw-prompt-what {
+  font: 10px var(--mono);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--faint);
+  flex: 1 1 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draw-prompt-input {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12px;
+}
+.draw-prompt-input:focus {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+.draw-prompt-fallback {
+  flex: 1 1 100%;
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draw-prompt-fallback:empty {
+  display: none;
+}
+/* A note that came from a stroke says so, so the panel and the viewport are
+   obviously the same thing seen two ways. */
+.note-mark {
+  font: 10px var(--mono);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #9fd2c8;
+}

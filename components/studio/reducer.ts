@@ -112,6 +112,21 @@ export type Playback = {
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale';
 
+/**
+ * What the pointer does over the viewport.
+ *
+ * Two, and they are genuinely exclusive: drawing needs every drag the orbit
+ * controls also want, so a tool that shared the mouse with them would be a
+ * tool that worked until you moved the camera. `select` is the studio as it
+ * has always been — orbit, pick, drag a gizmo. `draw` puts a surface over the
+ * canvas and every drag on it is a stroke.
+ *
+ * Beside the gizmo mode rather than inside it: the gizmo mode says what a
+ * handle does once something is selected, and this says whether anything can
+ * be selected at all.
+ */
+export type Tool = 'select' | 'draw';
+
 /** A recipe kept in this browser's library, with a thumbnail if one was taken. */
 export type Saved = { id: string; recipe: Recipe; thumbnail: string };
 
@@ -137,6 +152,8 @@ export type StudioState = {
   isolate: Selection;
   /** A mirror of the viewport's own gizmo mode; see `actions.ts`. */
   gizmo: GizmoMode;
+  /** Whether the pointer picks and orbits, or draws review marks. */
+  tool: Tool;
   overlays: Overlays;
   /**
    * The viewport's post-processing stack.
@@ -249,6 +266,7 @@ export const initialState: StudioState = {
   hover: null,
   isolate: null,
   gizmo: 'translate',
+  tool: 'select',
   overlays: {
     wireframe: false,
     grid: true,
@@ -328,6 +346,7 @@ export type StudioAction =
   /** Show one branch alone, or show everything again when it is already alone. */
   | { type: 'isolate'; selection: Selection }
   | { type: 'gizmo'; mode: GizmoMode }
+  | { type: 'tool'; tool: Tool }
   | { type: 'overlay'; key: keyof Overlays; value?: boolean }
   /** Change some part of the filter stack. Anything left out keeps its value. */
   | { type: 'filters'; patch: FiltersPatch }
@@ -613,6 +632,14 @@ export function reducer(
 
     case 'gizmo':
       return { ...state, gizmo: action.mode };
+
+    case 'tool':
+      // Drawing over a document with no parts in it would resolve every stroke
+      // against nothing, so the tool is simply not available there.
+      return {
+        ...state,
+        tool: action.tool === 'draw' && !state.doc.spec ? 'select' : action.tool,
+      };
 
     case 'overlay':
       return {
