@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { z } from 'zod';
 import { BUILD_LOG, markActive } from './active-spec';
+import { MAX_POINTS, type Mark } from '../lib/draw-marks';
 
 /**
  * The studio's dev-server API: save-back, and reading the specs folder.
@@ -91,6 +92,8 @@ export type ReviewNote = {
   resolvedAt: string | null;
   /** What the agent said when it resolved this. */
   reply: string | null;
+  /** The stroke this note was drawn as, for a note made with the Draw tool. */
+  mark?: Mark;
 };
 
 export type ReviewDoc = { version: 1; spec: string; notes: ReviewNote[] };
@@ -129,6 +132,28 @@ const noteSchema = z.looseObject({
   at: z.string().min(1).max(64),
   resolvedAt: z.string().max(64).nullable(),
   reply: z.string().max(4000).nullable(),
+  // Loose like its parent, and for the same reason: the agent side owns this
+  // file too. Only the sizes are enforced here, because a review file is read
+  // into an agent's context and an unbounded stroke is how that gets flooded.
+  mark: z
+    .looseObject({
+      gesture: z.enum(['circle', 'remove', 'arrow', 'sketch']),
+      parts: z
+        .array(
+          z.looseObject({
+            path: z.array(z.number().int().min(0)).max(24),
+            name: z.string().max(200).nullable(),
+          }),
+        )
+        .max(64),
+      worldPoints: z.array(z.tuple([z.number(), z.number(), z.number()])).min(2).max(MAX_POINTS),
+      cameraPose: z.looseObject({
+        position: z.tuple([z.number(), z.number(), z.number()]),
+        target: z.tuple([z.number(), z.number(), z.number()]),
+        fov: z.number(),
+      }),
+    })
+    .optional(),
 });
 
 const reviewSchema = z.looseObject({

@@ -269,6 +269,30 @@ export const COMMANDS: StudioCommand[] = [
     run: (context) => gizmoKey(context, 's', 'scale'),
   },
 
+  // — Tools ————————————————————————————————————————————————————
+  {
+    id: 'tool.draw',
+    label: 'Draw on the model',
+    group: 'Tools',
+    keys: ['D'],
+    // Deliberately not canvas-owned: the draw surface sits over the canvas, so
+    // while this tool is on the canvas does not have focus and a canvas-owned
+    // key would be a key that only worked on the way in.
+    enabled: hasSpec,
+    run: ({ dispatch, state }) =>
+      dispatch({ type: 'tool', tool: state.tool === 'draw' ? 'select' : 'draw' }),
+  },
+  {
+    id: 'tool.select',
+    label: 'Select tool',
+    group: 'Tools',
+    // No chord of its own. Escape on the drawing surface is the way out, and
+    // that one is answered where the surface is — binding it here as well
+    // would be a second claim on a key `select.none` already has.
+    enabled: always,
+    run: ({ dispatch }) => dispatch({ type: 'tool', tool: 'select' }),
+  },
+
   // — Overlays ————————————————————————————————————————————————
   overlay('toggle.wireframe', 'wireframe', 'Wireframe', 'Z'),
   overlay('toggle.grid', 'grid', 'Grid', 'H'),

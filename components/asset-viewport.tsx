@@ -17,6 +17,7 @@ import type { BuildPhase } from '@/lib/asset-surface';
 import { gauge } from '@/lib/perf';
 import { createBuildClient, type BuildClient } from '@/lib/build-client';
 import {
+  flatten,
   frameIsExact,
   frameOf,
   partAt,
@@ -46,6 +47,15 @@ import {
   createFilterChain,
   type FilterChain,
 } from '@/components/viewport-filters';
+import {
+  resolveStroke as resolveDrawnStroke,
+  type DrawnMark,
+  type Gesture,
+  type Mark,
+  type PartCentre,
+  type Point2,
+} from '@/lib/draw-marks';
+import { strokeWorld } from '@/lib/draw-anchor';
 import { skeletonOf } from '@/lib/asset-rig';
 import { boneLayout, clipsOf } from '@/lib/asset-joints';
 import type { Recipe } from '@/lib/asset-recipe';
@@ -66,6 +76,14 @@ export type ViewHandle = {
   frame: (selection: Selection) => void;
   /** Turn the camera to an axis, or back to the three-quarter view. */
   view: (which: ViewName) => void;
+  /**
+   * Resolve one finished review stroke against what is on screen, now.
+   *
+   * At capture time on purpose: which parts a loop encloses and where a point
+   * of it sits in the world are both answers about this camera, and the camera
+   * moves a moment later. Null for a stroke too short to be a gesture.
+   */
+  resolveStroke: (points: Point2[]) => Mark | null;
 };
 export type AssetStats = ReturnType<typeof stats> & {
   /** Frames drawn in the last second; absent until a second has passed. */
@@ -113,6 +131,14 @@ type Props = {
   onTime?: (seconds: number) => void;
   /** The clips the built asset exports, reported after every model build. */
   onClips?: (clips: { name: string; duration: number }[]) => void;
+  /**
+   * Review marks to draw over the model, anchored to the world points they
+   * were resolved to — so they stay on the thing they were drawn on when the
+   * camera orbits, which is the whole reason they are 3D lines and not pixels.
+   */
+  marks?: DrawnMark[];
+  /** A click landed on one of those marks. */
+  onMarkPick?: (id: string) => void;
   /** A second, dimmer outline: what the pointer or the outliner is over. */
   hover?: Selection;
   /** What the pointer is over, so the outliner can highlight in reverse. */
@@ -242,6 +268,14 @@ type Runtime = {
   handles: T.Group;
   /** A box round the geometry the selected bone carries. */
   bound: T.Box3Helper;
+  /**
+   * The reviewer's drawn marks, as lines in the world.
+   *
+   * A scene child and never a child of `model`, for the reason the ghost is:
+   * the picker, the framing, the statistics and isolation all walk `model`,
+   * and a scribble is none of those things.
+   */
+  marks: T.Group;
   /** Handle radius in world units, sized off the model so scale 40 works too. */
   handleSize: number;
   model: T.Group | null;
@@ -407,6 +441,133 @@ function ownedVertices(geometry: T.BufferGeometry, owners: SurfaceOwners) {
   }
   owned.set(geometry, table);
   return table;
+}
+
+/**
+ * The authored part a raycast hit belongs to.
+ *
+ * Two shapes of answer, because a part is two different things depending on
+ * how the asset was built: its own mesh in solid mode, and a run of vertices
+ * inside one fused mesh in surface mode. Shared by the picker and by the draw
+ * resolver so a stroke and a click can never disagree about what they landed on.
+ */
+function pathOfHit(hit: T.Intersection): Path | null {
+  const mesh = hit.object as T.Mesh;
+  const direct = mesh.userData.specPath as Path | undefined;
+  if (direct) return [...direct];
+  const owners = mesh.geometry?.userData.surfaceOwners as
+    | SurfaceOwners
+    | undefined;
+  if (!owners || !hit.face) return null;
+  for (const vertex of [hit.face.a, hit.face.b, hit.face.c]) {
+    const path = owners.paths[owners.index[vertex]];
+    if (path) return [...path];
+  }
+  return null;
+}
+
+/** Where a screen ray meets the model, and what it met, for a drawn stroke. */
+function hitModel(model: T.Object3D, camera: T.Camera, at: T.Vector2) {
+  const caster = new T.Raycaster();
+  caster.setFromCamera(at, camera);
+  const found = caster
+    .intersectObject(model, true)
+    .find((hit) => hit.object.visible);
+  if (!found) return null;
+  return {
+    point: [found.point.x, found.point.y, found.point.z] as [number, number, number],
+    path: pathOfHit(found),
+  };
+}
+
+/**
+ * Every authored part with a place in the world, for the enclosure test.
+ *
+ * Measured off the built model rather than off the spec's numbers: a part
+ * inside a repeat or a mirror sits where the build put it, and a loop drawn
+ * round the copy on the left must name the part that made it.
+ */
+function partCentres(model: T.Object3D, spec: AssetSpec): PartCentre[] {
+  const out: PartCentre[] = [];
+  const middle = new T.Vector3();
+  for (const row of flatten(spec)) {
+    const box = worldBounds(model, row.path);
+    if (box.isEmpty()) continue;
+    box.getCenter(middle);
+    out.push({
+      path: row.path,
+      name: row.part.name ?? row.part.shape,
+      centre: [middle.x, middle.y, middle.z],
+    });
+  }
+  return out;
+}
+
+/** One colour per gesture, so what a mark means is readable without reading it. */
+const MARK_COLOR: Record<Gesture, string> = {
+  circle: '#7fd2c8',
+  remove: '#e09a8a',
+  arrow: '#e8d18a',
+  sketch: '#a9d67f',
+};
+
+/**
+ * One mark as scene objects.
+ *
+ * Drawn through the model rather than into it — `depthTest: false` and a high
+ * render order — because a ring round a part is about the part's silhouette,
+ * and a ring that disappeared into the shoulder it was drawn on would be
+ * pointing at nothing. A circle closes its loop; an arrow gets a head, since a
+ * line with no head does not say which end of it is the point.
+ */
+function markObject(mark: DrawnMark): T.Object3D {
+  const group = new T.Group();
+  group.userData.markId = mark.id;
+  const color = new T.Color(MARK_COLOR[mark.gesture]);
+  const material = new T.LineBasicMaterial({
+    color,
+    depthTest: false,
+    transparent: true,
+    opacity: 0.95,
+  });
+  const points = mark.worldPoints.map((p) => new T.Vector3(p[0], p[1], p[2]));
+  const geometry = new T.BufferGeometry().setFromPoints(points);
+  const line =
+    mark.gesture === 'circle'
+      ? new T.LineLoop(geometry, material)
+      : new T.Line(geometry, material);
+  line.renderOrder = 123;
+  line.userData.markId = mark.id;
+  group.add(line);
+  if (mark.gesture === 'arrow' && points.length >= 2) {
+    const tip = points[points.length - 1];
+    const before = points[points.length - 2];
+    const span = tip.distanceTo(points[0]);
+    const head = new T.Mesh(
+      new T.ConeGeometry(Math.max(span * 0.06, 0.01), Math.max(span * 0.16, 0.03), 8),
+      new T.MeshBasicMaterial({ color, depthTest: false, transparent: true }),
+    );
+    head.position.copy(tip);
+    head.quaternion.setFromUnitVectors(
+      new T.Vector3(0, 1, 0),
+      tip.clone().sub(before).normalize(),
+    );
+    head.renderOrder = 123;
+    head.userData.markId = mark.id;
+    group.add(head);
+  }
+  return group;
+}
+
+/** Give a mark's objects back to the GPU. */
+function disposeMark(object: T.Object3D) {
+  object.traverse((child) => {
+    const mesh = child as T.Mesh;
+    mesh.geometry?.dispose();
+    const material = mesh.material;
+    if (Array.isArray(material)) material.forEach((m) => m.dispose());
+    else material?.dispose();
+  });
 }
 
 function worldBounds(model: T.Object3D, path: Path) {
@@ -860,6 +1021,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
             h = v.handles.visible,
             b = v.bound.visible,
             o = v.hoverBox.visible,
+            // A reviewer's scribbles are the least permanent thing on screen,
+            // and a thumbnail is cached: one with a ring round the helmet in it
+            // would outlive the note that put it there.
+            m = v.marks.visible,
             // A comparison is a thing you are doing, not a property of the
             // asset — a thumbnail with last build's silhouette baked into it
             // would be wrong in the list for as long as it was cached.
@@ -874,6 +1039,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           v.handles.visible = false;
           v.bound.visible = false;
           v.hoverBox.visible = false;
+          v.marks.visible = false;
           if (v.ghost) v.ghost.visible = false;
           v.transform.getHelper().visible = false;
           v.renderer.render(v.scene, v.camera);
@@ -885,6 +1051,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           v.handles.visible = h;
           v.bound.visible = b;
           v.hoverBox.visible = o;
+          v.marks.visible = m;
           if (v.ghost) v.ghost.visible = w;
           v.transform.getHelper().visible = t;
           // Back to whatever the viewport was showing, filters and all —
@@ -901,6 +1068,33 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         },
         view(which) {
           runtime.current?.view(which);
+        },
+        resolveStroke(points) {
+          const v = runtime.current;
+          const spec = live.current.spec;
+          const el = canvas.current;
+          if (!v?.model || !spec || !el) return null;
+          const rect = el.getBoundingClientRect();
+          if (!rect.width || !rect.height) return null;
+          const size = { width: rect.width, height: rect.height };
+          return resolveDrawnStroke(
+            points,
+            strokeWorld({
+              camera: v.camera,
+              size,
+              target: v.controls.target,
+              hit: (at) =>
+                hitModel(
+                  v.model!,
+                  v.camera,
+                  new T.Vector2(
+                    (at.x / size.width) * 2 - 1,
+                    -(at.y / size.height) * 2 + 1,
+                  ),
+                ),
+            }),
+            partCentres(v.model, spec),
+          );
         },
         front() {
           const v = runtime.current;
@@ -1017,6 +1211,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
       // now, and should stay put while the bone is dragged off it.
       scene.add(bound);
 
+      // Review marks. Added to the scene, never to the model: see `Runtime`.
+      const marks = new T.Group();
+      scene.add(marks);
+
       const transform = new TransformControls(camera, canvas.current);
       transform.size = 0.95;
       transform.space = 'world';
@@ -1034,6 +1232,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         hoverBox,
         handles,
         bound,
+        marks,
         handleSize: 0.02,
         // Replaced by the render loop below, which is the only thing that can
         // actually grant frames; until then a wake is a no-op, and the loop
@@ -1497,6 +1696,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           handles,
           bound,
           hoverBox,
+          marks,
           transform.getHelper(),
         ];
         if (v.ghost) hidden.push(v.ghost);
@@ -1840,19 +2040,32 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           .intersectObject(v.model, true)
           .find((found) => found.object.visible);
         if (!hit) return null;
-        const mesh = hit.object as T.Mesh;
-        const direct = mesh.userData.specPath as Path | undefined;
-        if (direct) return { kind: 'part', path: [...direct] };
-        const owners = mesh.geometry?.userData.surfaceOwners as
-          | { index: Uint16Array; paths: (Path | undefined)[] }
-          | undefined;
-        if (owners && hit.face) {
-          for (const vertex of [hit.face.a, hit.face.b, hit.face.c]) {
-            const path = owners.paths[owners.index[vertex]];
-            if (path) return { kind: 'part', path: [...path] };
-          }
-        }
-        return null;
+        const path = pathOfHit(hit);
+        return path ? { kind: 'part', path } : null;
+      }
+      /**
+       * The drawn mark under the pointer, if any.
+       *
+       * Its own raycaster because a line is a line: picking one needs a
+       * generous threshold in world units, and lending the picker's raycaster
+       * that threshold would make every click on the model slightly wrong.
+       */
+      const markCaster = new T.Raycaster();
+      function markAt(clientX: number, clientY: number): string | null {
+        if (!v.marks.children.length || !v.marks.visible) return null;
+        const rect = el.getBoundingClientRect();
+        markCaster.params.Line = { threshold: Math.max(v.handleSize * 2, 0.02) };
+        markCaster.setFromCamera(
+          new T.Vector2(
+            ((clientX - rect.left) / rect.width) * 2 - 1,
+            -((clientY - rect.top) / rect.height) * 2 + 1,
+          ),
+          camera,
+        );
+        const found = markCaster
+          .intersectObject(v.marks, true)
+          .find((hit) => hit.object.userData.markId);
+        return found ? String(found.object.userData.markId) : null;
       }
       function pointerUp(event: PointerEvent) {
         if (dragged) {
@@ -1862,6 +2075,15 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         if (event.button !== 0 || onGizmo || transform.dragging) return;
         if (Math.hypot(event.clientX - downX, event.clientY - downY) > 4) return;
         if (event.shiftKey || !live.current.spec || !v.model) return;
+        // A mark is drawn over the part it is about, so it has to be asked
+        // first — otherwise clicking a ring would select whatever it rings,
+        // which is nearly the right answer and never the one that opens the
+        // note that says why the ring is there.
+        const mark = markAt(event.clientX, event.clientY);
+        if (mark) {
+          live.current.onMarkPick?.(mark);
+          return;
+        }
         const pick = live.current.onSelect;
         if (!pick) return;
         pick(pickAt(event.clientX, event.clientY));
@@ -2406,6 +2628,28 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           (material as T.MeshStandardMaterial).wireframe = Boolean(props.ghostWire);
       });
     }, [props.ghostWire, ghostSource]);
+
+    /**
+     * The reviewer's marks, rebuilt whenever the list changes.
+     *
+     * Rebuilt whole rather than diffed: there are a handful of these, they are
+     * two dozen points each, and a resolved note leaving the list has to take
+     * its line with it — which a diff would have to be told about anyway.
+     */
+    const marks = props.marks;
+    useEffect(() => {
+      const v = runtime.current;
+      if (!v) return;
+      // Not a `for…of` over the children: removing from the list being walked
+      // is how half of them get left behind.
+      while (v.marks.children.length) {
+        const child = v.marks.children[0];
+        v.marks.remove(child);
+        disposeMark(child);
+      }
+      for (const mark of marks ?? []) v.marks.add(markObject(mark));
+      v.wake();
+    }, [marks]);
     // Declared after the rebuild so it runs after it, and watching the same
     // inputs: the rebuild drops isolation to give the old meshes their
     // materials back, and this puts it on the meshes that replaced them.

@@ -18,6 +18,7 @@ import { pathKey, type Path, type Selection } from '@/lib/spec-edit';
 import {
   countOpen,
   newNote,
+  noteId,
   setStatus,
   removeNote,
   sortNotes,
@@ -25,19 +26,6 @@ import {
 } from './notes';
 import type { Notes, SaveState } from './use-notes';
 import { RowSkeleton } from './loading';
-
-/**
- * A note's id.
- *
- * Only has to be unique inside one review file, and the CLI quotes it back
- * when it resolves one — so a readable stamp beats a UUID nobody can match up
- * against a line in a terminal. `randomUUID` is absent on insecure origins.
- */
-let minted = 0;
-function noteId(): string {
-  minted += 1;
-  return `n${Date.now().toString(36)}${minted.toString(36)}`;
-}
 
 const SAVE_LABEL: Record<SaveState, string> = {
   saved: 'saved',
@@ -182,6 +170,13 @@ export function NotesPanel({
                 </button>
               ) : (
                 <span className="note-part note-part-asset">whole asset</span>
+              )}
+              {/* A drawn note carries its own line in the viewport; saying
+                  which gesture it was is what connects the two. */}
+              {note.mark && (
+                <span className="note-mark" title="Drawn in the viewport">
+                  {note.mark.gesture}
+                </span>
               )}
               <time className="note-time" dateTime={note.at}>
                 {time(note.at)}

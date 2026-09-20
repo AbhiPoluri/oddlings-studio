@@ -626,6 +626,7 @@ export function StudioShell() {
           view={view}
           context={context}
           ghost={ghost}
+          notes={notes}
           onModel={onModel}
         />
 
