@@ -410,8 +410,11 @@ function markParts(
   const inside = parts
     .filter((part) => inPolygon(points, world.project(part.centre)))
     .map((part) => named(part.path));
+  // What is under the middle of the loop leads, because `parts[0]` is what the
+  // note pins itself to — and a ring round a head should pin to the head, not
+  // to whichever enclosed part the spec happens to list first.
   const middle = world.hit(centroid(points));
-  return dedupe(middle?.path ? [...inside, named(middle.path)] : inside);
+  return dedupe(middle?.path ? [named(middle.path), ...inside] : inside);
 }
 
 const NAMES: Record<Gesture, string> = {

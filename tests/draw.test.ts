@@ -248,6 +248,13 @@ describe('anchoring against a camera', () => {
     const mark = resolveStroke(stroke, world(slab()), PARTS)!;
     expect(mark.gesture).toBe('circle');
     expect(mark.parts.map((p) => p.name)).toEqual(['torso']);
+    // The thing under the middle of the ring leads, because the note pins
+    // itself to the first of these and a ring round a head means the head.
+    const wider = resolveStroke(ring({ x: middle.x, y: middle.y, r: 90 }), world(slab()), [
+      { path: [9], name: 'shoulder-pad', centre: [0.35, 1.6, 0] },
+      ...PARTS,
+    ])!;
+    expect(wider.parts[0].name).toBe('torso');
     // On the model, not floating in front of it or behind it.
     for (const point of mark.worldPoints) expect(point[2]).toBeCloseTo(0, 2);
     expect(mark.worldPoints.length).toBeLessThanOrEqual(MAX_POINTS);
