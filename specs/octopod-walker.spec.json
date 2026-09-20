@@ -442,7 +442,11 @@
         0
       ],
       "color": "#ff2418",
-      "detail": 16
+      "detail": 16,
+      "material": {
+        "emissive": "#ff2418",
+        "emissiveStrength": 2.5
+      }
     },
     {
       "name": "eye-core",
@@ -458,7 +462,11 @@
         0.41000000000000003
       ],
       "color": "#fff1c8",
-      "detail": 6
+      "detail": 6,
+      "material": {
+        "emissive": "#fff1c8",
+        "emissiveStrength": 3
+      }
     },
     {
       "name": "eye-ring",
