@@ -7,6 +7,7 @@ import { buildAsset, objBundle, stats } from '../lib/asset-build';
 import { toGLB, clipsFor, unityReadme } from '../lib/asset-bundle';
 import { buildSpec, type AssetSpec } from '../lib/asset-spec';
 import { auditModel, type Audit } from '../lib/asset-audit';
+import { withClipFindings } from '../lib/asset-audit-clips';
 import { readySurface } from '../lib/asset-surface';
 import { splitUvSeams } from '../lib/asset-uv';
 import { bakeSurface } from '../lib/asset-bake';
@@ -69,7 +70,7 @@ export async function writeAsset(
   const model = isRecipe ? buildAsset(source.recipe) : buildSpec(source.spec);
   const clips = isRecipe ? clipsFor(source.recipe) : specClips(source.spec);
   const measured = stats(model);
-  const audit = auditModel(model, {
+  const geometry = auditModel(model, {
     // Only a character rig should face the rig checks. A joint rig has two
     // bones and no legs, so asking whether anything binds to a thigh would
     // report a swinging tire as broken.
@@ -84,6 +85,9 @@ export async function writeAsset(
           ]),
         ),
   });
+  // A generator's model has no spec to pose, so only an authored one is
+  // sampled for parts that run through each other while a clip plays.
+  const audit = isRecipe ? geometry : withClipFindings(geometry, source.spec);
   // Bake the atlas, then cut the uv seams. After the audit on purpose: the
   // audit reads the welded index to prove the shell is closed, and a uv seam
   // is a tear in that index. The bake comes first because it reads the uv plan
