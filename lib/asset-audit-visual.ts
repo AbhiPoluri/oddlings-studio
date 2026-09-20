@@ -275,7 +275,7 @@ export function auditVisual(
     // a model has dozens of those. The pairs worth a warning are the ones
     // where a shape large enough to be read is not being read.
     if (reading.distance >= threshold || reading.smaller < minArea) continue;
-    const key = `${reading.a} ${reading.b}`;
+    const key = `${reading.a}\u0000${reading.b}`;
     const held = worst.get(key);
     if (!held || reading.border > held.border) worst.set(key, reading);
   }
