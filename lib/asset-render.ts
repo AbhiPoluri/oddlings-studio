@@ -1,5 +1,13 @@
 import * as T from 'three';
 import { encodePng } from './asset-png';
+import {
+  bakeSurface,
+  packMaps,
+  paintsTexels,
+  unpackMaps,
+  type BakedMaps,
+} from './asset-bake';
+import { type ColorAtlas, type UvLayout } from './asset-uv';
 
 /**
  * A software rasteriser for finished models.
@@ -141,6 +149,12 @@ type Soup = {
   color: Float32Array;
   /** 3 ints a triangle: the part index of each vertex. */
   owner: Int32Array;
+  /** 6 floats a triangle: the atlas uv of each corner. Zero where unused. */
+  uv: Float32Array;
+  /** 1 a triangle: whether to read `atlas` rather than `color`. */
+  textured: Uint8Array;
+  /** The baked colour atlas, when this model has paint worth sampling. */
+  atlas: ColorAtlas | null;
   parts: RenderPart[];
   count: number;
 };
@@ -149,6 +163,76 @@ type SurfaceOwners = {
   index: Uint16Array;
   paths: (number[] | undefined)[];
 };
+
+/**
+ * The baked colour atlas, if this model has one worth reading.
+ *
+ * Paint is evaluated per texel, not per vertex: a stripe, a brick course or a
+ * rust bloom is exactly as sharp as the atlas, and on a decimated shell that
+ * is far sharper than the vertex colours the same model carries. Rendering
+ * from the attribute therefore shows a smear where the studio and the shipped
+ * GLB both show crisp bands, which is the one thing a render is for.
+ *
+ * Gated on `paintsTexels` rather than on being a surface build at all. An
+ * unpainted surface — including one wearing a material preset, which varies
+ * roughness and metalness but not colour — bakes to the same flat colours the
+ * vertices already hold, so the bake would be a few hundred milliseconds spent
+ * to arrive back where we started.
+ *
+ * Cached the way the studio caches it, on `geometry.userData.bakedMaps`, so a
+ * model the build worker already baked is not baked again, and the six extra
+ * axis views the visual audit renders pay for the atlas once between them.
+ */
+function atlasFor(model: T.Object3D): ColorAtlas | null {
+  if (!paintsTexels(model)) return null;
+  let held: BakedMaps | undefined;
+  model.traverse((object) => {
+    if (held || !(object instanceof T.Mesh)) return;
+    held = object.geometry.userData.bakedMaps as BakedMaps | undefined;
+  });
+  if (held) return unpackMaps(held);
+  const baked = bakeSurface(model);
+  if (!baked) return null;
+  const maps = packMaps(baked);
+  model.traverse((object) => {
+    if (!(object instanceof T.Mesh)) return;
+    if (!object.geometry.userData.surfacePaint) return;
+    object.geometry.userData.bakedMaps = maps;
+  });
+  return baked;
+}
+
+/**
+ * The uv of each of a triangle's corners, however this mesh stores them.
+ *
+ * Before the export boundary the unwrap is a plan on `userData.uvLayout` with
+ * one uv per corner already, and the mesh is still welded — which is the state
+ * a built model is in, and the reason nothing here calls `splitUvSeams`. After
+ * it the uvs are on the vertices. Both answer the same question.
+ */
+function uvReader(geometry: T.BufferGeometry) {
+  const layout = geometry.userData.uvLayout as UvLayout | undefined;
+  if (layout?.corners.length)
+    return (corner: number) =>
+      [layout.corners[corner * 2], layout.corners[corner * 2 + 1]] as const;
+  const uv = geometry.attributes.uv as T.BufferAttribute | undefined;
+  const index = geometry.index;
+  if (!uv || !index) return null;
+  return (corner: number) => {
+    const vertex = index.getX(corner);
+    return [uv.getX(vertex), uv.getY(vertex)] as const;
+  };
+}
+
+/** sRGB byte to linear, all 256 of them, so the pixel loop never calls pow. */
+const LINEAR = (() => {
+  const table = new Float32Array(256);
+  for (let i = 0; i < 256; i++) {
+    const v = i / 255;
+    table[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  }
+  return table;
+})();
 
 function trianglesOf(geometry: T.BufferGeometry) {
   const position = geometry.attributes.position as T.BufferAttribute;
@@ -171,10 +255,14 @@ function readModel(model: T.Object3D): Soup {
     if (object instanceof T.Mesh) total += trianglesOf(object.geometry);
   });
 
+  const atlas = atlasFor(model);
   const soup: Soup = {
     position: new Float32Array(total * 9),
     color: new Float32Array(total * 9),
     owner: new Int32Array(total * 3),
+    uv: new Float32Array(atlas ? total * 6 : 0),
+    textured: new Uint8Array(atlas ? total : 0),
+    atlas,
     parts: [],
     count: 0,
   };
@@ -206,10 +294,23 @@ function readModel(model: T.Object3D): Soup {
       : object.material;
     const flat = (material as T.MeshStandardMaterial | undefined)?.color;
     const index = geometry.index;
+    // Only the mesh the paint was baked from reads the atlas. A model can
+    // carry a fused shell and loose faceted props at once, and the props keep
+    // their material colours.
+    const uvAt =
+      atlas && geometry.userData.surfacePaint ? uvReader(geometry) : null;
     const faces = trianglesOf(geometry);
     for (let t = 0; t < faces; t++) {
       const at = soup.count * 9;
       const seen = new Set<number>();
+      if (uvAt) {
+        soup.textured[soup.count] = 1;
+        for (let corner = 0; corner < 3; corner++) {
+          const [u, v] = uvAt(t * 3 + corner);
+          soup.uv[soup.count * 6 + corner * 2] = u;
+          soup.uv[soup.count * 6 + corner * 2 + 1] = v;
+        }
+      }
       for (let corner = 0; corner < 3; corner++) {
         const v = index ? index.getX(t * 3 + corner) : t * 3 + corner;
         vertex.fromBufferAttribute(position, v).applyMatrix4(object.matrixWorld);
@@ -340,6 +441,9 @@ function renderView(
   const part = new Int32Array(size * size).fill(-1);
   const triangle = new Int32Array(size * size).fill(-1);
   const depth = new Float32Array(size * size).fill(Infinity);
+  const texels = soup.atlas?.rgba;
+  const aw = soup.atlas?.width ?? 0;
+  const ah = soup.atlas?.height ?? 0;
 
   for (let t = 0; t < soup.count; t++) {
     const a = t * 3,
@@ -395,6 +499,14 @@ function renderView(
     const az = cam[a * 3 + 2],
       bz = cam[b * 3 + 2],
       cz = cam[c * 3 + 2];
+    const textured = soup.textured[t] === 1;
+    const uvAt = t * 6;
+    const u0 = textured ? soup.uv[uvAt] : 0,
+      v0 = textured ? soup.uv[uvAt + 1] : 0,
+      u1 = textured ? soup.uv[uvAt + 2] : 0,
+      v1 = textured ? soup.uv[uvAt + 3] : 0,
+      u2 = textured ? soup.uv[uvAt + 4] : 0,
+      v2 = textured ? soup.uv[uvAt + 5] : 0;
     for (let y = y0; y <= y1; y++) {
       const py = y + 0.5;
       for (let x = x0; x <= x1; x++) {
@@ -420,19 +532,39 @@ function renderView(
         // triangle that spans them.
         const near = w0 >= w1 ? (w0 >= w2 ? 0 : 2) : w1 >= w2 ? 1 : 2;
         part[at] = soup.owner[t * 3 + near];
-        const base = t * 9;
-        const r =
-          w0 * soup.color[base] +
-          w1 * soup.color[base + 3] +
-          w2 * soup.color[base + 6];
-        const g =
-          w0 * soup.color[base + 1] +
-          w1 * soup.color[base + 4] +
-          w2 * soup.color[base + 7];
-        const bl =
-          w0 * soup.color[base + 2] +
-          w1 * soup.color[base + 5] +
-          w2 * soup.color[base + 8];
+        let r: number, g: number, bl: number;
+        if (textured) {
+          // Nearest texel. The atlas is drawn at a thousand texels a side and
+          // the frame at five hundred pixels, so it is already oversampled;
+          // filtering would cost a pass and show nothing.
+          const u = w0 * u0 + w1 * u1 + w2 * u2;
+          const v = w0 * v0 + w1 * v1 + w2 * v2;
+          // Row 0 of an atlas is v = 1, which is the convention every writer
+          // downstream of the bake uses. Clamped because a collapsed uv
+          // triangle — decimation leaves a few — can land just outside.
+          const tx = Math.min(aw - 1, Math.max(0, Math.floor(u * aw)));
+          const ty = Math.min(ah - 1, Math.max(0, Math.floor((1 - v) * ah)));
+          const texel = (ty * aw + tx) * 4;
+          // The bake writes sRGB bytes; light is a linear factor. Multiplying
+          // the byte directly would darken the pattern by a gamma.
+          r = LINEAR[texels![texel]];
+          g = LINEAR[texels![texel + 1]];
+          bl = LINEAR[texels![texel + 2]];
+        } else {
+          const base = t * 9;
+          r =
+            w0 * soup.color[base] +
+            w1 * soup.color[base + 3] +
+            w2 * soup.color[base + 6];
+          g =
+            w0 * soup.color[base + 1] +
+            w1 * soup.color[base + 4] +
+            w2 * soup.color[base + 7];
+          bl =
+            w0 * soup.color[base + 2] +
+            w1 * soup.color[base + 5] +
+            w2 * soup.color[base + 8];
+        }
         rgba[at * 4] = Math.round(toSrgb(r * light) * 255);
         rgba[at * 4 + 1] = Math.round(toSrgb(g * light) * 255);
         rgba[at * 4 + 2] = Math.round(toSrgb(bl * light) * 255);

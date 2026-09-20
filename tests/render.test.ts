@@ -6,6 +6,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as T from 'three';
 import { buildSpec, parseSpec, type AssetSpecInput } from '../lib/asset-spec';
 import { readySurface } from '../lib/asset-surface';
 import {
@@ -184,6 +185,129 @@ describe('oddlings render', () => {
     const result = await oddlings(['render', 'specs/wizard.spec.json', '--views', 'isometric']);
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('three-quarter');
+  }, 60000);
+});
+
+/**
+ * A striped post, and the same post without the stripes.
+ *
+ * Paint is evaluated per texel, and a stripe is a hard edge with no relation
+ * to where the vertices fell — which is exactly what an interpolated vertex
+ * colour cannot carry. The two specs differ in one field.
+ */
+const STRIPES =
+  "s.stripes(y * size[1], 0.25) > 0.5 ? s.rgb('#f0e4c8') : s.rgb('#b02028')";
+
+function post(painted: boolean): AssetSpecInput {
+  return {
+    version: 1,
+    name: 'Post',
+    kind: 'prop',
+    surface: { detail: 48, blend: 0.08 },
+    parts: [
+      {
+        name: 'post',
+        shape: 'box',
+        size: [0.6, 2, 0.6],
+        position: [0, 1, 0],
+        color: '#b02028',
+        ...(painted ? { paint: STRIPES } : {}),
+      },
+    ],
+  };
+}
+
+/** Distinct colours among the pixels the model covers. */
+function uniqueColours(view: { part: Int32Array; rgba: Uint8Array }) {
+  const seen = new Set<number>();
+  for (let i = 0; i < view.part.length; i++)
+    if (view.part[i] >= 0)
+      seen.add(
+        (view.rgba[i * 4] << 16) | (view.rgba[i * 4 + 1] << 8) | view.rgba[i * 4 + 2],
+      );
+  return seen.size;
+}
+
+/** Light-to-dark flips down the middle column: one per band edge crossed. */
+function bandEdges(view: { size: number; part: Int32Array; rgba: Uint8Array }) {
+  const x = Math.floor(view.size / 2);
+  let last = -1;
+  let edges = 0;
+  for (let y = 0; y < view.size; y++) {
+    const at = y * view.size + x;
+    if (view.part[at] < 0) continue;
+    const lit =
+      view.rgba[at * 4] + view.rgba[at * 4 + 1] + view.rgba[at * 4 + 2] > 420
+        ? 1
+        : 0;
+    if (last >= 0 && lit !== last) edges++;
+    last = lit;
+  }
+  return edges;
+}
+
+describe('painted surfaces render from the baked atlas', () => {
+  test('stripes arrive as bands, and the unpainted post has none', () => {
+    const painted = renderModel(buildSpec(parseSpec(post(true))), {
+      size: 384,
+      views: ['front'],
+    }).views[0];
+    const plain = renderModel(buildSpec(parseSpec(post(false))), {
+      size: 384,
+      views: ['front'],
+    }).views[0];
+
+    expect(uniqueColours(painted)).toBeGreaterThan(uniqueColours(plain));
+    // The decisive number: a stripe pattern crosses the column many times and
+    // a flat colour never does.
+    expect(bandEdges(painted)).toBeGreaterThanOrEqual(10);
+    expect(bandEdges(plain)).toBe(0);
+  }, 60000);
+
+  test('the bands are crisp, which is what the atlas buys over the vertices', () => {
+    const model = buildSpec(parseSpec(post(true)));
+    const fromAtlas = renderModel(model, { size: 384, views: ['front'] }).views[0];
+    // The same geometry with the paint record removed falls back to the vertex
+    // colours, which carry the same pattern smeared across every triangle that
+    // straddles a band. A smear is hundreds of interpolated shades; bands are
+    // two colours and a little shading.
+    model.traverse((object) => {
+      if (object instanceof T.Mesh) {
+        delete object.geometry.userData.surfacePaint;
+        delete object.geometry.userData.bakedMaps;
+      }
+    });
+    const fromVertices = renderModel(model, { size: 384, views: ['front'] })
+      .views[0];
+
+    expect(bandEdges(fromVertices)).toBeGreaterThanOrEqual(10);
+    expect(uniqueColours(fromAtlas)).toBeLessThan(200);
+    expect(uniqueColours(fromVertices)).toBeGreaterThan(500);
+  }, 60000);
+
+  test('the atlas is baked once and then cached on the geometry', () => {
+    const model = buildSpec(parseSpec(post(true)));
+    const first = Date.now();
+    const cold = renderModel(model, { size: 256, views: ['front'] });
+    const coldMs = Date.now() - first;
+    const warm = renderModel(model, { size: 256, views: ['front'] });
+    console.log(
+      `striped post: ${cold.triangles.toLocaleString()} tris · bake + render ${coldMs} ms · cached render ${warm.ms} ms`,
+    );
+    let cached = false;
+    model.traverse((object) => {
+      if (object instanceof T.Mesh && object.geometry.userData.bakedMaps)
+        cached = true;
+    });
+    expect(cached).toBe(true);
+    expect(warm.ms).toBeLessThan(coldMs);
+  }, 60000);
+
+  test('a painted model renders to the same bytes twice', () => {
+    const spec = parseSpec(post(true));
+    const one = renderPngs(buildSpec(spec), { size: 192, views: ['front'] });
+    const two = renderPngs(buildSpec(spec), { size: 192, views: ['front'] });
+    expect(hash(one.images[0].png)).toBe(hash(two.images[0].png));
   }, 60000);
 });
 
