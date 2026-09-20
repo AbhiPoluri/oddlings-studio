@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import * as T from 'three';
 import { zipSync, strToU8 } from 'fflate';
 import { buildAsset, objBundle, stats } from '../lib/asset-build';
-import { toGLB, clipsFor, unityReadme } from '../lib/asset-bundle';
+import { toGLB, clipsFor, unityReadme, skeletonNotes } from '../lib/asset-bundle';
 import { buildSpec, type AssetSpec } from '../lib/asset-spec';
 import { auditModel, type Audit } from '../lib/asset-audit';
 import { withClipFindings } from '../lib/asset-audit-clips';
@@ -159,6 +159,7 @@ export async function writeAsset(
                   extras.map((extra) =>
                     extra.name.slice(extra.name.lastIndexOf('-') + 1, -4),
                   ),
+                  skeletonNotes(model, clips),
                 ),
               ),
               ...(png ? { [`${base}/${base}.png`]: png } : {}),
@@ -219,6 +220,17 @@ export async function inspectGLB(path: string) {
   const { readFile } = await import('node:fs/promises');
   const buffer = await readFile(resolve(path));
   const loader = new GLTFLoader();
+  // Node has no Image, so three's texture loader cannot decode the embedded
+  // PNGs and warns for each one. Inspection reads counts, bones, clips and
+  // extras, never pixels, so a plugin answers every texture with an empty one
+  // before the parser's own loader is asked.
+  loader.register(
+    () =>
+      ({
+        name: 'oddlings-inspect-no-textures',
+        loadTexture: () => Promise.resolve(new T.Texture()),
+      }) as unknown as import('three/addons/loaders/GLTFLoader.js').GLTFLoaderPlugin,
+  );
   const gltf = await loader.parseAsync(
     buffer.buffer.slice(
       buffer.byteOffset,

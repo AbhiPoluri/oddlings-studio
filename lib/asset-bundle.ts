@@ -90,6 +90,55 @@ export function clipsFor(recipe: Recipe) {
  * same pack built in the studio and on the CLI differs, and a README promising
  * a file that is not in the zip is worse than one that never mentions it.
  */
+/**
+ * What the GLB actually carries, for the README to describe. Counted off the
+ * built model and the clips going into the file, not off what a creature rig
+ * would carry, because a joints mechanism has its own bones and its own clip
+ * names and a prop has neither.
+ */
+export type SkeletonNotes = {
+  kind: 'rig' | 'joints' | 'static';
+  bones: number;
+  joints: number;
+  clips: string[];
+};
+
+export function skeletonNotes(
+  model: T.Object3D,
+  clips: T.AnimationClip[],
+): SkeletonNotes {
+  let bones = 0;
+  model.traverse((o) => {
+    if (o instanceof T.Bone) bones++;
+  });
+  const spec = model.userData.spec as
+    | { rig?: unknown; joints?: unknown[] }
+    | undefined;
+  const joints = Array.isArray(spec?.joints) ? spec.joints.length : 0;
+  const kind = bones === 0 ? 'static' : joints > 0 && !spec?.rig ? 'joints' : 'rig';
+  return { kind, bones, joints, clips: clips.map((clip) => clip.name) };
+}
+
+function skeletonSentence(skeleton?: SkeletonNotes) {
+  if (!skeleton)
+    return 'The GLB includes a 14-bone skinned Generic rig and Idle, Walk, Jump, Wave, and Attack clips when the creature rig is enabled.';
+  const list = (names: string[]) =>
+    names.length > 1
+      ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+      : names[0];
+  const clips = skeleton.clips.length
+    ? `the ${skeleton.clips.length === 1 ? 'clip' : 'clips'} ${list(skeleton.clips)}`
+    : 'no animation clips';
+  switch (skeleton.kind) {
+    case 'static':
+      return 'The GLB is the same geometry as a plain hierarchy: no skeleton, no skin weights, no animation clips.';
+    case 'joints':
+      return `The GLB includes a ${skeleton.bones}-bone skeleton for a mechanism of ${skeleton.joints} joints under a Root bone, skinned as Generic, and ${clips}. Joints that share a clip name move in one clip; a joint with no clip name exports its motion under its own name. The skeleton is also written as data at scenes[0].extras.oddlings (bones, pivots, chains and leaf end points) for driving it from code.`;
+    default:
+      return `The GLB includes a ${skeleton.bones}-bone skinned Generic rig and ${clips}. The skeleton is also written as data at scenes[0].extras.oddlings (bones, pivots, chains and leaf end points).`;
+  }
+}
+
 export function unityReadme(
   name: string,
   textured = false,
@@ -99,6 +148,7 @@ export function unityReadme(
    * keeps the notes for those assets the notes they always were.
    */
   channels: string[] = [],
+  skeleton?: SkeletonNotes,
 ) {
   return `${name} — Oddlings Studio
 
@@ -109,7 +159,7 @@ UNITY IMPORT
 4. Drag the imported model into your scene. Save as a prefab if desired.
 
 Scale: numeric coordinates are meters; Y is up. The model faces +Z before any importer axis conversion.
-The OBJ is a static mesh with flat normals and solid-color materials. The GLB includes a 14-bone skinned Generic rig and Idle, Walk, Jump, Wave, and Attack clips when the creature rig is enabled. Environments are static. Every mesh carries a UV0 channel.${
+The OBJ is a static mesh with flat normals and solid-color materials. ${skeletonSentence(skeleton)} Every mesh carries a UV0 channel.${
     textured
       ? ` A baked color atlas ships beside the model as ${fileName(name)}.png, wired to the OBJ through map_Kd. An asset that paints its surface carries the same atlas inside the GLB as a real texture, in place of vertex colors — glTF multiplies the two, so a model with both would show every pattern twice over. An asset of flat parts keeps its vertex colors and embeds nothing.`
       : ''
@@ -126,7 +176,11 @@ EDIT AGAIN
 Import recipe.json into Oddlings Studio to recover exactly these generator settings.
 
 GLB ALTERNATIVE
-The included GLB preserves the scene hierarchy, skin weights, bones and animation clips when enabled. Unity needs a glTF importer, such as Unity glTFast. Install com.unity.cloud.gltfast with Package Manager, then place the GLB in Assets. Treat this non-humanoid rig as Generic, not Humanoid. Use imported clips with an Animator or the importer animation component according to importer settings. Walk is in-place (no forward root motion). The rig is a starter body rig, not a facial rig.
+The included GLB preserves the scene hierarchy, skin weights, bones and animation clips when enabled. Unity needs a glTF importer, such as Unity glTFast. Install com.unity.cloud.gltfast with Package Manager, then place the GLB in Assets.${
+    skeleton?.kind === 'static'
+      ? ''
+      : ` Treat this non-humanoid rig as Generic, not Humanoid. glTFast imports the clips as Mecanim clips and leaves an Animator with no controller, so add the clips to an Animator Controller (or switch the importer to Legacy). Clips are in place (no forward root motion).${skeleton?.kind === 'joints' ? '' : ' The rig is a starter body rig, not a facial rig.'}`
+  }
 https://github.com/Unity-Technologies/com.unity.cloud.gltfast
 `;
 }
@@ -147,7 +201,9 @@ export async function unityPack(recipe: Recipe) {
         [`${base}/${base}.obj`]: strToU8(obj),
         [`${base}/${base}.mtl`]: strToU8(mtl),
         [`${base}/recipe.json`]: strToU8(JSON.stringify(recipe, null, 2)),
-        [`${base}/README.txt`]: strToU8(unityReadme(recipe.name)),
+        [`${base}/README.txt`]: strToU8(
+          unityReadme(recipe.name, false, [], skeletonNotes(model, clipsFor(recipe))),
+        ),
       },
       { level: 6 },
     );
@@ -240,6 +296,7 @@ export async function specUnityPack(spec: AssetSpec) {
             spec.name,
             Boolean(png),
             extras.map(([path]) => path.slice(path.lastIndexOf('-') + 1, -4)),
+            skeletonNotes(model, specClips(spec)),
           ),
         ),
       },

@@ -146,6 +146,11 @@ export function installCanvasShims() {
   if (global.OffscreenCanvas === undefined)
     global.OffscreenCanvas = NodeOffscreenCanvas;
   if (global.ImageData === undefined) global.ImageData = NodeImageData;
+  // three's GLTFLoader reaches for `self.URL` when it parses a binary blob,
+  // which Node never defines even though its URL is the same object. Point
+  // the worker-style alias at the global so `inspect` can read a GLB back.
+  const g = globalThis as { self?: unknown };
+  if (g.self === undefined) g.self = globalThis;
 }
 
 installCanvasShims();
