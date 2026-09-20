@@ -13,6 +13,7 @@ import { parseRecipe } from '../lib/asset-recipe';
 import { parseSpec, specJSONSchema, SHAPES, RIG_PARTS } from '../lib/asset-spec';
 import { writeAsset, inspectGLB, FORMATS, type Format } from '../node/write-asset';
 import { auditModel, type Audit, type Hint } from '../lib/asset-audit';
+import { withClipFindings } from '../lib/asset-audit-clips';
 import { buildSpec } from '../lib/asset-spec';
 import { readySurface } from '../lib/asset-surface';
 import { markActive } from '../node/active-spec';
@@ -490,7 +491,7 @@ async function main() {
       if (!positional[0]) fail('Pass a spec JSON file to audit.');
       const spec = parseSpec(await readJSON(positional[0]));
       const model = buildSpec(spec);
-      const audit = auditModel(model, {
+      const audit = withClipFindings(auditModel(model, {
         rigged: Boolean(spec.rig),
         scale: spec.scale,
         visual: options.visual,
@@ -500,7 +501,7 @@ async function main() {
             row.part.name ?? row.part.shape,
           ]),
         ),
-      });
+      }), spec);
       const { triangles, meshes, bones } = stats(model);
       // Auditing is the tightest iteration loop there is, so it is the most
       // useful place to keep the studio's preview in step, and the most

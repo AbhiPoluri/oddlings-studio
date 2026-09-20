@@ -23,6 +23,7 @@ import {
   type Format,
 } from '../node/write-asset';
 import { auditModel } from '../lib/asset-audit';
+import { withClipFindings } from '../lib/asset-audit-clips';
 import { buildSpec } from '../lib/asset-spec';
 import { readySurface } from '../lib/asset-surface';
 import { flatten } from '../lib/spec-edit';
@@ -449,7 +450,7 @@ server.registerTool(
     try {
       const parsed = parseSpec(spec);
       return ok(
-        auditModel(buildSpec(parsed), {
+        withClipFindings(auditModel(buildSpec(parsed), {
           rigged: Boolean(parsed.rig),
           scale: parsed.scale,
           visual: Boolean(visual),
@@ -459,7 +460,7 @@ server.registerTool(
               row.part.name ?? row.part.shape,
             ]),
           ),
-        }),
+        }), parsed),
       );
     } catch (error) {
       return problem(error);
