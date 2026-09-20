@@ -519,24 +519,30 @@ export const OVERRIDABLE: readonly string[] = [
 
 /** A part as authored: the thing itself, or a use of a prefab that is one. */
 const authoredPartSchema: z.ZodType = z.lazy(() =>
-  z.union([
-    z
-      .object({
+  z.union(
+    [
+      z
+        .object({
         /**
          * Stamp out the named prefab here. The def's whole subtree lands in
          * this spot with the fields below replacing its own; `size` and every
          * other array is replaced whole, and `children` are ADDED to the
          * def's rather than replacing them.
          */
-        use: z.string().min(1).max(60),
-        ...overridable,
-        children: z.array(authoredPartSchema).max(64).optional(),
-      })
-      .strict(),
-    z
-      .object({ ...basePart, children: z.array(authoredPartSchema).max(64).optional() })
-      .strict(),
-  ]),
+          use: z.string().min(1).max(60),
+          ...overridable,
+          children: z.array(authoredPartSchema).max(64).optional(),
+        })
+        .strict(),
+      z
+        .object({ ...basePart, children: z.array(authoredPartSchema).max(64).optional() })
+        .strict(),
+    ],
+    {
+      error:
+        'A prefab is a part — an object with a "shape" — or a "use" of another prefab.',
+    },
+  ),
 );
 
 /**
@@ -651,15 +657,6 @@ const specShape = {
     version: z.literal(1),
     name: z.string().min(1).max(60),
     kind: z.enum(['creature', 'person', 'prop', 'environment']),
-    /**
-     * Parts written once and stamped out by name, as
-     * `{ "use": "rivet", "position": [...] }` anywhere a part can go.
-     *
-     * For the copies `repeat` cannot place: nine rivets around a pauldron, a
-     * finger used five times by a hand used twice by an arm. Defs may use each
-     * other; a def that comes back round to itself is refused by name.
-     */
-    defs: defsSchema,
     /** Drives jitter and any other randomness, so specs stay reproducible. */
     seed: z.number().int().min(0).max(2147483647).default(0),
     scale: z.number().min(0.01).max(100).default(1),
@@ -813,8 +810,20 @@ const ONE_SKELETON = {
   path: ['joints'],
 };
 
+/**
+ * `defs` sits after `parts` in both schemas on purpose.
+ *
+ * Zod reports issues in the order the shape declares them, and a mistake in a
+ * def shows up twice: once as the def itself, once as every copy it stamped.
+ * The copy is the better error — it is the one `prefabWhere` can name the use
+ * site of — so the parts have to be walked first.
+ */
 export const specSchema = z
-  .object({ ...specShape, parts: z.array(partSchema).min(1).max(200) })
+  .object({
+    ...specShape,
+    parts: z.array(partSchema).min(1).max(200),
+    defs: defsSchema,
+  })
   .strict()
   .refine(oneSkeleton, ONE_SKELETON);
 
@@ -826,7 +835,11 @@ export const specSchema = z
  * sees one and should not be taught to expect it.
  */
 const authoringSchema = z
-  .object({ ...specShape, parts: z.array(authoredPartSchema).min(1).max(200) })
+  .object({
+    ...specShape,
+    parts: z.array(authoredPartSchema).min(1).max(200),
+    defs: defsSchema,
+  })
   .strict()
   .refine(oneSkeleton, ONE_SKELETON);
 

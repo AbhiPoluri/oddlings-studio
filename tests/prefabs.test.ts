@@ -573,6 +573,20 @@ describe('the schema', () => {
     expect(JSON.stringify(schema)).toContain('"use"');
   });
 
+  test('a mistake in a def is reported at the copy it made', () => {
+    // Two issues: the def itself, and every part it stamped. The copy leads,
+    // because that is the one whose message can name the use site.
+    expect(() =>
+      parseSpec({
+        version: 1,
+        name: 'Typo',
+        kind: 'prop',
+        defs: { blob: { name: 'blob', shape: 'blobb' } },
+        parts: [{ use: 'blob' }],
+      }),
+    ).toThrow(/parts\.0\.shape \(from prefab "blob", used at parts\.0\)/);
+  });
+
   test('a validation error names the def and the use site', () => {
     // A bevel that fits the def and not this copy: the numbers only disagree
     // once the override has been applied, which is why the message has to say
@@ -607,6 +621,12 @@ describe('the worked example', () => {
     const audit = auditModel(model, { scale: spec.scale });
     expect(audit.findings.filter((finding) => finding.severity === 'error')).toEqual([]);
     expect(audit.ok).toBe(true);
+  });
+
+  test('a file straight off disk is saved back untouched', () => {
+    // The endpoint is a dev API: it can be handed the file as written, not
+    // only the studio's expanded document, and that is not an edit.
+    expect(contractSaved(demo)).toEqual(demo);
   });
 
   test('saves back as it was written', () => {

@@ -334,7 +334,11 @@ export function contractPrefabs(spec: unknown): unknown {
    * it, any field this pass fails to account for is lost silently, and the
    * first person to find out is whoever opens the file tomorrow.
    */
-  if (!same(parseSpec(out), spec))
+  // Both sides parsed: a spec that has been through `parseSpec` is a fixed
+  // point of it, and one that arrives as it was written — defs and use sites,
+  // straight off disk — normalises to the same thing rather than being refused
+  // for the crime of not having been expanded yet.
+  if (!same(parseSpec(out), parseSpec(spec)))
     throw Error(
       'Cannot save: rewriting the prefab use sites would not reproduce this spec exactly. Detach the edited copies (drop their "prefab" marks) and save again.',
     );
