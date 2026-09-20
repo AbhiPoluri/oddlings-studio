@@ -18,6 +18,7 @@ import {
 import { encodePng } from './asset-png';
 import { rigClips } from './asset-rig';
 import { clipsOf, specClips } from './asset-joints';
+import { rigExtras } from './asset-rig-extras';
 import { disposeScene } from './three-world';
 import { type Recipe, fileName } from './asset-recipe';
 
@@ -62,6 +63,13 @@ export async function toGLB(
   stripBakeData(model);
   const scene = new T.Scene();
   scene.add(model);
+  // The skeleton as data, so a game can drive this file without a sidecar. The
+  // spec rides on the model from `buildSpec`; a recipe carries none and gets no
+  // extras. See lib/asset-rig-extras.ts.
+  scene.userData.oddlings = rigExtras(
+    model.userData.spec as AssetSpec | undefined,
+    model,
+  );
   const output = await new GLTFExporter().parseAsync(scene, {
     binary: true,
     trs: true,
