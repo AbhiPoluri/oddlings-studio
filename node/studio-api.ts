@@ -382,7 +382,11 @@ export function oddlingsStudioApi(): Plugin {
           const { parseSpec } = await import('../lib/asset-spec');
           const parsed = parseSpec(spec);
           await mkdir(dirname(target), { recursive: true });
-          await writeFile(target, JSON.stringify(spec, null, 2) + '\n');
+          // Prefab specs are written back as they were authored — the edit
+          // lands on the use site, or the save is refused rather than
+          // inlining every copy of a def. A spec without `defs` is untouched.
+          const { contractSaved } = await import('../lib/asset-prefabs');
+          await writeFile(target, JSON.stringify(contractSaved(spec), null, 2) + '\n');
           await markActive(parsed.name, parsed, target);
           return reply(response, 200, {
             ok: true,

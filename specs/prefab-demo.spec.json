@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "name": "Lantern Post",
+  "kind": "prop",
+  "seed": 11,
+  "color": "#8d9aa3",
+  "defs": {
+    "bracket": {
+      "name": "bracket",
+      "shape": "box",
+      "size": [0.36, 0.05, 0.05],
+      "bevel": 0.008,
+      "material": "iron",
+      "color": "#4a525a",
+      "children": [
+        {
+          "name": "bracket_stay",
+          "shape": "box",
+          "size": [0.2, 0.04, 0.04],
+          "position": [-0.04, -0.09, 0],
+          "rotation": [0, 0, 42],
+          "color": "#4a525a"
+        },
+        {
+          "name": "lantern_hook",
+          "shape": "cylinder",
+          "size": [0.02, 0.07, 0.02],
+          "position": [0.14, -0.05, 0],
+          "color": "#4a525a"
+        },
+        {
+          "name": "lantern",
+          "shape": "lathe",
+          "size": [0.15, 0.2, 0.15],
+          "position": [0.14, -0.16, 0],
+          "color": "#e8d7a6",
+          "material": "glass",
+          "profile": [
+            [0.0, 0.0],
+            [0.2, 0.04],
+            [0.5, 0.2],
+            [0.5, 0.68],
+            [0.2, 0.86],
+            [0.34, 0.9],
+            [0.0, 1.0]
+          ]
+        }
+      ]
+    }
+  },
+  "parts": [
+    {
+      "name": "post",
+      "shape": "cylinder",
+      "size": [0.12, 2.4, 0.12],
+      "position": [0, 1.2, 0],
+      "taper": 0.8,
+      "material": "iron",
+      "color": "#4a525a",
+      "children": [
+        {
+          "name": "finial",
+          "shape": "octahedron",
+          "size": [0.14, 0.18, 0.14],
+          "position": [0, 1.18, 0],
+          "color": "#4a525a"
+        },
+        { "use": "bracket", "name": "bracket_e", "position": [0.18, 0.95, 0] },
+        {
+          "use": "bracket",
+          "name": "bracket_n",
+          "position": [0, 0.95, 0.18],
+          "rotation": [0, 90, 0]
+        },
+        {
+          "use": "bracket",
+          "name": "bracket_w",
+          "position": [-0.18, 0.95, 0],
+          "rotation": [0, 180, 0]
+        },
+        {
+          "use": "bracket",
+          "name": "bracket_s",
+          "position": [0, 0.95, -0.18],
+          "rotation": [0, -90, 0]
+        }
+      ]
+    },
+    {
+      "name": "base",
+      "shape": "cylinder",
+      "size": [0.42, 0.16, 0.42],
+      "position": [0, 0.08, 0],
+      "taper": 0.7,
+      "material": "stone",
+      "color": "#6b6f73"
+    }
+  ]
+}
