@@ -1,3 +1,15 @@
+<p align="center">
+  <img src="docs/gallery/hero.png" alt="Oddlings Studio — a grave walker, an orc warchief, an elf ranger, a wizard, a pirate sloop, a windmill, a tyrannosaurus, a temple, a rooster and a robot, all built from JSON specs" width="100%">
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-2b2b33?style=flat-square"></a>
+  <img alt="Node 22.13+" src="https://img.shields.io/badge/node-%E2%89%A5%2022.13-2b2b33?style=flat-square">
+  <img alt="800+ tests" src="https://img.shields.io/badge/tests-800%2B-2b2b33?style=flat-square">
+  <img alt="glTF" src="https://img.shields.io/badge/export-glTF%20%C2%B7%20OBJ%20%C2%B7%20Unity-2b2b33?style=flat-square">
+  <img alt="MCP" src="https://img.shields.io/badge/agents-MCP%20server-2b2b33?style=flat-square">
+</p>
+
 # Oddlings Studio
 
 Procedural 3D game assets generated entirely from local code — creatures, people, props and environments, rigged and exported as glTF for Unity, Godot and the web. No model API, no generated media, no network request. The same seed always produces the same geometry, down to identical bytes.
@@ -87,7 +99,7 @@ generate_from_blueprint { blueprint: "guardian", seed: 7 }
 ```jsonc
 {
   "version": 1,
-  "name": "Lantern Keeper",
+  "name": "Guardian",
   "kind": "creature",
   "seed": 42,
   "rig": { "hipHeight": 0.5, "headPivot": 0.95, "shoulderWidth": 0.3 },
@@ -110,17 +122,24 @@ generate_from_blueprint { blueprint: "guardian", seed: 7 }
 }
 ```
 
-Worked examples in [`specs/`](specs), none of which any blueprint could produce:
+Worked examples in [`specs/`](specs), none of which any blueprint could produce. Every image is the studio's own `render` of the spec beside it:
 
-| Spec | Exercises |
-| --- | --- |
-| [`lantern-keeper`](specs/lantern-keeper.spec.json) | rigged creature, mirrored features, linear repeat |
-| [`lantern-crab`](specs/lantern-crab.spec.json) | six radial legs, nested claws, static (no rig) |
-| [`windmill`](specs/windmill.spec.json) | taper, radial repeat on two different axes |
-| [`scrap-knight`](specs/scrap-knight.spec.json) | rigged humanoid from boxes and limbs, explicit `rigPart` |
-| [`flower-bush`](specs/flower-bush.spec.json) | scattered foliage, blossoms placed on the surface, nested repeats |
-| [`kaiju`](specs/kaiju.spec.json) | large rigged creature, tapered tail, dorsal plates |
-| [`kaiju-surface`](specs/kaiju-surface.spec.json) | the same creature as one continuous polygon mesh |
+| | Spec | What it exercises |
+| --- | --- | --- |
+| <img src="docs/gallery/grave-walker.png" width="140"> | [`grave-walker`](specs/grave-walker.spec.json) | a `joints` mechanism: four leg chains, a caged core, an eye and a lantern, fused into one mesh by `surface` and painted with `paint` expressions |
+| <img src="docs/gallery/orc-warchief.png" width="140"> | [`orc-warchief`](specs/orc-warchief.spec.json) | rigged humanoid, 118 parts: lofts, lathes, `paint` expressions and `material` presets, layered armour, fused at 16k triangles |
+| <img src="docs/gallery/elf-ranger.png" width="140"> | [`elf-ranger`](specs/elf-ranger.spec.json) | rigged humanoid with authored bone positions, lofts and lathes, `material` presets baked to an atlas, a `rest` placement |
+| <img src="docs/gallery/wizard.png" width="140"> | [`wizard`](specs/wizard.spec.json) | rigged humanoid: lathed robes, mirrored features, seeded `jitter` |
+| <img src="docs/gallery/pirate-ship.png" width="140"> | [`pirate-ship`](specs/pirate-ship.spec.json) | a 63-part prop: lathed hull, mirrored rigging, repeats, taper |
+| <img src="docs/gallery/windmill.png" width="140"> | [`windmill`](specs/windmill.spec.json) | taper, a repeat on the sails, two `joints` with spin clips that turn them |
+| <img src="docs/gallery/t-rex.png" width="140"> | [`t-rex`](specs/t-rex.spec.json) | a 19-joint creature with a tapered tail, fused at 22k triangles |
+| <img src="docs/gallery/hindu-temple.png" width="140"> | [`hindu-temple`](specs/hindu-temple.spec.json) | architecture: lathed towers, mirrored wings, repeated columns and steps |
+| <img src="docs/gallery/rooster-lowpoly.png" width="140"> | [`rooster-lowpoly`](specs/rooster-lowpoly.spec.json) | a 27-part creature fused at a deliberately tiny 1,900-triangle budget |
+| <img src="docs/gallery/omnidroid.png" width="140"> | [`omnidroid`](specs/omnidroid.spec.json) | 25 joints, a `field` part (a signed-distance function written in the spec), 24k-triangle surface |
+| <img src="docs/gallery/street-lamp.png" width="140"> | [`street-lamp`](specs/street-lamp.spec.json) | a small prop done properly: lathe, mirror, repeat, a `material` preset |
+| <img src="docs/gallery/smock-mill.png" width="140"> | [`smock-mill`](specs/smock-mill.spec.json) | a 69-part building with two joints and a `rest` placement |
+
+More in [`specs/`](specs): a [`grave-knight`](specs/grave-knight.spec.json), a [`rune-knight`](specs/osrs-knight.spec.json), a [`sniper-rifle`](specs/sniper-rifle.spec.json), the [`taj-mahal`](specs/taj-mahal.spec.json), a [`naval-destroyer`](specs/naval-destroyer.spec.json), an eight-legged [`octopod-walker`](specs/octopod-walker.spec.json). A handful of plainer specs in the same folder are test fixtures rather than showpieces.
 
 Call `get_spec_guide` (or `npm run oddlings -- schema`) for the complete schema.
 

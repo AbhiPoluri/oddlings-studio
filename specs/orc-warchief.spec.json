@@ -1,0 +1,2789 @@
+{
+  "version": 1,
+  "name": "Orc Warchief",
+  "kind": "person",
+  "seed": 777,
+  "scale": 1,
+  "color": "#5f7a3a",
+  "rig": {
+    "hipHeight": 0.85,
+    "headPivot": 1.72,
+    "shoulderWidth": 0.5,
+    "bones": {
+      "Arm_L": [
+        0.5,
+        1.6,
+        0.0
+      ],
+      "Forearm_L": [
+        0.64,
+        1.14,
+        0.06
+      ],
+      "Arm_R": [
+        -0.5,
+        1.6,
+        0.0
+      ],
+      "Forearm_R": [
+        -0.7,
+        1.14,
+        0.02
+      ],
+      "Thigh_L": [
+        0.24,
+        0.85,
+        0.0
+      ],
+      "Shin_L": [
+        0.27,
+        0.46,
+        0.04
+      ],
+      "Foot_L": [
+        0.28,
+        0.12,
+        0.0
+      ],
+      "Thigh_R": [
+        -0.24,
+        0.85,
+        0.0
+      ],
+      "Shin_R": [
+        -0.27,
+        0.46,
+        0.04
+      ],
+      "Foot_R": [
+        -0.28,
+        0.12,
+        0.0
+      ]
+    }
+  },
+  "surface": {
+    "blend": 0.02,
+    "detail": 320,
+    "budget": 16000,
+    "shading": "flat",
+    "crease": 70
+  },
+  "parts": [
+    {
+      "name": "torso",
+      "shape": "loft",
+      "size": [
+        0.88,
+        0.56,
+        0.9
+      ],
+      "position": [
+        0,
+        1.25,
+        0
+      ],
+      "rotation": [
+        -90,
+        0,
+        0
+      ],
+      "color": "#5f7a3a",
+      "rigPart": "spine",
+      "closed": "mirror",
+      "stations": [
+        {
+          "at": 0.0,
+          "profile": [
+            [
+              0,
+              -0.2
+            ],
+            [
+              0.15,
+              -0.2
+            ],
+            [
+              0.26,
+              -0.1
+            ],
+            [
+              0.28,
+              0.02
+            ],
+            [
+              0.22,
+              0.14
+            ],
+            [
+              0.1,
+              0.18
+            ],
+            [
+              0,
+              0.18
+            ]
+          ]
+        },
+        {
+          "at": 0.3,
+          "profile": [
+            [
+              0,
+              -0.3
+            ],
+            [
+              0.18,
+              -0.28
+            ],
+            [
+              0.32,
+              -0.14
+            ],
+            [
+              0.34,
+              0.02
+            ],
+            [
+              0.26,
+              0.17
+            ],
+            [
+              0.12,
+              0.21
+            ],
+            [
+              0,
+              0.21
+            ]
+          ]
+        },
+        {
+          "at": 0.6,
+          "profile": [
+            [
+              0,
+              -0.3
+            ],
+            [
+              0.22,
+              -0.27
+            ],
+            [
+              0.4,
+              -0.12
+            ],
+            [
+              0.42,
+              0.04
+            ],
+            [
+              0.32,
+              0.2
+            ],
+            [
+              0.14,
+              0.24
+            ],
+            [
+              0,
+              0.24
+            ]
+          ]
+        },
+        {
+          "at": 0.85,
+          "profile": [
+            [
+              0,
+              -0.24
+            ],
+            [
+              0.22,
+              -0.22
+            ],
+            [
+              0.42,
+              -0.08
+            ],
+            [
+              0.44,
+              0.06
+            ],
+            [
+              0.34,
+              0.2
+            ],
+            [
+              0.15,
+              0.24
+            ],
+            [
+              0,
+              0.24
+            ]
+          ]
+        },
+        {
+          "at": 1.0,
+          "profile": [
+            [
+              0,
+              -0.12
+            ],
+            [
+              0.12,
+              -0.12
+            ],
+            [
+              0.26,
+              -0.05
+            ],
+            [
+              0.28,
+              0.05
+            ],
+            [
+              0.2,
+              0.14
+            ],
+            [
+              0.1,
+              0.16
+            ],
+            [
+              0,
+              0.16
+            ]
+          ]
+        }
+      ],
+      "paint": "s.blend(s.blend(base, s.shade(base, 0.78), s.step(0.05, 0.25, s.fbm(x * 7, y * 7, z * 7))), s.rgb('#9db064'), s.step(-0.35, -0.1, y) * 0.55)"
+    },
+    {
+      "name": "pec-l",
+      "shape": "sphere",
+      "size": [
+        0.3,
+        0.22,
+        0.14
+      ],
+      "position": [
+        0.16,
+        1.45,
+        0.24
+      ],
+      "color": "#7c9548",
+      "rigPart": "spine",
+      "mirror": "x"
+    },
+    {
+      "name": "ab-l",
+      "shape": "sphere",
+      "size": [
+        0.13,
+        0.1,
+        0.08
+      ],
+      "position": [
+        0.08,
+        1.28,
+        0.28
+      ],
+      "color": "#7c9548",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0,
+          -0.11,
+          -0.02
+        ]
+      },
+      "mirror": "x"
+    },
+    {
+      "name": "trap-l",
+      "shape": "sphere",
+      "size": [
+        0.3,
+        0.18,
+        0.28
+      ],
+      "position": [
+        0.22,
+        1.7,
+        -0.02
+      ],
+      "color": "#4a6230",
+      "rigPart": "spine",
+      "mirror": "x"
+    },
+    {
+      "name": "neck",
+      "shape": "cylinder",
+      "size": [
+        0.26,
+        0.22,
+        0.26
+      ],
+      "position": [
+        0,
+        1.78,
+        0.08
+      ],
+      "rotation": [
+        25,
+        0,
+        0
+      ],
+      "color": "#4a6230",
+      "rigPart": "head",
+      "detail": 10
+    },
+    {
+      "name": "skull",
+      "shape": "sphere",
+      "size": [
+        0.36,
+        0.32,
+        0.36
+      ],
+      "position": [
+        0,
+        1.9,
+        0.18
+      ],
+      "color": "#5f7a3a",
+      "rigPart": "head",
+      "paint": "s.noise(x * 22, y * 22, z * 22) > 0.22 ? s.shade(base, 0.7) : s.blend(base, s.shade(base, 0.85), s.step(0.1, 0.4, -y))"
+    },
+    {
+      "name": "brow",
+      "shape": "box",
+      "size": [
+        0.32,
+        0.09,
+        0.14
+      ],
+      "position": [
+        0,
+        1.93,
+        0.3
+      ],
+      "rotation": [
+        -10,
+        0,
+        0
+      ],
+      "bevel": 0.025,
+      "color": "#4a6230",
+      "rigPart": "head"
+    },
+    {
+      "name": "cheek-l",
+      "shape": "sphere",
+      "size": [
+        0.12,
+        0.1,
+        0.1
+      ],
+      "position": [
+        0.13,
+        1.84,
+        0.3
+      ],
+      "color": "#7c9548",
+      "rigPart": "head",
+      "mirror": "x"
+    },
+    {
+      "name": "jaw",
+      "shape": "box",
+      "size": [
+        0.3,
+        0.13,
+        0.24
+      ],
+      "position": [
+        0,
+        1.74,
+        0.24
+      ],
+      "bevel": 0.03,
+      "color": "#5f7a3a",
+      "rigPart": "head"
+    },
+    {
+      "name": "chin",
+      "shape": "box",
+      "size": [
+        0.24,
+        0.1,
+        0.12
+      ],
+      "position": [
+        0,
+        1.71,
+        0.35
+      ],
+      "bevel": 0.03,
+      "color": "#4a6230",
+      "rigPart": "head"
+    },
+    {
+      "name": "lip",
+      "shape": "box",
+      "size": [
+        0.22,
+        0.035,
+        0.05
+      ],
+      "position": [
+        0,
+        1.785,
+        0.37
+      ],
+      "bevel": 0.01,
+      "color": "#4a6230",
+      "rigPart": "head"
+    },
+    {
+      "name": "tusk-l",
+      "shape": "cone",
+      "size": [
+        0.055,
+        0.17,
+        0.055
+      ],
+      "position": [
+        0.1,
+        1.83,
+        0.38
+      ],
+      "rotation": [
+        -15,
+        0,
+        -8
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "head",
+      "mirror": "x"
+    },
+    {
+      "name": "tooth-l",
+      "shape": "cone",
+      "size": [
+        0.03,
+        0.05,
+        0.03
+      ],
+      "position": [
+        0.04,
+        1.79,
+        0.39
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "head",
+      "mirror": "x"
+    },
+    {
+      "name": "nose",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.08,
+        0.09
+      ],
+      "position": [
+        0,
+        1.85,
+        0.36
+      ],
+      "color": "#4a6230",
+      "rigPart": "head"
+    },
+    {
+      "name": "socket-l",
+      "shape": "sphere",
+      "size": [
+        0.1,
+        0.08,
+        0.08
+      ],
+      "position": [
+        0.075,
+        1.905,
+        0.335
+      ],
+      "color": "#0e0c0a",
+      "rigPart": "head",
+      "mirror": "x"
+    },
+    {
+      "name": "eye-l",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.075,
+        1.905,
+        0.365
+      ],
+      "color": "#ffb300",
+      "rigPart": "head",
+      "material": {
+        "emissive": "#ffb300",
+        "emissiveStrength": 2
+      },
+      "mirror": "x"
+    },
+    {
+      "name": "ear-l",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.28,
+        0.13
+      ],
+      "position": [
+        0.24,
+        1.95,
+        0.1
+      ],
+      "rotation": [
+        10,
+        0,
+        -105
+      ],
+      "color": "#4a6230",
+      "rigPart": "head",
+      "mirror": "x"
+    },
+    {
+      "name": "topknot",
+      "shape": "capsule",
+      "size": [
+        0.12,
+        0.26,
+        0.12
+      ],
+      "position": [
+        0,
+        2.1,
+        0.08
+      ],
+      "rotation": [
+        35,
+        0,
+        0
+      ],
+      "color": "#1a1512",
+      "rigPart": "head"
+    },
+    {
+      "name": "topknot-band",
+      "shape": "torus",
+      "size": [
+        0.13,
+        0.13,
+        0.03
+      ],
+      "position": [
+        0,
+        2.05,
+        0.1
+      ],
+      "rotation": [
+        55,
+        0,
+        0
+      ],
+      "color": "#4a3220",
+      "rigPart": "head"
+    },
+    {
+      "name": "nose-ring",
+      "shape": "torus",
+      "size": [
+        0.07,
+        0.07,
+        0.018
+      ],
+      "position": [
+        0,
+        1.81,
+        0.4
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "color": "#4a4d52",
+      "rigPart": "head",
+      "material": {
+        "metalness": 0.8,
+        "roughness": 0.4
+      }
+    },
+    {
+      "name": "back-spike",
+      "shape": "cone",
+      "size": [
+        0.06,
+        0.12,
+        0.06
+      ],
+      "position": [
+        0,
+        1.55,
+        -0.27
+      ],
+      "rotation": [
+        -40,
+        0,
+        0
+      ],
+      "color": "#d5c9a8",
+      "rigPart": "spine",
+      "repeat": {
+        "count": 5,
+        "mode": "linear",
+        "offset": [
+          0,
+          -0.1,
+          0.005
+        ]
+      }
+    },
+    {
+      "name": "lower-tooth-l",
+      "shape": "cone",
+      "size": [
+        0.028,
+        0.05,
+        0.028
+      ],
+      "position": [
+        0.07,
+        1.762,
+        0.405
+      ],
+      "rotation": [
+        -12,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "head",
+      "mirror": "x"
+    },
+    {
+      "name": "armband-r",
+      "shape": "torus",
+      "size": [
+        0.3,
+        0.3,
+        0.05
+      ],
+      "position": [
+        -0.57,
+        1.42,
+        0.05
+      ],
+      "rotation": [
+        0,
+        0,
+        -15
+      ],
+      "color": "#4a3220",
+      "rigPart": "arm_r"
+    },
+    {
+      "name": "chest-scar",
+      "shape": "box",
+      "size": [
+        0.03,
+        0.22,
+        0.02
+      ],
+      "position": [
+        -0.12,
+        1.4,
+        0.31
+      ],
+      "rotation": [
+        0,
+        0,
+        25
+      ],
+      "color": "#7c9548",
+      "rigPart": "spine"
+    },
+    {
+      "name": "scar",
+      "shape": "box",
+      "size": [
+        0.03,
+        0.14,
+        0.02
+      ],
+      "position": [
+        -0.11,
+        1.9,
+        0.34
+      ],
+      "rotation": [
+        0,
+        -20,
+        15
+      ],
+      "color": "#7c9548",
+      "rigPart": "head"
+    },
+    {
+      "name": "shoulder-l",
+      "shape": "sphere",
+      "size": [
+        0.34,
+        0.3,
+        0.32
+      ],
+      "position": [
+        0.5,
+        1.6,
+        0.0
+      ],
+      "color": "#5f7a3a",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "upper-arm-l",
+      "shape": "limb",
+      "from": [
+        0.5,
+        1.6,
+        0.0
+      ],
+      "to": [
+        0.64,
+        1.14,
+        0.06
+      ],
+      "radius": 0.14,
+      "color": "#5f7a3a",
+      "rigPart": "arm_l",
+      "taper": 0.85
+    },
+    {
+      "name": "bicep-l",
+      "shape": "sphere",
+      "size": [
+        0.22,
+        0.3,
+        0.22
+      ],
+      "position": [
+        0.6000000000000001,
+        1.4,
+        0.1
+      ],
+      "color": "#7c9548",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "elbow-l",
+      "shape": "sphere",
+      "size": [
+        0.3,
+        0.28,
+        0.3
+      ],
+      "position": [
+        0.64,
+        1.14,
+        0.06
+      ],
+      "color": "#4a6230",
+      "rigPart": "forearm_l"
+    },
+    {
+      "name": "forearm-l",
+      "shape": "limb",
+      "from": [
+        0.64,
+        1.14,
+        0.06
+      ],
+      "to": [
+        0.72,
+        0.74,
+        0.18
+      ],
+      "radius": 0.125,
+      "color": "#5f7a3a",
+      "rigPart": "forearm_l",
+      "taper": 0.75
+    },
+    {
+      "name": "bracer-l",
+      "shape": "cylinder",
+      "size": [
+        0.26,
+        0.2,
+        0.26
+      ],
+      "position": [
+        0.688,
+        0.8999999999999999,
+        0.132
+      ],
+      "rotation": [
+        -15,
+        0,
+        -10
+      ],
+      "color": "#4a3220",
+      "rigPart": "forearm_l",
+      "detail": 12
+    },
+    {
+      "name": "bracer-stud-l",
+      "shape": "sphere",
+      "size": [
+        0.035,
+        0.035,
+        0.035
+      ],
+      "position": [
+        0.688,
+        0.8999999999999999,
+        0.132
+      ],
+      "color": "#4a4d52",
+      "rigPart": "forearm_l",
+      "repeat": {
+        "count": 6,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.125,
+        "arc": 360
+      }
+    },
+    {
+      "name": "palm-l",
+      "shape": "box",
+      "size": [
+        0.16,
+        0.18,
+        0.09
+      ],
+      "position": [
+        0.74,
+        0.62,
+        0.22
+      ],
+      "rotation": [
+        10,
+        0,
+        -10
+      ],
+      "bevel": 0.02,
+      "color": "#5f7a3a",
+      "rigPart": "forearm_l"
+    },
+    {
+      "name": "knuckle-l",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.6849999999999999,
+        0.565,
+        0.275
+      ],
+      "color": "#4a6230",
+      "rigPart": "forearm_l",
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          0.037,
+          0,
+          -0.005
+        ]
+      }
+    },
+    {
+      "name": "finger-l",
+      "shape": "limb",
+      "from": [
+        0.6849999999999999,
+        0.55,
+        0.25
+      ],
+      "to": [
+        0.69,
+        0.42,
+        0.3
+      ],
+      "radius": 0.028,
+      "color": "#5f7a3a",
+      "rigPart": "forearm_l",
+      "taper": 0.7,
+      "via": [
+        0.6849999999999999,
+        0.44999999999999996,
+        0.32
+      ],
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          0.037,
+          0,
+          -0.005
+        ]
+      }
+    },
+    {
+      "name": "thumb-l",
+      "shape": "limb",
+      "from": [
+        0.6699999999999999,
+        0.65,
+        0.27
+      ],
+      "to": [
+        0.62,
+        0.55,
+        0.33999999999999997
+      ],
+      "radius": 0.03,
+      "color": "#5f7a3a",
+      "rigPart": "forearm_l",
+      "taper": 0.7
+    },
+    {
+      "name": "shoulder-r",
+      "shape": "sphere",
+      "size": [
+        0.34,
+        0.3,
+        0.32
+      ],
+      "position": [
+        -0.5,
+        1.6,
+        0.0
+      ],
+      "color": "#5f7a3a",
+      "rigPart": "arm_r"
+    },
+    {
+      "name": "upper-arm-r",
+      "shape": "limb",
+      "from": [
+        -0.5,
+        1.6,
+        0.0
+      ],
+      "to": [
+        -0.7,
+        1.14,
+        0.02
+      ],
+      "radius": 0.14,
+      "color": "#5f7a3a",
+      "rigPart": "arm_r",
+      "taper": 0.85
+    },
+    {
+      "name": "bicep-r",
+      "shape": "sphere",
+      "size": [
+        0.22,
+        0.3,
+        0.22
+      ],
+      "position": [
+        -0.63,
+        1.4,
+        0.1
+      ],
+      "color": "#7c9548",
+      "rigPart": "arm_r"
+    },
+    {
+      "name": "elbow-r",
+      "shape": "sphere",
+      "size": [
+        0.3,
+        0.28,
+        0.3
+      ],
+      "position": [
+        -0.7,
+        1.14,
+        0.02
+      ],
+      "color": "#4a6230",
+      "rigPart": "forearm_r"
+    },
+    {
+      "name": "forearm-r",
+      "shape": "limb",
+      "from": [
+        -0.7,
+        1.14,
+        0.02
+      ],
+      "to": [
+        -0.86,
+        0.74,
+        0.16
+      ],
+      "radius": 0.125,
+      "color": "#5f7a3a",
+      "rigPart": "forearm_r",
+      "taper": 0.75
+    },
+    {
+      "name": "bracer-r",
+      "shape": "cylinder",
+      "size": [
+        0.26,
+        0.2,
+        0.26
+      ],
+      "position": [
+        -0.796,
+        0.8999999999999999,
+        0.10400000000000001
+      ],
+      "rotation": [
+        -15,
+        0,
+        10
+      ],
+      "color": "#4a3220",
+      "rigPart": "forearm_r",
+      "detail": 12
+    },
+    {
+      "name": "bracer-stud-r",
+      "shape": "sphere",
+      "size": [
+        0.035,
+        0.035,
+        0.035
+      ],
+      "position": [
+        -0.796,
+        0.8999999999999999,
+        0.10400000000000001
+      ],
+      "color": "#4a4d52",
+      "rigPart": "forearm_r",
+      "repeat": {
+        "count": 6,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0.125,
+        "arc": 360
+      }
+    },
+    {
+      "name": "palm-r",
+      "shape": "box",
+      "size": [
+        0.16,
+        0.18,
+        0.09
+      ],
+      "position": [
+        -0.88,
+        0.62,
+        0.2
+      ],
+      "rotation": [
+        10,
+        0,
+        10
+      ],
+      "bevel": 0.02,
+      "color": "#5f7a3a",
+      "rigPart": "forearm_r"
+    },
+    {
+      "name": "knuckle-r",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        -0.825,
+        0.565,
+        0.255
+      ],
+      "color": "#4a6230",
+      "rigPart": "forearm_r",
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          -0.037,
+          0,
+          -0.005
+        ]
+      }
+    },
+    {
+      "name": "finger-r",
+      "shape": "limb",
+      "from": [
+        -0.825,
+        0.55,
+        0.23
+      ],
+      "to": [
+        -0.83,
+        0.42,
+        0.28
+      ],
+      "radius": 0.028,
+      "color": "#5f7a3a",
+      "rigPart": "forearm_r",
+      "taper": 0.7,
+      "via": [
+        -0.825,
+        0.44999999999999996,
+        0.30000000000000004
+      ],
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          -0.037,
+          0,
+          -0.005
+        ]
+      }
+    },
+    {
+      "name": "thumb-r",
+      "shape": "limb",
+      "from": [
+        -0.81,
+        0.65,
+        0.25
+      ],
+      "to": [
+        -0.76,
+        0.55,
+        0.32
+      ],
+      "radius": 0.03,
+      "color": "#5f7a3a",
+      "rigPart": "forearm_r",
+      "taper": 0.7
+    },
+    {
+      "name": "thigh-l",
+      "shape": "limb",
+      "from": [
+        0.24,
+        0.85,
+        0.0
+      ],
+      "to": [
+        0.27,
+        0.46,
+        0.04
+      ],
+      "radius": 0.16,
+      "color": "#5f7a3a",
+      "rigPart": "thigh_l",
+      "taper": 0.85,
+      "mirror": "x"
+    },
+    {
+      "name": "knee-l",
+      "shape": "sphere",
+      "size": [
+        0.3,
+        0.26,
+        0.3
+      ],
+      "position": [
+        0.27,
+        0.46,
+        0.04
+      ],
+      "color": "#4a6230",
+      "rigPart": "shin_l",
+      "mirror": "x"
+    },
+    {
+      "name": "shin-l",
+      "shape": "limb",
+      "from": [
+        0.27,
+        0.46,
+        0.04
+      ],
+      "to": [
+        0.28,
+        0.12,
+        0.0
+      ],
+      "radius": 0.13,
+      "color": "#5f7a3a",
+      "rigPart": "shin_l",
+      "taper": 0.8,
+      "mirror": "x"
+    },
+    {
+      "name": "calf-l",
+      "shape": "sphere",
+      "size": [
+        0.2,
+        0.26,
+        0.18
+      ],
+      "position": [
+        0.28,
+        0.34,
+        -0.06
+      ],
+      "color": "#7c9548",
+      "rigPart": "shin_l",
+      "mirror": "x"
+    },
+    {
+      "name": "foot-l",
+      "shape": "box",
+      "size": [
+        0.24,
+        0.1,
+        0.34
+      ],
+      "position": [
+        0.28,
+        0.05,
+        0.1
+      ],
+      "bevel": 0.03,
+      "color": "#4a6230",
+      "rigPart": "foot_l",
+      "mirror": "x"
+    },
+    {
+      "name": "toe-l",
+      "shape": "sphere",
+      "size": [
+        0.07,
+        0.07,
+        0.09
+      ],
+      "position": [
+        0.2,
+        0.045,
+        0.27
+      ],
+      "color": "#5f7a3a",
+      "rigPart": "foot_l",
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0.075,
+          0,
+          -0.015
+        ]
+      },
+      "mirror": "x"
+    },
+    {
+      "name": "toenail-l",
+      "shape": "cone",
+      "size": [
+        0.035,
+        0.05,
+        0.035
+      ],
+      "position": [
+        0.2,
+        0.05,
+        0.31
+      ],
+      "rotation": [
+        80,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "foot_l",
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0.075,
+          0,
+          -0.015
+        ]
+      },
+      "mirror": "x"
+    },
+    {
+      "name": "mantle",
+      "shape": "cylinder",
+      "size": [
+        1.3,
+        0.2,
+        1.2
+      ],
+      "position": [
+        0,
+        1.66,
+        -0.02
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine",
+      "detail": 24,
+      "wrap": {
+        "on": [
+          "torso",
+          "shoulder-l",
+          "shoulder-r",
+          "trap-l"
+        ],
+        "thickness": 0.05
+      }
+    },
+    {
+      "name": "tuft-0",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        0.0,
+        1.58,
+        0.33999999999999997
+      ],
+      "rotation": [
+        118,
+        0,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-0",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        0.08797482151483794,
+        1.55,
+        0.30524297308015497
+      ],
+      "rotation": [
+        125,
+        10,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-1",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        0.1915312802623745,
+        1.58,
+        0.318289343482927
+      ],
+      "rotation": [
+        118,
+        20,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-1",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        0.2579560090762125,
+        1.55,
+        0.26653337724478926
+      ],
+      "rotation": [
+        125,
+        30,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-2",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        0.359961061424462,
+        1.58,
+        0.25577599952283203
+      ],
+      "rotation": [
+        118,
+        40,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-2",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        0.3968238949177615,
+        1.55,
+        0.19326362733143182
+      ],
+      "rotation": [
+        125,
+        50,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-3",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        0.48497422611928565,
+        1.58,
+        0.16000000000000003
+      ],
+      "rotation": [
+        118,
+        60,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-3",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        0.4878289625352739,
+        1.55,
+        0.0942711365259757
+      ],
+      "rotation": [
+        125,
+        70,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-6",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        0.4849742261192857,
+        1.58,
+        -0.19999999999999993
+      ],
+      "rotation": [
+        118,
+        120,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-6",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        0.3998541410204361,
+        1.55,
+        -0.2309718365541793
+      ],
+      "rotation": [
+        125,
+        130,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-7",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        0.35996106142446216,
+        1.58,
+        -0.29577599952283207
+      ],
+      "rotation": [
+        118,
+        140,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-7",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        0.2620386486061106,
+        1.55,
+        -0.3050375170516643
+      ],
+      "rotation": [
+        125,
+        150,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-8",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        0.1915312802623746,
+        1.58,
+        -0.358289343482927
+      ],
+      "rotation": [
+        118,
+        160,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-8",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        0.09261742789131151,
+        1.55,
+        -0.34472346628699374
+      ],
+      "rotation": [
+        125,
+        170,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-9",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        6.858022075225179e-17,
+        1.58,
+        -0.38
+      ],
+      "rotation": [
+        118,
+        180,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-9",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        -0.08797482151483782,
+        1.55,
+        -0.345242973080155
+      ],
+      "rotation": [
+        125,
+        190,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-10",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        -0.19153128026237445,
+        1.58,
+        -0.358289343482927
+      ],
+      "rotation": [
+        118,
+        200,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-10",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        -0.25795600907621247,
+        1.55,
+        -0.30653337724478935
+      ],
+      "rotation": [
+        125,
+        210,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-11",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        -0.359961061424462,
+        1.58,
+        -0.29577599952283207
+      ],
+      "rotation": [
+        118,
+        220,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-11",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        -0.39682389491776143,
+        1.55,
+        -0.23326362733143186
+      ],
+      "rotation": [
+        125,
+        230,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-12",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        -0.48497422611928553,
+        1.58,
+        -0.20000000000000015
+      ],
+      "rotation": [
+        118,
+        240,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-12",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        -0.48782896253527386,
+        1.55,
+        -0.13427113652597578
+      ],
+      "rotation": [
+        125,
+        250,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-15",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        -0.48497422611928565,
+        1.58,
+        0.16000000000000003
+      ],
+      "rotation": [
+        118,
+        300,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-15",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        -0.39985414102043604,
+        1.55,
+        0.19097183655417937
+      ],
+      "rotation": [
+        125,
+        310,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-16",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        -0.3599610614244622,
+        1.58,
+        0.255775999522832
+      ],
+      "rotation": [
+        118,
+        320,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-16",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        -0.26203864860611065,
+        1.55,
+        0.2650375170516643
+      ],
+      "rotation": [
+        125,
+        330,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-17",
+      "shape": "cone",
+      "size": [
+        0.1,
+        0.22,
+        0.06
+      ],
+      "position": [
+        -0.19153128026237443,
+        1.58,
+        0.318289343482927
+      ],
+      "rotation": [
+        118,
+        340,
+        0
+      ],
+      "color": "#3b2f24",
+      "rigPart": "spine"
+    },
+    {
+      "name": "tuft-in-17",
+      "shape": "cone",
+      "size": [
+        0.08,
+        0.18,
+        0.05
+      ],
+      "position": [
+        -0.09261742789131135,
+        1.55,
+        0.3047234662869937
+      ],
+      "rotation": [
+        125,
+        350,
+        0
+      ],
+      "color": "#5a4a3a",
+      "rigPart": "spine"
+    },
+    {
+      "name": "pauldron",
+      "shape": "icosahedron",
+      "size": [
+        0.42,
+        0.26,
+        0.4
+      ],
+      "position": [
+        0.52,
+        1.74,
+        0.0
+      ],
+      "color": "#4a4d52",
+      "rigPart": "arm_l",
+      "detail": 5,
+      "material": {
+        "metalness": 0.7,
+        "roughness": 0.5
+      },
+      "jitter": 0.2,
+      "paint": "s.blend(base, s.rgb('#6b3f22'), s.step(0.15, 0.45, s.fbm(x * 9, y * 9, z * 9)) * 0.8)"
+    },
+    {
+      "name": "pauldron-rim",
+      "shape": "lathe",
+      "size": [
+        0.44,
+        0.06,
+        0.42
+      ],
+      "position": [
+        0.52,
+        1.62,
+        0.0
+      ],
+      "color": "#2e3034",
+      "rigPart": "arm_l",
+      "profile": [
+        [
+          0.18,
+          0
+        ],
+        [
+          0.22,
+          0.03
+        ],
+        [
+          0.18,
+          0.06
+        ]
+      ]
+    },
+    {
+      "name": "pauldron-spike",
+      "shape": "cone",
+      "size": [
+        0.07,
+        0.2,
+        0.07
+      ],
+      "position": [
+        0.62,
+        1.86,
+        0.0
+      ],
+      "rotation": [
+        0,
+        0,
+        -35
+      ],
+      "color": "#2e3034",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "rivet-0",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.52,
+        1.63,
+        0.2153
+      ],
+      "color": "#2e3034",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "rivet-1",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.6791,
+        1.63,
+        0.1522
+      ],
+      "color": "#2e3034",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "rivet-2",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.745,
+        1.63,
+        0.0
+      ],
+      "color": "#2e3034",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "rivet-3",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.6791,
+        1.63,
+        -0.1522
+      ],
+      "color": "#2e3034",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "rivet-4",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.52,
+        1.63,
+        -0.2153
+      ],
+      "color": "#2e3034",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "rivet-7",
+      "shape": "sphere",
+      "size": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position": [
+        0.3609,
+        1.63,
+        0.1522
+      ],
+      "color": "#2e3034",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "trophy-skull",
+      "shape": "sphere",
+      "size": [
+        0.13,
+        0.12,
+        0.13
+      ],
+      "position": [
+        0.44,
+        1.82,
+        0.16
+      ],
+      "color": "#d5c9a8",
+      "rigPart": "arm_l"
+    },
+    {
+      "name": "trophy-socket",
+      "shape": "sphere",
+      "size": [
+        0.04,
+        0.035,
+        0.03
+      ],
+      "position": [
+        0.41,
+        1.83,
+        0.22
+      ],
+      "color": "#0e0c0a",
+      "rigPart": "arm_l",
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0.05,
+          0,
+          -0.01
+        ]
+      }
+    },
+    {
+      "name": "strap",
+      "shape": "limb",
+      "from": [
+        0.4,
+        1.62,
+        0.22
+      ],
+      "to": [
+        -0.2,
+        1.28,
+        0.3
+      ],
+      "radius": 0.03,
+      "color": "#4a3220",
+      "rigPart": "spine"
+    },
+    {
+      "name": "strap-back",
+      "shape": "limb",
+      "from": [
+        0.4,
+        1.62,
+        -0.2
+      ],
+      "to": [
+        -0.2,
+        1.28,
+        -0.28
+      ],
+      "radius": 0.03,
+      "color": "#4a3220",
+      "rigPart": "spine"
+    },
+    {
+      "name": "strap-buckle",
+      "shape": "box",
+      "size": [
+        0.08,
+        0.07,
+        0.03
+      ],
+      "position": [
+        0.06,
+        1.46,
+        0.33
+      ],
+      "rotation": [
+        0,
+        0,
+        30
+      ],
+      "color": "#4a4d52",
+      "rigPart": "spine"
+    },
+    {
+      "name": "necklace-cord",
+      "shape": "torus",
+      "size": [
+        0.5,
+        0.5,
+        0.035
+      ],
+      "position": [
+        0,
+        1.6,
+        0.2
+      ],
+      "rotation": [
+        60,
+        0,
+        0
+      ],
+      "color": "#2f1f13",
+      "rigPart": "spine"
+    },
+    {
+      "name": "fang-0",
+      "shape": "cone",
+      "size": [
+        0.04,
+        0.09,
+        0.04
+      ],
+      "position": [
+        -0.21650635094610965,
+        1.4467468245269453,
+        0.29750000000000004
+      ],
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "spine"
+    },
+    {
+      "name": "fang-1",
+      "shape": "cone",
+      "size": [
+        0.04,
+        0.09,
+        0.04
+      ],
+      "position": [
+        -0.1606969024216348,
+        1.3891465129577656,
+        0.31575555538987227
+      ],
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "spine"
+    },
+    {
+      "name": "fang-2",
+      "shape": "cone",
+      "size": [
+        0.04,
+        0.09,
+        0.04
+      ],
+      "position": [
+        -0.08550503583141718,
+        1.3515505796626568,
+        0.32246157759823857
+      ],
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "spine"
+    },
+    {
+      "name": "fang-3",
+      "shape": "cone",
+      "size": [
+        0.04,
+        0.09,
+        0.04
+      ],
+      "position": [
+        0.0,
+        1.3384936490538906,
+        0.31500000000000006
+      ],
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "spine"
+    },
+    {
+      "name": "fang-4",
+      "shape": "cone",
+      "size": [
+        0.04,
+        0.09,
+        0.04
+      ],
+      "position": [
+        0.08550503583141718,
+        1.3515505796626568,
+        0.32246157759823857
+      ],
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "spine"
+    },
+    {
+      "name": "fang-5",
+      "shape": "cone",
+      "size": [
+        0.04,
+        0.09,
+        0.04
+      ],
+      "position": [
+        0.1606969024216348,
+        1.3891465129577656,
+        0.31575555538987227
+      ],
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "spine"
+    },
+    {
+      "name": "fang-6",
+      "shape": "cone",
+      "size": [
+        0.04,
+        0.09,
+        0.04
+      ],
+      "position": [
+        0.21650635094610965,
+        1.4467468245269453,
+        0.29750000000000004
+      ],
+      "rotation": [
+        180,
+        0,
+        0
+      ],
+      "color": "#e8dcc0",
+      "rigPart": "spine"
+    },
+    {
+      "name": "belt",
+      "shape": "cylinder",
+      "size": [
+        1.1,
+        0.11,
+        1.0
+      ],
+      "position": [
+        0,
+        0.86,
+        0
+      ],
+      "color": "#4a3220",
+      "rigPart": "hips",
+      "detail": 24,
+      "wrap": {
+        "on": [
+          "torso",
+          "thigh-l"
+        ],
+        "thickness": 0.03
+      }
+    },
+    {
+      "name": "buckle",
+      "shape": "box",
+      "size": [
+        0.14,
+        0.12,
+        0.04
+      ],
+      "position": [
+        0,
+        0.86,
+        0.25
+      ],
+      "bevel": 0.015,
+      "color": "#4a4d52",
+      "rigPart": "hips"
+    },
+    {
+      "name": "buckle-skull",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.05
+      ],
+      "position": [
+        0,
+        0.87,
+        0.27
+      ],
+      "color": "#d5c9a8",
+      "rigPart": "hips"
+    },
+    {
+      "name": "loincloth",
+      "shape": "extrude",
+      "size": [
+        0.3,
+        0.6,
+        0.04
+      ],
+      "position": [
+        0,
+        0.62,
+        0.22
+      ],
+      "rotation": [
+        -8,
+        0,
+        0
+      ],
+      "color": "#6b2b2b",
+      "rigPart": "hips",
+      "profile": [
+        [
+          -0.14,
+          0.25
+        ],
+        [
+          0.14,
+          0.25
+        ],
+        [
+          0.15,
+          -0.05
+        ],
+        [
+          0.1,
+          -0.3
+        ],
+        [
+          0.04,
+          -0.15
+        ],
+        [
+          -0.02,
+          -0.34
+        ],
+        [
+          -0.08,
+          -0.2
+        ],
+        [
+          -0.15,
+          -0.28
+        ]
+      ]
+    },
+    {
+      "name": "loincloth-back",
+      "shape": "extrude",
+      "size": [
+        0.3,
+        0.6,
+        0.04
+      ],
+      "position": [
+        0,
+        0.62,
+        -0.2
+      ],
+      "rotation": [
+        8,
+        0,
+        0
+      ],
+      "color": "#6b2b2b",
+      "rigPart": "hips",
+      "profile": [
+        [
+          -0.14,
+          0.25
+        ],
+        [
+          0.14,
+          0.25
+        ],
+        [
+          0.15,
+          -0.05
+        ],
+        [
+          0.1,
+          -0.3
+        ],
+        [
+          0.04,
+          -0.15
+        ],
+        [
+          -0.02,
+          -0.34
+        ],
+        [
+          -0.08,
+          -0.2
+        ],
+        [
+          -0.15,
+          -0.28
+        ]
+      ]
+    },
+    {
+      "name": "belt-skull-l",
+      "shape": "sphere",
+      "size": [
+        0.11,
+        0.1,
+        0.11
+      ],
+      "position": [
+        0.26,
+        0.78,
+        0.14
+      ],
+      "color": "#d5c9a8",
+      "rigPart": "hips",
+      "mirror": "x"
+    },
+    {
+      "name": "belt-skull-socket-l",
+      "shape": "sphere",
+      "size": [
+        0.035,
+        0.03,
+        0.03
+      ],
+      "position": [
+        0.235,
+        0.79,
+        0.19
+      ],
+      "color": "#0e0c0a",
+      "rigPart": "hips",
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0.05,
+          0,
+          0
+        ]
+      },
+      "mirror": "x"
+    },
+    {
+      "name": "pouch",
+      "shape": "box",
+      "size": [
+        0.14,
+        0.16,
+        0.1
+      ],
+      "position": [
+        -0.3,
+        0.74,
+        -0.08
+      ],
+      "rotation": [
+        0,
+        -20,
+        0
+      ],
+      "bevel": 0.03,
+      "color": "#2f1f13",
+      "rigPart": "hips"
+    },
+    {
+      "name": "haft",
+      "shape": "limb",
+      "from": [
+        -0.87,
+        0.5,
+        0.22
+      ],
+      "to": [
+        -0.87,
+        1.85,
+        -0.15
+      ],
+      "radius": 0.035,
+      "color": "#2f1f13",
+      "rigPart": "forearm_r"
+    },
+    {
+      "name": "haft-wrap",
+      "shape": "cylinder",
+      "size": [
+        0.09,
+        0.05,
+        0.09
+      ],
+      "position": [
+        -0.87,
+        1.0,
+        0.092
+      ],
+      "rotation": [
+        -15.9,
+        0,
+        0
+      ],
+      "color": "#6b3f22",
+      "rigPart": "forearm_r",
+      "repeat": {
+        "count": 3,
+        "mode": "linear",
+        "offset": [
+          0,
+          0.07,
+          -0.02
+        ]
+      }
+    },
+    {
+      "name": "haft-cap",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        -0.87,
+        0.5,
+        0.22
+      ],
+      "color": "#2e3034",
+      "rigPart": "forearm_r"
+    },
+    {
+      "name": "blade",
+      "shape": "extrude",
+      "size": [
+        0.47,
+        0.84,
+        0.035
+      ],
+      "position": [
+        -0.87,
+        1.56,
+        -0.067
+      ],
+      "rotation": [
+        -15.9,
+        125,
+        0
+      ],
+      "color": "#4a4d52",
+      "rigPart": "forearm_r",
+      "profile": [
+        [
+          -0.05,
+          -0.42
+        ],
+        [
+          0.05,
+          -0.42
+        ],
+        [
+          0.06,
+          -0.12
+        ],
+        [
+          0.16,
+          -0.06
+        ],
+        [
+          0.3,
+          0.0
+        ],
+        [
+          0.4,
+          0.14
+        ],
+        [
+          0.42,
+          0.34
+        ],
+        [
+          0.3,
+          0.4
+        ],
+        [
+          0.18,
+          0.38
+        ],
+        [
+          0.1,
+          0.42
+        ],
+        [
+          -0.05,
+          0.42
+        ]
+      ],
+      "material": {
+        "metalness": 0.6,
+        "roughness": 0.55
+      },
+      "jitter": 0.25
+    },
+    {
+      "name": "blade-rivet",
+      "shape": "sphere",
+      "size": [
+        0.085,
+        0.085,
+        0.085
+      ],
+      "position": [
+        -0.87,
+        1.3,
+        0.0
+      ],
+      "color": "#2e3034",
+      "rigPart": "forearm_r",
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          0,
+          0.14,
+          -0.0384
+        ]
+      }
+    }
+  ]
+}

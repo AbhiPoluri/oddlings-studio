@@ -1,0 +1,798 @@
+{
+  "version": 1,
+  "name": "Street Lamp",
+  "kind": "prop",
+  "seed": 88,
+  "scale": 1,
+  "color": "#1f2a26",
+  "parts": [
+    {
+      "name": "plate",
+      "shape": "box",
+      "size": [
+        0.7,
+        0.06,
+        0.7
+      ],
+      "position": [
+        0,
+        0.03,
+        0
+      ],
+      "bevel": 0.015,
+      "color": "#141a17"
+    },
+    {
+      "name": "bolt",
+      "shape": "cylinder",
+      "size": [
+        0.06,
+        0.03,
+        0.06
+      ],
+      "position": [
+        0.28,
+        0.07,
+        0.28
+      ],
+      "detail": 6,
+      "color": "#141a17",
+      "repeat": {
+        "count": 4,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360
+      }
+    },
+    {
+      "name": "plinth",
+      "shape": "lathe",
+      "size": [
+        0.56,
+        0.7,
+        0.56
+      ],
+      "position": [
+        0,
+        0.41,
+        0
+      ],
+      "detail": 16,
+      "color": "#1f2a26",
+      "profile": [
+        [
+          0.28,
+          0.0
+        ],
+        [
+          0.28,
+          0.1
+        ],
+        [
+          0.23,
+          0.13
+        ],
+        [
+          0.21,
+          0.36
+        ],
+        [
+          0.25,
+          0.4
+        ],
+        [
+          0.25,
+          0.46
+        ],
+        [
+          0.19,
+          0.52
+        ],
+        [
+          0.14,
+          0.6
+        ],
+        [
+          0.12,
+          0.7
+        ]
+      ]
+    },
+    {
+      "name": "rib",
+      "shape": "box",
+      "size": [
+        0.035,
+        0.22,
+        0.03
+      ],
+      "position": [
+        0,
+        0.32,
+        0.215
+      ],
+      "bevel": 0.008,
+      "color": "#141a17",
+      "repeat": {
+        "count": 8,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360
+      }
+    },
+    {
+      "name": "plinth-band",
+      "shape": "torus",
+      "size": [
+        0.46,
+        0.46,
+        0.04
+      ],
+      "position": [
+        0,
+        0.51,
+        0
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "detail": 16,
+      "color": "#b08d3c"
+    },
+    {
+      "name": "post",
+      "shape": "cylinder",
+      "size": [
+        0.2,
+        2.9,
+        0.2
+      ],
+      "position": [
+        0,
+        2.2,
+        0
+      ],
+      "taper": 0.7,
+      "detail": 12,
+      "color": "#1f2a26"
+    },
+    {
+      "name": "collar-0",
+      "shape": "lathe",
+      "size": [
+        0.3,
+        0.12,
+        0.3
+      ],
+      "position": [
+        0,
+        1.2,
+        0
+      ],
+      "detail": 12,
+      "color": "#1f2a26",
+      "profile": [
+        [
+          0.09,
+          0
+        ],
+        [
+          0.14,
+          0.02
+        ],
+        [
+          0.15,
+          0.06
+        ],
+        [
+          0.13,
+          0.1
+        ],
+        [
+          0.09,
+          0.12
+        ]
+      ]
+    },
+    {
+      "name": "collar-ring-0",
+      "shape": "torus",
+      "size": [
+        0.27,
+        0.27,
+        0.03
+      ],
+      "position": [
+        0,
+        1.22,
+        0
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "detail": 12,
+      "color": "#b08d3c"
+    },
+    {
+      "name": "collar-1",
+      "shape": "lathe",
+      "size": [
+        0.3,
+        0.12,
+        0.3
+      ],
+      "position": [
+        0,
+        2.4,
+        0
+      ],
+      "detail": 12,
+      "color": "#1f2a26",
+      "profile": [
+        [
+          0.09,
+          0
+        ],
+        [
+          0.14,
+          0.02
+        ],
+        [
+          0.15,
+          0.06
+        ],
+        [
+          0.13,
+          0.1
+        ],
+        [
+          0.09,
+          0.12
+        ]
+      ]
+    },
+    {
+      "name": "collar-ring-1",
+      "shape": "torus",
+      "size": [
+        0.27,
+        0.27,
+        0.03
+      ],
+      "position": [
+        0,
+        2.42,
+        0
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "detail": 12,
+      "color": "#b08d3c"
+    },
+    {
+      "name": "collar-2",
+      "shape": "lathe",
+      "size": [
+        0.3,
+        0.12,
+        0.3
+      ],
+      "position": [
+        0,
+        3.35,
+        0
+      ],
+      "detail": 12,
+      "color": "#1f2a26",
+      "profile": [
+        [
+          0.09,
+          0
+        ],
+        [
+          0.14,
+          0.02
+        ],
+        [
+          0.15,
+          0.06
+        ],
+        [
+          0.13,
+          0.1
+        ],
+        [
+          0.09,
+          0.12
+        ]
+      ]
+    },
+    {
+      "name": "collar-ring-2",
+      "shape": "torus",
+      "size": [
+        0.27,
+        0.27,
+        0.03
+      ],
+      "position": [
+        0,
+        3.37,
+        0
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "detail": 12,
+      "color": "#b08d3c"
+    },
+    {
+      "name": "ladder-bar",
+      "shape": "cylinder",
+      "size": [
+        0.05,
+        0.7,
+        0.05
+      ],
+      "position": [
+        0,
+        3.05,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "detail": 8,
+      "color": "#1f2a26"
+    },
+    {
+      "name": "ladder-knob",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        0.35,
+        3.05,
+        0
+      ],
+      "detail": 6,
+      "color": "#141a17",
+      "mirror": "x"
+    },
+    {
+      "name": "capital",
+      "shape": "lathe",
+      "size": [
+        0.34,
+        0.3,
+        0.34
+      ],
+      "position": [
+        0,
+        3.8,
+        0
+      ],
+      "detail": 12,
+      "color": "#1f2a26",
+      "profile": [
+        [
+          0.07,
+          0
+        ],
+        [
+          0.09,
+          0.08
+        ],
+        [
+          0.14,
+          0.16
+        ],
+        [
+          0.17,
+          0.24
+        ],
+        [
+          0.17,
+          0.27
+        ],
+        [
+          0.12,
+          0.3
+        ]
+      ]
+    },
+    {
+      "name": "capital-ring",
+      "shape": "torus",
+      "size": [
+        0.36,
+        0.36,
+        0.035
+      ],
+      "position": [
+        0,
+        4.0,
+        0
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "detail": 12,
+      "color": "#b08d3c"
+    },
+    {
+      "name": "scroll-0",
+      "shape": "limb",
+      "from": [
+        0.0,
+        3.62,
+        0.06
+      ],
+      "to": [
+        0.0,
+        4.02,
+        0.3
+      ],
+      "radius": 0.02,
+      "color": "#1f2a26",
+      "via": [
+        0.0,
+        3.66,
+        0.34
+      ]
+    },
+    {
+      "name": "scroll-curl-0",
+      "shape": "sphere",
+      "size": [
+        0.06,
+        0.06,
+        0.06
+      ],
+      "position": [
+        0.0,
+        4.02,
+        0.3
+      ],
+      "detail": 6,
+      "color": "#141a17"
+    },
+    {
+      "name": "scroll-90",
+      "shape": "limb",
+      "from": [
+        0.06,
+        3.62,
+        3.673940397442059e-18
+      ],
+      "to": [
+        0.3,
+        4.02,
+        1.8369701987210297e-17
+      ],
+      "radius": 0.02,
+      "color": "#1f2a26",
+      "via": [
+        0.34,
+        3.66,
+        2.0818995585505005e-17
+      ]
+    },
+    {
+      "name": "scroll-curl-90",
+      "shape": "sphere",
+      "size": [
+        0.06,
+        0.06,
+        0.06
+      ],
+      "position": [
+        0.3,
+        4.02,
+        1.8369701987210297e-17
+      ],
+      "detail": 6,
+      "color": "#141a17"
+    },
+    {
+      "name": "scroll-180",
+      "shape": "limb",
+      "from": [
+        7.347880794884118e-18,
+        3.62,
+        -0.06
+      ],
+      "to": [
+        3.6739403974420595e-17,
+        4.02,
+        -0.3
+      ],
+      "radius": 0.02,
+      "color": "#1f2a26",
+      "via": [
+        4.163799117101001e-17,
+        3.66,
+        -0.34
+      ]
+    },
+    {
+      "name": "scroll-curl-180",
+      "shape": "sphere",
+      "size": [
+        0.06,
+        0.06,
+        0.06
+      ],
+      "position": [
+        3.6739403974420595e-17,
+        4.02,
+        -0.3
+      ],
+      "detail": 6,
+      "color": "#141a17"
+    },
+    {
+      "name": "scroll-270",
+      "shape": "limb",
+      "from": [
+        -0.06,
+        3.62,
+        -1.1021821192326178e-17
+      ],
+      "to": [
+        -0.3,
+        4.02,
+        -5.510910596163089e-17
+      ],
+      "radius": 0.02,
+      "color": "#1f2a26",
+      "via": [
+        -0.34,
+        3.66,
+        -6.245698675651501e-17
+      ]
+    },
+    {
+      "name": "scroll-curl-270",
+      "shape": "sphere",
+      "size": [
+        0.06,
+        0.06,
+        0.06
+      ],
+      "position": [
+        -0.3,
+        4.02,
+        -5.510910596163089e-17
+      ],
+      "detail": 6,
+      "color": "#141a17"
+    },
+    {
+      "name": "lantern-base",
+      "shape": "cylinder",
+      "size": [
+        0.5,
+        0.06,
+        0.5
+      ],
+      "position": [
+        0,
+        4.05,
+        0
+      ],
+      "detail": 6,
+      "color": "#1f2a26"
+    },
+    {
+      "name": "glass",
+      "shape": "cylinder",
+      "size": [
+        0.42,
+        0.56,
+        0.42
+      ],
+      "position": [
+        0,
+        4.36,
+        0
+      ],
+      "detail": 6,
+      "color": "#ffe2a3",
+      "material": {
+        "emissive": "#fff1c8",
+        "emissiveStrength": 1.6,
+        "roughness": 0.3
+      }
+    },
+    {
+      "name": "bulb",
+      "shape": "sphere",
+      "size": [
+        0.12,
+        0.16,
+        0.12
+      ],
+      "position": [
+        0,
+        4.36,
+        0
+      ],
+      "detail": 8,
+      "color": "#fff1c8",
+      "material": {
+        "emissive": "#fff1c8",
+        "emissiveStrength": 4
+      }
+    },
+    {
+      "name": "lantern-bar",
+      "shape": "box",
+      "size": [
+        0.03,
+        0.6,
+        0.03
+      ],
+      "position": [
+        0,
+        4.36,
+        0.225
+      ],
+      "rotation": [
+        0,
+        30,
+        0
+      ],
+      "color": "#141a17",
+      "repeat": {
+        "count": 6,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360
+      }
+    },
+    {
+      "name": "lantern-top",
+      "shape": "cylinder",
+      "size": [
+        0.5,
+        0.05,
+        0.5
+      ],
+      "position": [
+        0,
+        4.66,
+        0
+      ],
+      "detail": 6,
+      "color": "#1f2a26"
+    },
+    {
+      "name": "roof",
+      "shape": "cone",
+      "size": [
+        0.62,
+        0.34,
+        0.62
+      ],
+      "position": [
+        0,
+        4.85,
+        0
+      ],
+      "detail": 6,
+      "color": "#1f2a26"
+    },
+    {
+      "name": "roof-rib",
+      "shape": "box",
+      "size": [
+        0.025,
+        0.02,
+        0.32
+      ],
+      "position": [
+        0,
+        4.83,
+        0.16
+      ],
+      "rotation": [
+        -29,
+        0,
+        0
+      ],
+      "color": "#141a17",
+      "repeat": {
+        "count": 6,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360
+      }
+    },
+    {
+      "name": "roof-cap",
+      "shape": "lathe",
+      "size": [
+        0.16,
+        0.14,
+        0.16
+      ],
+      "position": [
+        0,
+        5.07,
+        0
+      ],
+      "detail": 8,
+      "color": "#1f2a26",
+      "profile": [
+        [
+          0.06,
+          0
+        ],
+        [
+          0.08,
+          0.03
+        ],
+        [
+          0.06,
+          0.08
+        ],
+        [
+          0.03,
+          0.14
+        ]
+      ]
+    },
+    {
+      "name": "finial",
+      "shape": "sphere",
+      "size": [
+        0.08,
+        0.08,
+        0.08
+      ],
+      "position": [
+        0,
+        5.12,
+        0
+      ],
+      "detail": 8,
+      "color": "#b08d3c"
+    },
+    {
+      "name": "finial-spike",
+      "shape": "cone",
+      "size": [
+        0.04,
+        0.16,
+        0.04
+      ],
+      "position": [
+        0,
+        5.21,
+        0
+      ],
+      "color": "#b08d3c"
+    }
+  ]
+}

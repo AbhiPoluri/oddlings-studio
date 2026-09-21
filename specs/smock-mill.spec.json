@@ -1,0 +1,1665 @@
+{
+  "version": 1,
+  "name": "Smock Mill",
+  "kind": "prop",
+  "seed": 2201,
+  "scale": 1,
+  "color": "#7a5a36",
+  "joints": [
+    {
+      "name": "Yaw",
+      "at": [
+        0,
+        10.9,
+        0
+      ],
+      "binds": [
+        "cap",
+        "cap-band",
+        "finial",
+        "vane-rod",
+        "vane",
+        "tail-beam",
+        "tail-pole",
+        "tail-brace-l",
+        "tail-wheel",
+        "neck-beam",
+        "windshaft",
+        "hub",
+        "hub-nose",
+        "stock-a",
+        "hemlath-a",
+        "bar-a",
+        "cloth-a",
+        "board-a",
+        "stock-b",
+        "hemlath-b",
+        "bar-b",
+        "cloth-b",
+        "board-b",
+        "stock-c",
+        "hemlath-c",
+        "bar-c",
+        "cloth-c",
+        "board-c",
+        "stock-d",
+        "hemlath-d",
+        "bar-d",
+        "cloth-d",
+        "board-d"
+      ],
+      "spin": {
+        "axis": "y",
+        "degrees": 6,
+        "seconds": 14,
+        "clip": "Yaw",
+        "drift": 0
+      }
+    },
+    {
+      "name": "Sails",
+      "parent": "Yaw",
+      "at": [
+        0,
+        11.5,
+        4.6
+      ],
+      "binds": [
+        "hub",
+        "hub-nose",
+        "stock-a",
+        "hemlath-a",
+        "bar-a",
+        "cloth-a",
+        "board-a",
+        "stock-b",
+        "hemlath-b",
+        "bar-b",
+        "cloth-b",
+        "board-b",
+        "stock-c",
+        "hemlath-c",
+        "bar-c",
+        "cloth-c",
+        "board-c",
+        "stock-d",
+        "hemlath-d",
+        "bar-d",
+        "cloth-d",
+        "board-d"
+      ],
+      "spin": {
+        "axis": "z",
+        "degrees": 90,
+        "seconds": 6,
+        "clip": "Sails",
+        "mode": "turn"
+      }
+    }
+  ],
+  "parts": [
+    {
+      "name": "plinth",
+      "shape": "cylinder",
+      "size": [
+        6.2,
+        0.5,
+        6.2
+      ],
+      "position": [
+        0,
+        0.25,
+        0
+      ],
+      "detail": 8,
+      "rotation": [
+        0,
+        22.5,
+        0
+      ],
+      "color": "#8f8c84"
+    },
+    {
+      "name": "base",
+      "shape": "cylinder",
+      "size": [
+        5.8,
+        2.6,
+        5.8
+      ],
+      "position": [
+        0,
+        1.75,
+        0
+      ],
+      "detail": 8,
+      "rotation": [
+        0,
+        22.5,
+        0
+      ],
+      "color": "#8a4a3a"
+    },
+    {
+      "name": "base-band",
+      "shape": "cylinder",
+      "size": [
+        6.0,
+        0.2,
+        6.0
+      ],
+      "position": [
+        0,
+        3.0,
+        0
+      ],
+      "detail": 8,
+      "rotation": [
+        0,
+        22.5,
+        0
+      ],
+      "color": "#6e3a2e"
+    },
+    {
+      "name": "door-surround",
+      "shape": "extrude",
+      "size": [
+        1.4,
+        2.1,
+        0.25
+      ],
+      "position": [
+        0,
+        0.5,
+        2.72
+      ],
+      "color": "#e9e4d6",
+      "profile": [
+        [
+          -0.7,
+          0
+        ],
+        [
+          0.7,
+          0
+        ],
+        [
+          0.7,
+          1.5
+        ],
+        [
+          0.55,
+          1.85
+        ],
+        [
+          0.3,
+          2.05
+        ],
+        [
+          0,
+          2.1
+        ],
+        [
+          -0.3,
+          2.05
+        ],
+        [
+          -0.55,
+          1.85
+        ],
+        [
+          -0.7,
+          1.5
+        ]
+      ]
+    },
+    {
+      "name": "door",
+      "shape": "extrude",
+      "size": [
+        1.1,
+        1.92,
+        0.2
+      ],
+      "position": [
+        0,
+        0.5,
+        2.78
+      ],
+      "color": "#3d2b1a",
+      "profile": [
+        [
+          -0.55,
+          0
+        ],
+        [
+          0.55,
+          0
+        ],
+        [
+          0.55,
+          1.4
+        ],
+        [
+          0.42,
+          1.7
+        ],
+        [
+          0.22,
+          1.88
+        ],
+        [
+          0,
+          1.92
+        ],
+        [
+          -0.22,
+          1.88
+        ],
+        [
+          -0.42,
+          1.7
+        ],
+        [
+          -0.55,
+          1.4
+        ]
+      ]
+    },
+    {
+      "name": "door-plank",
+      "shape": "box",
+      "size": [
+        0.05,
+        1.6,
+        0.04
+      ],
+      "position": [
+        -0.33,
+        1.3,
+        2.9
+      ],
+      "color": "#5a4028",
+      "repeat": {
+        "count": 4,
+        "mode": "linear",
+        "offset": [
+          0.22,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "door-step",
+      "shape": "box",
+      "size": [
+        1.8,
+        0.2,
+        0.8
+      ],
+      "position": [
+        0,
+        0.6,
+        3.2
+      ],
+      "bevel": 0.03,
+      "color": "#8f8c84"
+    },
+    {
+      "name": "base-window-l",
+      "shape": "box",
+      "size": [
+        1.0,
+        1.3,
+        0.2
+      ],
+      "position": [
+        2.68,
+        1.9,
+        1.6410267108574534e-16
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "base-pane-l",
+      "shape": "box",
+      "size": [
+        0.8,
+        1.1,
+        0.12
+      ],
+      "position": [
+        2.76,
+        1.9,
+        1.6900125828233474e-16
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "color": "#1f2a24"
+    },
+    {
+      "name": "base-window-r",
+      "shape": "box",
+      "size": [
+        1.0,
+        1.3,
+        0.2
+      ],
+      "position": [
+        -2.68,
+        1.9,
+        1.6410267108574534e-16
+      ],
+      "rotation": [
+        0,
+        -90,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "base-pane-r",
+      "shape": "box",
+      "size": [
+        0.8,
+        1.1,
+        0.12
+      ],
+      "position": [
+        -2.76,
+        1.9,
+        1.6900125828233474e-16
+      ],
+      "rotation": [
+        0,
+        -90,
+        0
+      ],
+      "color": "#1f2a24"
+    },
+    {
+      "name": "body",
+      "shape": "cylinder",
+      "size": [
+        5.6,
+        7.6,
+        5.6
+      ],
+      "position": [
+        0,
+        6.9,
+        0
+      ],
+      "detail": 8,
+      "rotation": [
+        0,
+        22.5,
+        0
+      ],
+      "taper": 0.7,
+      "color": "#7a5a36"
+    },
+    {
+      "name": "corner-board",
+      "shape": "box",
+      "size": [
+        0.22,
+        7.7,
+        0.14
+      ],
+      "position": [
+        0.9184402376762154,
+        6.9,
+        2.2173108780270883
+      ],
+      "rotation": [
+        -6.307091934737667,
+        22.5,
+        0
+      ],
+      "color": "#e9e4d6",
+      "repeat": {
+        "count": 8,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360
+      }
+    },
+    {
+      "name": "body-band",
+      "shape": "cylinder",
+      "size": [
+        5.9,
+        0.25,
+        5.9
+      ],
+      "position": [
+        0,
+        3.22,
+        0
+      ],
+      "detail": 8,
+      "rotation": [
+        0,
+        22.5,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "curb",
+      "shape": "cylinder",
+      "size": [
+        4.3,
+        0.35,
+        4.3
+      ],
+      "position": [
+        0,
+        10.85,
+        0
+      ],
+      "detail": 16,
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "window-front",
+      "shape": "box",
+      "size": [
+        0.9,
+        1.1,
+        0.3
+      ],
+      "position": [
+        0.0,
+        8.6,
+        2.0252411857418466
+      ],
+      "rotation": [
+        -6.307091934737667,
+        0,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "pane-front",
+      "shape": "box",
+      "size": [
+        0.7,
+        0.9,
+        0.2
+      ],
+      "position": [
+        0.0,
+        8.6,
+        2.1252411857418467
+      ],
+      "rotation": [
+        -6.307091934737667,
+        0,
+        0
+      ],
+      "color": "#1f2a24"
+    },
+    {
+      "name": "sill-front",
+      "shape": "box",
+      "size": [
+        1.1,
+        0.12,
+        0.4
+      ],
+      "position": [
+        0.0,
+        8.0,
+        2.0752411857418465
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "window-left",
+      "shape": "box",
+      "size": [
+        0.9,
+        1.1,
+        0.3
+      ],
+      "position": [
+        2.1681993870883303,
+        7.2,
+        1.3276392196554883e-16
+      ],
+      "rotation": [
+        -6.307091934737667,
+        90,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "pane-left",
+      "shape": "box",
+      "size": [
+        0.7,
+        0.9,
+        0.2
+      ],
+      "position": [
+        2.2681993870883304,
+        7.2,
+        1.388871559612856e-16
+      ],
+      "rotation": [
+        -6.307091934737667,
+        90,
+        0
+      ],
+      "color": "#1f2a24"
+    },
+    {
+      "name": "sill-left",
+      "shape": "box",
+      "size": [
+        1.1,
+        0.12,
+        0.4
+      ],
+      "position": [
+        2.21819938708833,
+        6.6000000000000005,
+        1.3582553896341722e-16
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "window-right",
+      "shape": "box",
+      "size": [
+        0.9,
+        1.1,
+        0.3
+      ],
+      "position": [
+        -2.1681993870883303,
+        7.2,
+        1.3276392196554883e-16
+      ],
+      "rotation": [
+        -6.307091934737667,
+        -90,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "pane-right",
+      "shape": "box",
+      "size": [
+        0.7,
+        0.9,
+        0.2
+      ],
+      "position": [
+        -2.2681993870883304,
+        7.2,
+        1.388871559612856e-16
+      ],
+      "rotation": [
+        -6.307091934737667,
+        -90,
+        0
+      ],
+      "color": "#1f2a24"
+    },
+    {
+      "name": "sill-right",
+      "shape": "box",
+      "size": [
+        1.1,
+        0.12,
+        0.4
+      ],
+      "position": [
+        -2.21819938708833,
+        6.6000000000000005,
+        1.3582553896341722e-16
+      ],
+      "rotation": [
+        0,
+        -90,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "deck",
+      "shape": "cylinder",
+      "size": [
+        8.4,
+        0.2,
+        8.4
+      ],
+      "position": [
+        0,
+        4.3,
+        0
+      ],
+      "detail": 16,
+      "color": "#5a4028"
+    },
+    {
+      "name": "deck-edge",
+      "shape": "cylinder",
+      "size": [
+        8.5,
+        0.12,
+        8.5
+      ],
+      "position": [
+        0,
+        4.2,
+        0
+      ],
+      "detail": 16,
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "brace",
+      "shape": "limb",
+      "from": [
+        0,
+        2.6,
+        2.75
+      ],
+      "to": [
+        0,
+        4.15,
+        4.0
+      ],
+      "radius": 0.11,
+      "color": "#3d2b1a",
+      "repeat": {
+        "count": 16,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360
+      }
+    },
+    {
+      "name": "post",
+      "shape": "box",
+      "size": [
+        0.14,
+        1.1,
+        0.14
+      ],
+      "position": [
+        0,
+        4.95,
+        4.05
+      ],
+      "color": "#e9e4d6",
+      "repeat": {
+        "count": 16,
+        "mode": "radial",
+        "axis": "y",
+        "radius": 0,
+        "arc": 360
+      }
+    },
+    {
+      "name": "rail-top",
+      "shape": "lathe",
+      "size": [
+        8.5,
+        0.12,
+        8.5
+      ],
+      "position": [
+        0,
+        5.45,
+        0
+      ],
+      "detail": 16,
+      "color": "#e9e4d6",
+      "profile": [
+        [
+          4.05,
+          0
+        ],
+        [
+          4.25,
+          0
+        ],
+        [
+          4.25,
+          0.12
+        ],
+        [
+          4.05,
+          0.12
+        ]
+      ]
+    },
+    {
+      "name": "rail-mid",
+      "shape": "lathe",
+      "size": [
+        8.4,
+        0.08,
+        8.4
+      ],
+      "position": [
+        0,
+        4.95,
+        0
+      ],
+      "detail": 16,
+      "color": "#e9e4d6",
+      "profile": [
+        [
+          4.05,
+          0
+        ],
+        [
+          4.2,
+          0
+        ],
+        [
+          4.2,
+          0.08
+        ],
+        [
+          4.05,
+          0.08
+        ]
+      ]
+    },
+    {
+      "name": "stage-door",
+      "shape": "box",
+      "size": [
+        1.0,
+        2.0,
+        0.3
+      ],
+      "position": [
+        0,
+        5.35,
+        -2.72
+      ],
+      "rotation": [
+        6.307091934737667,
+        0,
+        0
+      ],
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "stage-door-frame",
+      "shape": "box",
+      "size": [
+        1.2,
+        2.15,
+        0.2
+      ],
+      "position": [
+        0,
+        5.4,
+        -2.68
+      ],
+      "rotation": [
+        6.307091934737667,
+        0,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "cap",
+      "shape": "lathe",
+      "size": [
+        5.2,
+        3.0,
+        5.2
+      ],
+      "position": [
+        0,
+        12.5,
+        0
+      ],
+      "detail": 16,
+      "color": "#2e3b33",
+      "profile": [
+        [
+          2.3,
+          0
+        ],
+        [
+          2.6,
+          0.35
+        ],
+        [
+          2.55,
+          1.1
+        ],
+        [
+          2.1,
+          1.9
+        ],
+        [
+          1.3,
+          2.5
+        ],
+        [
+          0.35,
+          2.9
+        ],
+        [
+          0.0,
+          3.0
+        ]
+      ]
+    },
+    {
+      "name": "cap-band",
+      "shape": "cylinder",
+      "size": [
+        5.3,
+        0.25,
+        5.3
+      ],
+      "position": [
+        0,
+        11.2,
+        0
+      ],
+      "detail": 16,
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "finial",
+      "shape": "octahedron",
+      "size": [
+        0.4,
+        0.6,
+        0.4
+      ],
+      "position": [
+        0,
+        14.2,
+        0
+      ],
+      "color": "#e9e4d6"
+    },
+    {
+      "name": "vane-rod",
+      "shape": "cylinder",
+      "size": [
+        0.06,
+        1.2,
+        0.06
+      ],
+      "position": [
+        0,
+        14.9,
+        0
+      ],
+      "detail": 6,
+      "color": "#3a3f45"
+    },
+    {
+      "name": "vane",
+      "shape": "extrude",
+      "size": [
+        0.9,
+        0.5,
+        0.03
+      ],
+      "position": [
+        0.45,
+        15.2,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "color": "#3a3f45",
+      "profile": [
+        [
+          -0.45,
+          0.1
+        ],
+        [
+          0.45,
+          0.25
+        ],
+        [
+          0.45,
+          -0.25
+        ],
+        [
+          -0.45,
+          -0.1
+        ]
+      ]
+    },
+    {
+      "name": "tail-beam",
+      "shape": "box",
+      "size": [
+        0.3,
+        0.3,
+        3.2
+      ],
+      "position": [
+        0,
+        11.3,
+        -3.4
+      ],
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "tail-pole",
+      "shape": "limb",
+      "from": [
+        0,
+        11.3,
+        -4.9
+      ],
+      "to": [
+        0,
+        4.5,
+        -9.2
+      ],
+      "radius": 0.14,
+      "taper": 0.8,
+      "color": "#5a4028"
+    },
+    {
+      "name": "tail-brace-l",
+      "shape": "limb",
+      "from": [
+        0.9,
+        11.15,
+        -2.4
+      ],
+      "to": [
+        0.0,
+        8.2,
+        -7.2
+      ],
+      "radius": 0.08,
+      "color": "#3d2b1a",
+      "mirror": "x"
+    },
+    {
+      "name": "tail-wheel",
+      "shape": "cylinder",
+      "size": [
+        1.2,
+        0.3,
+        1.2
+      ],
+      "position": [
+        0,
+        4.5,
+        -9.1
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "detail": 12,
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "neck-beam",
+      "shape": "box",
+      "size": [
+        1.6,
+        0.5,
+        1.0
+      ],
+      "position": [
+        0,
+        11.4,
+        2.3
+      ],
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "windshaft",
+      "shape": "limb",
+      "from": [
+        0,
+        11.5,
+        -1.0
+      ],
+      "to": [
+        0,
+        11.5,
+        4.4
+      ],
+      "radius": 0.25,
+      "taper": 0.8,
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "hub",
+      "shape": "cylinder",
+      "size": [
+        1.4,
+        0.9,
+        1.4
+      ],
+      "position": [
+        0,
+        11.5,
+        4.6
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "detail": 10,
+      "color": "#3a3f45"
+    },
+    {
+      "name": "hub-nose",
+      "shape": "cone",
+      "size": [
+        0.7,
+        0.6,
+        0.7
+      ],
+      "position": [
+        0,
+        11.5,
+        5.35
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "color": "#3a3f45"
+    },
+    {
+      "name": "stock-a",
+      "shape": "box",
+      "size": [
+        0.3,
+        8.6,
+        0.22
+      ],
+      "position": [
+        0.0,
+        15.5,
+        4.6
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "color": "#5a4028"
+    },
+    {
+      "name": "hemlath-a",
+      "shape": "box",
+      "size": [
+        0.1,
+        5.76,
+        0.1
+      ],
+      "position": [
+        -0.95,
+        15.9,
+        4.6499999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "color": "#5a4028"
+    },
+    {
+      "name": "bar-a",
+      "shape": "box",
+      "size": [
+        1.0,
+        0.09,
+        0.09
+      ],
+      "position": [
+        -0.5,
+        13.1,
+        4.6499999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "color": "#3d2b1a",
+      "repeat": {
+        "count": 9,
+        "mode": "linear",
+        "offset": [
+          0.0,
+          0.72,
+          0
+        ]
+      }
+    },
+    {
+      "name": "cloth-a",
+      "shape": "box",
+      "size": [
+        0.9,
+        5.6,
+        0.05
+      ],
+      "position": [
+        -0.5,
+        15.9,
+        4.7299999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "color": "#d8d0bd"
+    },
+    {
+      "name": "board-a",
+      "shape": "box",
+      "size": [
+        0.35,
+        5.76,
+        0.05
+      ],
+      "position": [
+        0.3,
+        15.9,
+        4.619999999999999
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "stock-b",
+      "shape": "box",
+      "size": [
+        0.3,
+        8.6,
+        0.22
+      ],
+      "position": [
+        -4.0,
+        11.5,
+        4.6
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "color": "#5a4028"
+    },
+    {
+      "name": "hemlath-b",
+      "shape": "box",
+      "size": [
+        0.1,
+        5.76,
+        0.1
+      ],
+      "position": [
+        -4.4,
+        10.55,
+        4.6499999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "color": "#5a4028"
+    },
+    {
+      "name": "bar-b",
+      "shape": "box",
+      "size": [
+        1.0,
+        0.09,
+        0.09
+      ],
+      "position": [
+        -1.6,
+        11.0,
+        4.6499999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "color": "#3d2b1a",
+      "repeat": {
+        "count": 9,
+        "mode": "linear",
+        "offset": [
+          -0.72,
+          4.4087284769304716e-17,
+          0
+        ]
+      }
+    },
+    {
+      "name": "cloth-b",
+      "shape": "cylinder",
+      "size": [
+        0.18,
+        5.6,
+        0.18
+      ],
+      "position": [
+        -4.4,
+        10.6,
+        4.72
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "detail": 8,
+      "color": "#d8d0bd"
+    },
+    {
+      "name": "board-b",
+      "shape": "box",
+      "size": [
+        0.35,
+        5.76,
+        0.05
+      ],
+      "position": [
+        -4.4,
+        11.8,
+        4.619999999999999
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "stock-c",
+      "shape": "box",
+      "size": [
+        0.3,
+        8.6,
+        0.22
+      ],
+      "position": [
+        -4.898587196589413e-16,
+        7.5,
+        4.6
+      ],
+      "rotation": [
+        0,
+        0,
+        180
+      ],
+      "color": "#5a4028"
+    },
+    {
+      "name": "hemlath-c",
+      "shape": "box",
+      "size": [
+        0.1,
+        5.76,
+        0.1
+      ],
+      "position": [
+        0.9499999999999994,
+        7.1,
+        4.6499999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        180
+      ],
+      "color": "#5a4028"
+    },
+    {
+      "name": "bar-c",
+      "shape": "box",
+      "size": [
+        1.0,
+        0.09,
+        0.09
+      ],
+      "position": [
+        0.4999999999999998,
+        9.9,
+        4.6499999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        180
+      ],
+      "color": "#3d2b1a",
+      "repeat": {
+        "count": 9,
+        "mode": "linear",
+        "offset": [
+          -8.817456953860943e-17,
+          -0.72,
+          0
+        ]
+      }
+    },
+    {
+      "name": "cloth-c",
+      "shape": "box",
+      "size": [
+        0.9,
+        5.6,
+        0.05
+      ],
+      "position": [
+        0.49999999999999944,
+        7.1,
+        4.7299999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        180
+      ],
+      "color": "#d8d0bd"
+    },
+    {
+      "name": "board-c",
+      "shape": "box",
+      "size": [
+        0.35,
+        5.76,
+        0.05
+      ],
+      "position": [
+        -0.30000000000000054,
+        7.1,
+        4.619999999999999
+      ],
+      "rotation": [
+        0,
+        0,
+        180
+      ],
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "stock-d",
+      "shape": "box",
+      "size": [
+        0.3,
+        8.6,
+        0.22
+      ],
+      "position": [
+        4.0,
+        11.5,
+        4.6
+      ],
+      "rotation": [
+        0,
+        0,
+        270
+      ],
+      "color": "#5a4028"
+    },
+    {
+      "name": "hemlath-d",
+      "shape": "box",
+      "size": [
+        0.1,
+        5.76,
+        0.1
+      ],
+      "position": [
+        4.4,
+        12.45,
+        4.6499999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        270
+      ],
+      "color": "#5a4028"
+    },
+    {
+      "name": "bar-d",
+      "shape": "box",
+      "size": [
+        1.0,
+        0.09,
+        0.09
+      ],
+      "position": [
+        1.6,
+        12.0,
+        4.6499999999999995
+      ],
+      "rotation": [
+        0,
+        0,
+        270
+      ],
+      "color": "#3d2b1a",
+      "repeat": {
+        "count": 9,
+        "mode": "linear",
+        "offset": [
+          0.72,
+          -1.3226185430791412e-16,
+          0
+        ]
+      }
+    },
+    {
+      "name": "cloth-d",
+      "shape": "cylinder",
+      "size": [
+        0.18,
+        5.6,
+        0.18
+      ],
+      "position": [
+        4.4,
+        12.399999999999999,
+        4.72
+      ],
+      "rotation": [
+        0,
+        0,
+        270
+      ],
+      "detail": 8,
+      "color": "#d8d0bd"
+    },
+    {
+      "name": "board-d",
+      "shape": "box",
+      "size": [
+        0.35,
+        5.76,
+        0.05
+      ],
+      "position": [
+        4.4,
+        11.2,
+        4.619999999999999
+      ],
+      "rotation": [
+        0,
+        0,
+        270
+      ],
+      "color": "#3d2b1a"
+    },
+    {
+      "name": "yard",
+      "shape": "cylinder",
+      "size": [
+        20,
+        0.12,
+        20
+      ],
+      "position": [
+        0,
+        -0.06,
+        0
+      ],
+      "detail": 24,
+      "color": "#5f7a3c"
+    },
+    {
+      "name": "millstone",
+      "shape": "cylinder",
+      "size": [
+        1.6,
+        0.3,
+        1.6
+      ],
+      "position": [
+        2.8,
+        0.8,
+        4.3
+      ],
+      "rotation": [
+        0,
+        0,
+        80
+      ],
+      "detail": 16,
+      "color": "#8f8c84",
+      "rest": {
+        "on": "yard"
+      }
+    },
+    {
+      "name": "barrel",
+      "shape": "lathe",
+      "size": [
+        0.9,
+        1.2,
+        0.9
+      ],
+      "position": [
+        -3.2,
+        0.6,
+        3.6
+      ],
+      "detail": 10,
+      "color": "#5a4028",
+      "rest": {
+        "on": "yard"
+      },
+      "profile": [
+        [
+          0.38,
+          0
+        ],
+        [
+          0.45,
+          0.3
+        ],
+        [
+          0.45,
+          0.9
+        ],
+        [
+          0.38,
+          1.2
+        ]
+      ],
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0.95,
+          0,
+          0.2
+        ]
+      }
+    },
+    {
+      "name": "barrel-hoop",
+      "shape": "cylinder",
+      "size": [
+        0.9,
+        0.06,
+        0.9
+      ],
+      "position": [
+        -3.2,
+        0.35,
+        3.6
+      ],
+      "detail": 10,
+      "color": "#3a3f45",
+      "repeat": {
+        "count": 2,
+        "mode": "linear",
+        "offset": [
+          0.95,
+          0,
+          0.2
+        ]
+      }
+    }
+  ]
+}
