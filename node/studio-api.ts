@@ -298,8 +298,14 @@ async function walkSpecs(dir: string, found: string[]): Promise<void> {
     // Dot-directories hold tool state, never authored specs.
     if (entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) await walkSpecs(full, found);
-    else if (entry.isFile() && entry.name.endsWith('.spec.json')) found.push(full);
+    // A symlink is followed, so a spec folder that lives in another repo
+    // (a game's) can be linked into specs/ and edited in place.
+    let isDir = entry.isDirectory(), isFile = entry.isFile();
+    if (entry.isSymbolicLink()) {
+      try { const info = await stat(full); isDir = info.isDirectory(); isFile = info.isFile(); } catch { continue; }
+    }
+    if (isDir) await walkSpecs(full, found);
+    else if (isFile && entry.name.endsWith('.spec.json')) found.push(full);
   }
 }
 

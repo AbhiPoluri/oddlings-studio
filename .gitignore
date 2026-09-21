@@ -47,3 +47,10 @@ next-env.d.ts
 
 # Studio preview pointer — points at whatever was built last.
 .oddlings/
+
+# agent worktrees, game-repo spec link, exported models (models stay out of the repo)
+/.claude/worktrees/
+/specs/game
+/public/play/*.glb
+/public/play/*.png
+/.openai/

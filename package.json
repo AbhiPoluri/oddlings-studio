@@ -1,6 +1,24 @@
 {
-  "name": "sites-project",
+  "name": "oddlings-studio",
   "version": "0.1.0",
+  "description": "Procedural 3D game assets from code: agents author JSON specs, the studio builds, audits, renders and rigs them into GLB packs.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AbhiPoluri/oddlings-studio.git"
+  },
+  "keywords": [
+    "procedural",
+    "3d",
+    "game-assets",
+    "gltf",
+    "glb",
+    "mcp",
+    "agents",
+    "low-poly",
+    "rigging"
+  ],
+  "author": "Abhiram Poluri",
   "private": true,
   "engines": {
     "node": ">=22.13.0"

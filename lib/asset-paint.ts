@@ -463,6 +463,7 @@ export function compilePaint(paint: string): PaintFn {
   const body = /\breturn\b/.test(paint) ? paint : `return (${paint});`;
   let fn: PaintFn;
   try {
+    // oxlint-disable-next-line typescript/no-implied-eval -- a field's math is compiled from the spec's own expression grammar, validated before it gets here
     fn = new Function('x', 'y', 'z', 's', 'M', 'base', 'size', body) as PaintFn;
   } catch (error) {
     throw Error(`"paint" does not compile: ${(error as Error).message}`);

@@ -10,6 +10,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
-    testTimeout: 30000,
+    testTimeout: 90000, // surface-mode builds of the biggest worked specs take over 30 s on a loaded machine
   },
 });

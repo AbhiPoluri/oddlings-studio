@@ -26,7 +26,6 @@ import {
   matchingPreset,
   type DitherMatrix,
   type FilterKind,
-  type Filters,
   type FiltersPatch,
 } from './filters';
 import { useStudio } from './store';

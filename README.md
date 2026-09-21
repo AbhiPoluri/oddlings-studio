@@ -1,6 +1,6 @@
 # Oddlings Studio
 
-Procedural 3D game assets generated entirely from local code — creatures, people, props and environments, rigged and exported for Unity. No model API, no generated media, no network request. The same seed always produces the same geometry, down to identical bytes.
+Procedural 3D game assets generated entirely from local code — creatures, people, props and environments, rigged and exported as glTF for Unity, Godot and the web. No model API, no generated media, no network request. The same seed always produces the same geometry, down to identical bytes.
 
 There are three ways in:
 
@@ -14,9 +14,13 @@ All three share one geometry, rigging and export pipeline, so a creature an agen
 
 ## Quick start
 
+Node 22.13 or newer.
+
 ```bash
 npm install
 npm run oddlings -- generate guardian --seed 7 --out ./assets --format glb,unity
+npm run oddlings -- new creature --rig quadruped > specs/beast.spec.json   # a starter that audits clean
+npm run oddlings -- render specs/beast.spec.json --out ./shots             # PNGs, no browser
 ```
 
 ## For agents
@@ -33,7 +37,7 @@ Point an MCP client at `npm run mcp` (stdio). The repo ships a `.mcp.json`, so i
 }
 ```
 
-Six tools:
+Twelve tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -41,9 +45,13 @@ Six tools:
 | `generate_from_blueprint` | Blueprint + seed → files on disk, plus the editable recipe |
 | `mutate_recipe` | A deterministic sibling of an existing recipe |
 | `get_spec_guide` | Authoring guide, JSON Schema, shape list and a worked example |
+| `spec_template` | A starter spec for a creature (humanoid or quadruped), person, prop, mechanism or environment that already audits clean |
 | `build_from_spec` | An asset you authored yourself, from primitives up |
-| `audit_spec` | Check geometry without writing files — floating parts, rig problems |
-| `inspect_asset` | Read a written `.glb` back: triangles, bones, animation clips |
+| `audit_spec` | Check geometry without writing files — floating parts, rig problems; `visual: true` adds what it looks like |
+| `render_spec` | PNGs of the model from named views, in a few hundred milliseconds |
+| `measure_spec` | Bounding boxes, gaps between parts, which bone owns what |
+| `inspect_asset` | Read a written `.glb` back: triangles, bones, chains, animation clips |
+| `review_notes` / `resolve_note` | Read the notes a human left in the studio, close each with a reply |
 
 Every write returns the files it produced, the measured triangle, mesh, material and bone counts, **and a geometry audit**, so an agent can iterate against numbers instead of guesses. `inspect_asset` closes the loop by reading the file back off disk.
 
@@ -183,8 +191,12 @@ point.
 npm run oddlings -- blueprints
 npm run oddlings -- generate scout --seed 42 --out ./Assets/Creatures --format glb,unity
 npm run oddlings -- mutate ./assets/scout.recipe.json --seed 99 --strength 0.6
+npm run oddlings -- new creature --rig quadruped
 npm run oddlings -- build ./specs/lantern-keeper.spec.json --format glb,obj
-npm run oddlings -- audit ./specs/flower-bush.spec.json
+npm run oddlings -- audit ./specs/flower-bush.spec.json --visual
+npm run oddlings -- render ./specs/kaiju.spec.json --views front,side,three-quarter
+npm run oddlings -- measure ./specs/kaiju.spec.json --parts head,tail
+npm run oddlings -- notes ./specs/kaiju.spec.json
 npm run oddlings -- inspect ./assets/lantern-keeper.glb
 npm run oddlings -- schema
 ```
@@ -238,10 +250,19 @@ That makes the studio the review step in an agent loop: the agent writes, you lo
 
 ## Output
 
-- **GLB** — scene hierarchy, skin weights, a 14-bone Generic rig and Idle, Walk, Jump, Wave and Attack clips. Unity needs a glTF importer such as [glTFast](https://github.com/Unity-Technologies/com.unity.cloud.gltfast). Treat the rig as Generic, not Humanoid.
+- **GLB** — scene hierarchy, skin weights, a Generic rig and its clips: the 14-bone humanoid with Idle, Walk, Jump, Wave and Attack, or a quadruped body with four hip/knee/ankle chains and Idle and Walk. A `joints` chain — a cape, a tail, a swinging sign — rides on either, or stands alone as a mechanism's whole skeleton. Unity needs a glTF importer such as [glTFast](https://github.com/Unity-Technologies/com.unity.cloud.gltfast). Treat the rig as Generic, not Humanoid.
 - **OBJ + MTL** — static mesh, flat normals, and the baked maps wired through `map_Kd`, `map_Ke`, `norm`, `map_Pr` and `map_Pm`.
 - **Unity zip** — both of the above plus the recipe or spec and import notes.
 - **Recipe / spec JSON** — reopen in the studio, or feed back to `mutate_recipe` / `build_from_spec`.
+
+A faceted build with no `rig` and no `joints` also exports **a node per part**,
+named after the part, standing at its `position` and `rotation` with the
+geometry centred on it — so the node's axes are the axes the part was authored
+in, and `scene.getObjectByName('cylinder').rotation.y += step` turns a revolver
+cylinder about the axis it was drawn on. Children nest under their parent's
+node, so hinging a group of parts is one rotation on the node they hang from.
+A `surface` block fuses the parts into one mesh and a skeleton flattens the
+hierarchy, so those assets move on bones instead.
 
 Every mesh carries a UV0 channel. An asset that paints its surface — a `paint`
 expression or a `material` preset on any part — also ships a baked atlas: one
@@ -255,7 +276,7 @@ those in-engine.
 ## Development
 
 ```bash
-npm test          # 89 tests: determinism, validation, rigging, export round-trips
+npm test          # 800+ tests: determinism, validation, rigging, surfaces, export round-trips
 npm run typecheck
 npm run lint
 npm run build
@@ -270,8 +291,17 @@ lib/
   three-world.ts         creature, person, prop and habitat generators
   asset-spec.ts          the from-scratch spec: schema, expansion, build
   spec-edit.ts           immutable part-tree edits addressed by path
-  asset-rig.ts           14-bone skeleton, auto skin weights, animation clips
+  asset-rig.ts           humanoid and quadruped skeletons, auto skin weights, clips
+  asset-joints.ts        joint chains: pivots, parents, spin clips
+  asset-rig-extras.ts    the skeleton block written into the GLB
+  asset-sdf.ts           the shapes as signed distance fields, `field` parts
+  asset-surface.ts       surface mode: sample, march, decimate into one mesh
+  asset-prefabs.ts       `defs` and reuse
+  asset-render.ts        PNG renders without a browser
   asset-audit.ts         geometry checks: detachment, rig sanity, proportions
+  asset-audit-visual.ts  what the model looks like, in words
+  asset-audit-clips.ts   what each clip drives through
+  draw-marks.ts          marks a reviewer draws on the viewport, as spec notes
   asset-build.ts         recipe → finished model, stats, OBJ bundle
   asset-bundle.ts        byte-level GLB and Unity-zip builders
   asset-export.ts        browser download wrappers
@@ -282,3 +312,7 @@ mcp/server.ts            the MCP server
 ```
 
 Nothing under `lib/` except `asset-export.ts` touches the DOM, which is why the same code runs in the browser, in Node and under test.
+
+## License
+
+MIT — see [LICENSE](LICENSE). What changed in each cut is in [CHANGELOG.md](CHANGELOG.md).

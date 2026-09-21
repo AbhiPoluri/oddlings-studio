@@ -141,9 +141,9 @@ export type UvLayout = {
   degenerate: number;
 };
 
-/** +X, -X, +Y, -Y, +Z, -Z. Six, not three: with three, the front and back of a
- * part project onto the same rectangle and the bake overwrites itself. */
-const DIRECTIONS = 6;
+// Projection directions are +X, -X, +Y, -Y, +Z, -Z. Six, not three: with three,
+// the front and back of a part project onto the same rectangle and the bake
+// overwrites itself.
 
 /**
  * Project a point onto the plane of one of the six directions.
@@ -236,7 +236,7 @@ function shelfPack(sizes: { w: number; h: number }[], size: number) {
   const order = sizes
     .map((_, i) => i)
     .sort((a, b) => sizes[b].h - sizes[a].h || sizes[b].w - sizes[a].w || a - b);
-  const placed = new Array<{ x: number; y: number }>(sizes.length);
+  const placed = Array.from({ length: sizes.length }) as { x: number; y: number }[];
   let shelfY = 0,
     shelfHeight = 0,
     cursor = 0;

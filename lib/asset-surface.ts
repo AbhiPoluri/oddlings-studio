@@ -1392,7 +1392,7 @@ export function surfaceModel(
         );
     return compact(full.positions, simplified[0] as Uint32Array);
   };
-  let mesh = decimate(settings.budget);
+  const mesh = decimate(settings.budget);
   measure('surface.decimate', t3);
 
   const assemble = () => {

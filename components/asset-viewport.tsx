@@ -2526,6 +2526,9 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         waiting = false;
         if (timer) clearTimeout(timer);
       };
+      // Deliberately not every prop: a rebuild runs on the spec, the recipe and
+      // the edit counter only; callbacks are read at call time.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.recipe, props.spec, props.lastEdit]);
     /**
      * The comparison ghost: the previous build, drawn through this one.

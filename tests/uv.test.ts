@@ -467,7 +467,7 @@ describe('written files', () => {
     const spec = parseSpec(specFile('lantern-keeper'));
     const { zip, base } = await specUnityPack(spec);
     const entries = unzipSync(zip);
-    expect(Object.keys(entries).map((path) => path.split('/').pop()).sort()).toEqual(
+    expect(Object.keys(entries).map((path) => path.split('/').pop() ?? '').sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(
       [
         `${base}.glb`,
         `${base}.obj`,
