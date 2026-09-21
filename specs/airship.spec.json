@@ -1,0 +1,390 @@
+{
+  "version": 1,
+  "name": "Airship",
+  "kind": "prop",
+  "seed": 1902,
+  "scale": 1,
+  "color": "#d7d2c4",
+  "defs": {
+    "porthole": {
+      "name": "porthole",
+      "shape": "cylinder",
+      "size": [0.2, 0.08, 0.2],
+      "detail": 10,
+      "color": "#9cc4d2",
+      "material": "glass",
+      "children": [
+        {
+          "name": "porthole-rim",
+          "shape": "torus",
+          "size": [0.25, 0.25, 0.05],
+          "rotation": [90, 0, 0],
+          "detail": 10,
+          "color": "#6d5637",
+          "material": "bronze"
+        }
+      ]
+    }
+  },
+  "joints": [
+    {
+      "name": "Prop_L",
+      "at": [1.15, 2.1, 0.42],
+      "binds": [
+        "prop-hub-l",
+        "prop-blade-l",
+        "prop-spinner-l"
+      ],
+      "spin": { "axis": "z", "degrees": 90, "seconds": 1.1, "mode": "turn", "clip": "Engines" }
+    },
+    {
+      "name": "Prop_R",
+      "at": [-1.15, 2.1, 0.42],
+      "binds": [
+        "prop-hub-r",
+        "prop-blade-r",
+        "prop-spinner-r"
+      ],
+      "spin": { "axis": "z", "degrees": -90, "seconds": 1.1, "mode": "turn", "clip": "Engines" }
+    }
+  ],
+  "parts": [
+    {
+      "name": "envelope",
+      "shape": "lathe",
+      "size": [1.62, 6, 1.62],
+      "position": [0, 3.2, 0],
+      "rotation": [90, 0, 0],
+      "detail": 20,
+      "color": "#d7d2c4",
+      "material": "cloth",
+      "profile": [[0.02, 0], [0.14, 0.03], [0.3, 0.09], [0.44, 0.16], [0.5, 0.21], [0.5, 0.79], [0.49, 0.84], [0.45, 0.89], [0.36, 0.94], [0.2, 0.98], [0.02, 1]]
+    },
+    {
+      "name": "rib",
+      "shape": "torus",
+      "size": [1.69, 1.69, 0.08],
+      "position": [0, 3.2, -1.6],
+      "detail": 20,
+      "color": "#6d5637",
+      "material": "leather",
+      "repeat": { "count": 5, "mode": "linear", "offset": [0, 0, 0.8] }
+    },
+    {
+      "name": "nose-cone",
+      "shape": "cone",
+      "size": [0.24, 0.4, 0.24],
+      "position": [0, 3.2, 3.12],
+      "rotation": [90, 0, 0],
+      "detail": 10,
+      "color": "#6d5637",
+      "material": "bronze"
+    },
+    {
+      "name": "tail-cap",
+      "shape": "sphere",
+      "size": [0.2, 0.2, 0.2],
+      "position": [0, 3.2, -2.96],
+      "detail": 8,
+      "color": "#6d5637",
+      "material": "bronze"
+    },
+    {
+      "name": "fin",
+      "shape": "box",
+      "size": [0.85, 0.07, 0.9],
+      "position": [0, 3.2, -2.3],
+      "bevel": 0.02,
+      "color": "#b8402f",
+      "material": "cloth",
+      "repeat": { "count": 4, "mode": "radial", "axis": "z", "radius": 0.82, "arc": 360 }
+    },
+    {
+      "name": "fin-edge",
+      "shape": "box",
+      "size": [0.1, 0.09, 0.92],
+      "position": [0, 3.2, -2.3],
+      "bevel": 0.02,
+      "color": "#3f2f22",
+      "material": "wood",
+      "repeat": { "count": 4, "mode": "radial", "axis": "z", "radius": 1.2, "arc": 360 }
+    },
+    { "name": "fin-brace", "shape": "limb", "from": [0.26, 3.2, -1.6], "to": [1, 3.2, -2.28], "radius": 0.022, "color": "#3f2f22", "mirror": "x" },
+    {
+      "name": "gondola",
+      "shape": "extrude",
+      "size": [0.86, 2.7, 0.56],
+      "position": [0, 1.54, 0.1],
+      "rotation": [90, 0, 0],
+      "taper": 0.66,
+      "color": "#8a5f38",
+      "material": "planks",
+      "profile": [[0, 0.5], [0.34, 0.3], [0.5, -0.05], [0.38, -0.4], [0, -0.5], [-0.38, -0.4], [-0.5, -0.05], [-0.34, 0.3]]
+    },
+    {
+      "name": "gunwale",
+      "shape": "extrude",
+      "size": [0.92, 2.76, 0.08],
+      "position": [0, 1.83, 0.1],
+      "rotation": [90, 0, 0],
+      "color": "#3f2f22",
+      "material": "wood",
+      "profile": [[0, 0.5], [0.34, 0.3], [0.5, -0.05], [0.38, -0.4], [0, -0.5], [-0.38, -0.4], [-0.5, -0.05], [-0.34, 0.3]]
+    },
+    { "name": "keel", "shape": "box", "size": [0.16, 0.12, 2.3], "position": [0, 1.24, 0.1], "bevel": 0.02, "color": "#3f2f22", "material": "wood" },
+    {
+      "name": "cabin",
+      "shape": "box",
+      "size": [0.68, 0.52, 1.1],
+      "position": [0, 2.05, -0.25],
+      "bevel": 0.025,
+      "color": "#a0764a",
+      "material": "planks"
+    },
+    {
+      "name": "cabin-roof",
+      "shape": "box",
+      "size": [0.8, 0.09, 1.22],
+      "position": [0, 2.34, -0.25],
+      "bevel": 0.02,
+      "color": "#3f2f22",
+      "material": "wood"
+    },
+    {
+      "name": "windscreen",
+      "shape": "box",
+      "size": [0.5, 0.22, 0.08],
+      "position": [0, 2.07, 0.3],
+      "bevel": 0.02,
+      "color": "#9cc4d2",
+      "material": "glass"
+    },
+    {
+      "name": "cabin-door",
+      "shape": "box",
+      "size": [0.1, 0.4, 0.34],
+      "position": [0.34, 1.98, -0.25],
+      "bevel": 0.02,
+      "color": "#6d5637",
+      "material": "wood",
+      "mirror": "x"
+    },
+    { "use": "porthole", "name": "porthole-fore", "position": [0.28, 1.64, 0.62], "rotation": [0, 0, 90], "mirror": "x" },
+    { "use": "porthole", "name": "porthole-mid", "position": [0.355, 1.64, 0.02], "rotation": [0, 0, 90], "mirror": "x" },
+    { "use": "porthole", "name": "porthole-aft", "position": [0.31, 1.64, -0.58], "rotation": [0, 0, 90], "mirror": "x" },
+    {
+      "name": "lamp-hood",
+      "shape": "cone",
+      "size": [0.22, 0.16, 0.22],
+      "position": [0, 1.78, 1.36],
+      "detail": 8,
+      "color": "#3f2f22",
+      "material": "iron"
+    },
+    {
+      "name": "lamp",
+      "shape": "sphere",
+      "size": [0.17, 0.18, 0.17],
+      "position": [0, 1.65, 1.36],
+      "detail": 8,
+      "color": "#ffeec0",
+      "material": { "emissive": "#ffe6a8", "emissiveStrength": 4.5 }
+    },
+    {
+      "name": "strut-fore",
+      "shape": "limb",
+      "from": [0.3, 1.8, 0.85],
+      "to": [0.34, 2.52, 0.95],
+      "radius": 0.045,
+      "color": "#3f2f22",
+      "material": "wood",
+      "mirror": "x"
+    },
+    {
+      "name": "strut-aft",
+      "shape": "limb",
+      "from": [0.3, 1.8, -0.75],
+      "to": [0.34, 2.52, -0.85],
+      "radius": 0.045,
+      "color": "#3f2f22",
+      "material": "wood",
+      "mirror": "x"
+    },
+    {
+      "name": "rope-fore",
+      "shape": "limb",
+      "from": [0.55, 2.62, 1.35],
+      "to": [0.4, 1.8, 0.6],
+      "via": [0.54, 2.1, 1],
+      "radius": 0.022,
+      "color": "#c2ab7e",
+      "mirror": "x"
+    },
+    {
+      "name": "rope-aft",
+      "shape": "limb",
+      "from": [0.54, 2.61, -1.6],
+      "to": [0.4, 1.8, -1],
+      "via": [0.53, 2.08, -1.32],
+      "radius": 0.022,
+      "color": "#c2ab7e",
+      "mirror": "x"
+    },
+    { "name": "rope-nose", "shape": "limb", "from": [0, 2.41, 2], "to": [0, 1.82, 1.2], "via": [0, 1.98, 1.52], "radius": 0.022, "color": "#c2ab7e" },
+    {
+      "name": "rope-tail",
+      "shape": "limb",
+      "from": [0, 2.48, -2],
+      "to": [0, 1.82, -1.1],
+      "via": [0, 2.05, -1.5],
+      "radius": 0.022,
+      "color": "#c2ab7e"
+    },
+    {
+      "name": "pylon",
+      "shape": "limb",
+      "from": [0.4, 1.86, -0.1],
+      "to": [1.11, 2.1, -0.1],
+      "radius": 0.055,
+      "taper": 0.8,
+      "color": "#3f2f22",
+      "material": "wood",
+      "mirror": "x"
+    },
+    {
+      "name": "pod-brace",
+      "shape": "limb",
+      "from": [1.1, 2.28, -0.1],
+      "to": [0.55, 2.62, -0.1],
+      "radius": 0.028,
+      "color": "#3f2f22",
+      "material": "wood",
+      "mirror": "x"
+    },
+    {
+      "name": "pod",
+      "shape": "capsule",
+      "size": [0.36, 1, 0.36],
+      "position": [1.15, 2.1, -0.1],
+      "rotation": [90, 0, 0],
+      "detail": 10,
+      "color": "#4a5158",
+      "material": "iron",
+      "mirror": "x"
+    },
+    {
+      "name": "pod-band",
+      "shape": "torus",
+      "size": [0.4, 0.4, 0.06],
+      "position": [1.15, 2.1, -0.18],
+      "detail": 12,
+      "color": "#6d5637",
+      "material": "bronze",
+      "mirror": "x"
+    },
+    {
+      "name": "exhaust",
+      "shape": "cylinder",
+      "size": [0.08, 0.34, 0.08],
+      "position": [1.15, 2.36, -0.4],
+      "rotation": [-22, 0, 0],
+      "detail": 8,
+      "color": "#2c3036",
+      "material": "iron",
+      "mirror": "x"
+    },
+    {
+      "name": "prop-hub-l",
+      "shape": "cylinder",
+      "size": [0.16, 0.14, 0.16],
+      "position": [1.15, 2.1, 0.42],
+      "rotation": [90, 0, 0],
+      "detail": 10,
+      "color": "#6d5637",
+      "material": "bronze"
+    },
+    {
+      "name": "prop-blade-l",
+      "shape": "box",
+      "size": [0.66, 0.13, 0.035],
+      "position": [1.15, 2.1, 0.5],
+      "bevel": 0.012,
+      "color": "#6f4a2b",
+      "material": "wood",
+      "repeat": { "count": 3, "mode": "radial", "axis": "z", "radius": 0.32, "arc": 360 },
+      "deform": { "axis": "x", "twist": 42, "taper": 0.7 }
+    },
+    {
+      "name": "prop-spinner-l",
+      "shape": "cone",
+      "size": [0.16, 0.2, 0.16],
+      "position": [1.15, 2.1, 0.58],
+      "rotation": [90, 0, 0],
+      "detail": 8,
+      "color": "#b8402f",
+      "material": "iron"
+    },
+    {
+      "name": "prop-hub-r",
+      "shape": "cylinder",
+      "size": [0.16, 0.14, 0.16],
+      "position": [-1.15, 2.1, 0.42],
+      "rotation": [90, 0, 0],
+      "detail": 10,
+      "color": "#6d5637",
+      "material": "bronze"
+    },
+    {
+      "name": "prop-blade-r",
+      "shape": "box",
+      "size": [0.66, 0.13, 0.035],
+      "position": [-1.15, 2.1, 0.5],
+      "bevel": 0.012,
+      "color": "#6f4a2b",
+      "material": "wood",
+      "repeat": { "count": 3, "mode": "radial", "axis": "z", "radius": 0.32, "arc": 360 },
+      "deform": { "axis": "x", "twist": 42, "taper": 0.7 }
+    },
+    {
+      "name": "prop-spinner-r",
+      "shape": "cone",
+      "size": [0.16, 0.2, 0.16],
+      "position": [-1.15, 2.1, 0.58],
+      "rotation": [90, 0, 0],
+      "detail": 8,
+      "color": "#b8402f",
+      "material": "iron"
+    },
+    {
+      "name": "skid",
+      "shape": "box",
+      "size": [0.1, 0.09, 1.5],
+      "position": [0.3, 1.06, 0.1],
+      "bevel": 0.02,
+      "color": "#3f2f22",
+      "material": "wood",
+      "mirror": "x"
+    },
+    {
+      "name": "skid-strut",
+      "shape": "limb",
+      "from": [0.16, 1.3, 0.6],
+      "to": [0.3, 1.1, 0.6],
+      "radius": 0.035,
+      "color": "#3f2f22",
+      "material": "wood",
+      "mirror": "x",
+      "repeat": { "count": 2, "mode": "linear", "offset": [0, 0, -1] }
+    },
+    {
+      "name": "flagstaff",
+      "shape": "cylinder",
+      "size": [0.04, 0.72, 0.04],
+      "position": [0, 2.2, 1.35],
+      "detail": 6,
+      "color": "#3f2f22",
+      "material": "wood"
+    },
+    { "name": "flag", "shape": "box", "size": [0.04, 0.24, 0.42], "position": [0, 2.42, 1.13], "color": "#b8402f", "material": "cloth" }
+  ]
+}

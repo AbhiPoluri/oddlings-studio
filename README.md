@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/gallery/hero.png" alt="Oddlings Studio — a grave walker, an orc warchief, an elf ranger, a wizard, a pirate sloop, a windmill, a tyrannosaurus, a temple, a rooster and a robot, all built from JSON specs" width="100%">
+  <img src="docs/gallery/hero.png" alt="Oddlings Studio — a lighthouse, an orc warchief, an oak tree, a wizard, a pirate sloop, a windmill, a dire wolf, a temple, a rooster and an airship, all built from JSON specs" width="100%">
 </p>
 
 <p align="center">
@@ -126,16 +126,16 @@ Worked examples in [`specs/`](specs), none of which any blueprint could produce.
 
 | | Spec | What it exercises |
 | --- | --- | --- |
-| <img src="docs/gallery/grave-walker.png" width="140"> | [`grave-walker`](specs/grave-walker.spec.json) | a `joints` mechanism: four leg chains, a caged core, an eye and a lantern, fused into one mesh by `surface` and painted with `paint` expressions |
+| <img src="docs/gallery/lighthouse.png" width="140"> | [`lighthouse`](specs/lighthouse.spec.json) | a 32-part faceted prop: a lathed tower, banded by a `repeat` with `scaleStep`, a radial railing, a `material` emissive lamp, and one `joints` chain turning the lens |
 | <img src="docs/gallery/orc-warchief.png" width="140"> | [`orc-warchief`](specs/orc-warchief.spec.json) | rigged humanoid, 118 parts: lofts, lathes, `paint` expressions and `material` presets, layered armour, fused at 16k triangles |
-| <img src="docs/gallery/elf-ranger.png" width="140"> | [`elf-ranger`](specs/elf-ranger.spec.json) | rigged humanoid with authored bone positions, lofts and lathes, `material` presets baked to an atlas, a `rest` placement |
+| <img src="docs/gallery/oak-tree.png" width="140"> | [`oak-tree`](specs/oak-tree.spec.json) | the shortest spec here, and the one to copy first: a jittered lathe trunk, `limb` roots and branches, and 80 leaves dropped by `repeat: { mode: "surface" }` |
 | <img src="docs/gallery/wizard.png" width="140"> | [`wizard`](specs/wizard.spec.json) | rigged humanoid: lathed robes, mirrored features, seeded `jitter` |
 | <img src="docs/gallery/pirate-ship.png" width="140"> | [`pirate-ship`](specs/pirate-ship.spec.json) | a 63-part prop: lathed hull, mirrored rigging, repeats, taper |
 | <img src="docs/gallery/windmill.png" width="140"> | [`windmill`](specs/windmill.spec.json) | taper, a repeat on the sails, two `joints` with spin clips that turn them |
-| <img src="docs/gallery/t-rex.png" width="140"> | [`t-rex`](specs/t-rex.spec.json) | a 19-joint creature with a tapered tail, fused at 22k triangles |
+| <img src="docs/gallery/dire-wolf.png" width="140"> | [`dire-wolf`](specs/dire-wolf.spec.json) | a `rig: { "kind": "quadruped" }` creature: every part pinned by hand — the legs to their hip/knee/ankle chains, the rest to `body` — with hackles laid down the spine by `repeat: { mode: "along" }` and the whole thing fused at 12k triangles |
 | <img src="docs/gallery/hindu-temple.png" width="140"> | [`hindu-temple`](specs/hindu-temple.spec.json) | architecture: lathed towers, mirrored wings, repeated columns and steps |
 | <img src="docs/gallery/rooster-lowpoly.png" width="140"> | [`rooster-lowpoly`](specs/rooster-lowpoly.spec.json) | a 27-part creature fused at a deliberately tiny 1,900-triangle budget |
-| <img src="docs/gallery/omnidroid.png" width="140"> | [`omnidroid`](specs/omnidroid.spec.json) | 25 joints, a `field` part (a signed-distance function written in the spec), 24k-triangle surface |
+| <img src="docs/gallery/airship.png" width="140"> | [`airship`](specs/airship.spec.json) | a 43-part prop: a lathed envelope with repeated rib bands, a `defs` porthole placed by three mirrored `use` sites, sagging `via` ropes and two propellers on `joints` that turn |
 | <img src="docs/gallery/street-lamp.png" width="140"> | [`street-lamp`](specs/street-lamp.spec.json) | a small prop done properly: lathe, mirror, repeat, a `material` preset |
 | <img src="docs/gallery/smock-mill.png" width="140"> | [`smock-mill`](specs/smock-mill.spec.json) | a 69-part building with two joints and a `rest` placement |
 
