@@ -1,5 +1,8 @@
 import * as T from 'three';
 import { z } from 'zod';
+import { compilePaint } from './asset-paint';
+import { expandPrefabs, prefabWhere } from './asset-prefabs';
+import { isPreset, PRESET_NAMES } from './asset-materials';
 import { random } from './world';
 import { finishModel } from './asset-build';
 import { surfaceModel, type SurfaceOptions } from './asset-surface';
@@ -7,6 +10,7 @@ import { mark, measure } from './perf';
 import { disposeScene } from './three-world';
 import { JOINTS, rigCreature } from './asset-rig';
 import { jointBinder, rigJoints } from './asset-joints';
+import { trimHidden } from './asset-trim';
 import {
   canonicalExtent,
   deformPoint,
@@ -17,6 +21,8 @@ import {
   signedArea,
   warpFor,
   type Warp,
+  compileField,
+  DEFAULT_FIELD,
 } from './asset-sdf';
 import {
   contactTravel,
@@ -60,6 +66,7 @@ export const SHAPES = [
   'lathe',
   'extrude',
   'loft',
+  'field',
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
@@ -200,6 +207,28 @@ const basePart = {
     .min(2)
     .max(24)
     .optional(),
+  /**
+   * `field` only: the part's own signed distance, as a JavaScript expression
+   * over `x`, `y`, `z` in the part's unit box (-0.5..0.5 across `size`), with
+   * the toolkit `s` (sphere, box, rbox, cyl, capsule, torus, cone, smin, smax,
+   * noise, fbm, rep, onion, ...) and `M` (Math). Negative inside. A field with
+   * no expression is a sphere.
+   */
+  field: z.string().min(1).max(4000).optional(),
+  /**
+   * `field` only: how fast the expression can change per unit of distance.
+   * 1 for an exact distance; a displaced field (noise, ridges) changes faster
+   * and must say by how much, or the sampler can skip cells it crosses.
+   */
+  lipschitz: z.number().min(1).max(64).optional(),
+  /**
+   * The part's colour as code, evaluated per vertex of the fused surface: a
+   * JavaScript expression over `x`, `y`, `z` in the part's unit box, with the
+   * `field` toolkit `s` plus colour helpers (rgb, blend, shade, step), `M`
+   * (Math) and `base`, the part's own colour as [r, g, b]. Returns an
+   * [r, g, b] array in 0..1 or a hex string. Stripes, spots, gradients, grime.
+   */
+  paint: z.string().min(1).max(4000).optional(),
   /** `loft` only: the curve the stations sit along. Straight along Z when omitted. */
   spine: z.object({ from: vec3, to: vec3, via: vec3.optional() }).strict().optional(),
   /**
@@ -242,21 +271,65 @@ const basePart = {
    * inner walls take this part's colour.
    */
   subtract: z.boolean().optional(),
-  /** Surface response. Defaults reproduce the studio's matte look. */
-  material: z
+  /**
+   * Surface mode only: make this part a shell that hugs the named part(s).
+   * The part keeps its own extent — height, angular range, footprint — and
+   * becomes a band of `thickness` metres sitting `gap` metres off the target's
+   * surface wherever it overlaps it. A belt wrapped on the torso and thighs
+   * follows their real outline instead of being a round ring the hips poke
+   * through; the same for straps, cuffs, collars and plates.
+   */
+  wrap: z
     .object({
-      roughness: z.number().min(0).max(1).default(1),
-      metalness: z.number().min(0).max(1).default(0),
-      emissive: hex.optional(),
-      emissiveStrength: z.number().min(0).max(10).default(1),
+      on: z.union([z.string().min(1), z.array(z.string().min(1)).min(1).max(8)]),
+      thickness: z.number().min(0.002).max(0.5).default(0.02),
+      gap: z.number().min(0).max(0.5).default(0),
     })
     .strict()
+    .optional(),
+  /**
+   * Surface response: a preset name, or the numbers themselves.
+   *
+   * "stone", "iron", "rust", "glass", "cloth", "lava" and the rest of the
+   * library each set roughness, metalness, the glTF extensions the look needs,
+   * and a default `paint` pattern the part uses unless it writes its own.
+   * `{ "preset": "rust", "roughness": 0.9 }` is the preset with one field
+   * moved. The bare block — roughness (default 1), metalness (0), emissive
+   * (none), emissiveStrength (1) — is the matte finish every asset had before
+   * the library existed and still means exactly what it meant.
+   */
+  material: z
+    .union([
+      z.string().min(1).max(40),
+      z
+        .object({
+          preset: z.string().min(1).max(40).optional(),
+          roughness: z.number().min(0).max(1).optional(),
+          metalness: z.number().min(0).max(1).optional(),
+          emissive: hex.optional(),
+          emissiveStrength: z.number().min(0).max(10).optional(),
+        })
+        .strict(),
+    ])
     .optional(),
   /** Pin this part and its children to one bone. */
   rigPart: z.enum(RIG_PARTS).optional(),
   /** Duplicate the part mirrored across an axis. */
   mirror: z.enum(['x', 'y', 'z']).optional(),
   repeat: repeatSchema.optional(),
+  /**
+   * Where this part came from, when a prefab stamped it out.
+   *
+   * Written by `expandPrefabs`, never by an author: a `{ "use": "rivet" }`
+   * becomes the def's subtree carrying this mark, and the mark is what lets a
+   * save-back write an edit onto the use site instead of inlining nine rivets
+   * into the file. Carried through mirrors and repeats, so every copy of a
+   * prefab says which def drew it.
+   */
+  prefab: z
+    .object({ def: z.string().min(1).max(60), use: z.array(z.number().int().min(0)).max(24) })
+    .strict()
+    .optional(),
 };
 
 export type Part = z.infer<z.ZodObject<typeof basePart>> & {
@@ -293,6 +366,38 @@ function checkPart(part: Part, ctx: z.RefinementCtx) {
         path: [key],
         message: `"${key}" belongs to loft, not to ${shape}. Skin sections along a spine with "loft".`,
       });
+  for (const key of ['field', 'lipschitz'] as const)
+    if (part[key] !== undefined && shape !== 'field')
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: `"${key}" belongs to field, not to ${shape}. Write the distance yourself with "field".`,
+      });
+  if (part.paint !== undefined) {
+    try {
+      compilePaint(part.paint);
+    } catch (error) {
+      ctx.addIssue({ code: 'custom', path: ['paint'], message: (error as Error).message });
+    }
+  }
+  // A preset is a name from a list, and a list is the one thing a typo cannot
+  // survive. Refused here rather than in the union so the message can say what
+  // the names are instead of "invalid input".
+  const preset =
+    typeof part.material === 'string' ? part.material : part.material?.preset;
+  if (preset !== undefined && !isPreset(preset))
+    ctx.addIssue({
+      code: 'custom',
+      path: typeof part.material === 'string' ? ['material'] : ['material', 'preset'],
+      message: `"${preset}" is not a material preset. Pick one of: ${PRESET_NAMES.join(', ')} — or write the numbers yourself with { "roughness": ..., "metalness": ... }.`,
+    });
+  if (shape === 'field') {
+    try {
+      compileField(part.field ?? DEFAULT_FIELD);
+    } catch (error) {
+      ctx.addIssue({ code: 'custom', path: ['field'], message: (error as Error).message });
+    }
+  }
   if (part.bevel !== undefined && shape !== 'box' && shape !== 'extrude')
     ctx.addIssue({
       code: 'custom',
@@ -373,6 +478,86 @@ const partSchema: z.ZodType<Part> = z.lazy(() =>
     .strict()
     .superRefine(checkPart),
 );
+
+/* ------------------------------------------------------------------------ *
+ * Prefabs, as the author writes them.
+ *
+ * `expandPrefabs` replaces every use site with its def before any of this
+ * runs, so `partSchema` above — the one the builder, the audit and the studio
+ * all read — never has to know about `use`. What follows describes the form on
+ * disk: the `defs` a spec declares, and the use sites allowed inside them.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * What a use site may say about the copy it places.
+ *
+ * Where it goes, how big it is, what it is made of, which bone carries it,
+ * whether it is mirrored or repeated, what it rests on, what hangs off it —
+ * placement, finish and duplication. Everything that decides what the part IS
+ * (shape, profile, stations, field, deform, bevel, detail…) stays in the def,
+ * because a use site that could change those is not a use of a prefab, it is a
+ * second prefab written in the wrong place.
+ */
+const overridable = {
+  name: basePart.name,
+  position: basePart.position,
+  rotation: basePart.rotation,
+  size: basePart.size,
+  color: basePart.color,
+  material: basePart.material,
+  rigPart: basePart.rigPart,
+  mirror: basePart.mirror,
+  repeat: basePart.repeat,
+  rest: basePart.rest,
+};
+
+/** The keys a `use` may carry, `children` included. Read by `expandPrefabs`. */
+export const OVERRIDABLE: readonly string[] = [
+  ...Object.keys(overridable),
+  'children',
+];
+
+/** A part as authored: the thing itself, or a use of a prefab that is one. */
+const authoredPartSchema: z.ZodType = z.lazy(() =>
+  z.union(
+    [
+      z
+        .object({
+        /**
+         * Stamp out the named prefab here. The def's whole subtree lands in
+         * this spot with the fields below replacing its own; `size` and every
+         * other array is replaced whole, and `children` are ADDED to the
+         * def's rather than replacing them.
+         */
+          use: z.string().min(1).max(60),
+          ...overridable,
+          children: z.array(authoredPartSchema).max(64).optional(),
+        })
+        .strict(),
+      z
+        .object({ ...basePart, children: z.array(authoredPartSchema).max(64).optional() })
+        .strict(),
+    ],
+    {
+      error:
+        'A prefab is a part — an object with a "shape" — or a "use" of another prefab.',
+    },
+  ),
+);
+
+/**
+ * The prefab library: a part written once, by name, for use sites to stamp.
+ *
+ * Kept in the parsed spec rather than consumed by expansion, so the studio can
+ * write an edit back onto the use site that produced it instead of dissolving
+ * the prefab into nine inlined copies the first time someone nudges one.
+ */
+const defsSchema = z
+  .record(
+    z.string().regex(/^[\w-]{1,60}$/, 'A prefab name is letters, digits, _ or -.'),
+    authoredPartSchema,
+  )
+  .optional();
 
 /** Only the fields the chain and clip rules read, so this can sit above the schema. */
 type JointChain = {
@@ -461,14 +646,26 @@ function checkJointChain(joints: JointChain[], ctx: z.RefinementCtx) {
   });
 }
 
-export const specSchema = z
-  .object({
+/**
+ * Everything a spec says apart from its parts.
+ *
+ * A bag rather than a schema because two schemas are built from it: the one
+ * every consumer validates against, whose parts are plain parts, and the one
+ * `specJSONSchema` hands to agents, whose parts may also be prefab use sites.
+ */
+const specShape = {
     version: z.literal(1),
     name: z.string().min(1).max(60),
     kind: z.enum(['creature', 'person', 'prop', 'environment']),
     /** Drives jitter and any other randomness, so specs stay reproducible. */
     seed: z.number().int().min(0).max(2147483647).default(0),
     scale: z.number().min(0.01).max(100).default(1),
+    /**
+     * Faceted builds only: drop the faces buried inside neighbouring parts,
+     * or lying flat on them, that move with the same bone. On by default;
+     * false keeps every part a closed solid.
+     */
+    trim: z.boolean().optional(),
     /** Fallback color for parts that do not set one. */
     color: hex.default('#93cec8'),
     /** Omit for a static mesh; supply to skin the result to the 14-bone rig. */
@@ -514,6 +711,13 @@ export const specSchema = z
          * machines, 80 or more a creature.
          */
         crease: z.number().min(0).max(180).optional(),
+        /**
+         * Feature size in metres: how far the decimator may let the surface
+         * drift from the field. Fillets, ridges and bumps smaller than this
+         * flatten and their triangles go to silhouette and large forms. 0 or
+         * unset keeps the tight default (2% of the model's extent).
+         */
+        feature: z.number().min(0).max(1).optional(),
       })
       .strict()
       .optional(),
@@ -593,19 +797,55 @@ export const specSchema = z
       .max(64)
       .superRefine(checkJointChain)
       .optional(),
+};
+
+// A mesh binds to one skeleton. Merging a character rig with a mechanism is
+// a real thing to want — a rider on a swing — but it is a different feature,
+// and silently ignoring one of the two would be worse than refusing both.
+const oneSkeleton = (spec: { rig?: unknown; joints?: unknown[] }) =>
+  !(spec.rig && spec.joints?.length);
+const ONE_SKELETON = {
+  message:
+    'A spec has one skeleton: use `rig` for a character or `joints` for a mechanism, not both.',
+  path: ['joints'],
+};
+
+/**
+ * `defs` sits after `parts` in both schemas on purpose.
+ *
+ * Zod reports issues in the order the shape declares them, and a mistake in a
+ * def shows up twice: once as the def itself, once as every copy it stamped.
+ * The copy is the better error — it is the one `prefabWhere` can name the use
+ * site of — so the parts have to be walked first.
+ */
+export const specSchema = z
+  .object({
+    ...specShape,
     parts: z.array(partSchema).min(1).max(200),
+    defs: defsSchema,
   })
   .strict()
-  // A mesh binds to one skeleton. Merging a character rig with a mechanism is
-  // a real thing to want — a rider on a swing — but it is a different feature,
-  // and silently ignoring one of the two would be worse than refusing both.
-  .refine((spec) => !(spec.rig && spec.joints?.length), {
-    message:
-      'A spec has one skeleton: use `rig` for a character or `joints` for a mechanism, not both.',
-    path: ['joints'],
-  });
+  .refine(oneSkeleton, ONE_SKELETON);
+
+/**
+ * The spec as it is written, before prefabs are expanded.
+ *
+ * Only `specJSONSchema` uses it: an agent authoring a file needs to be told
+ * that a part may be a `use`, while everything downstream of `parseSpec` never
+ * sees one and should not be taught to expect it.
+ */
+const authoringSchema = z
+  .object({
+    ...specShape,
+    parts: z.array(authoredPartSchema).min(1).max(200),
+    defs: defsSchema,
+  })
+  .strict()
+  .refine(oneSkeleton, ONE_SKELETON);
 
 export type AssetSpec = z.infer<typeof specSchema>;
+/** A spec as authored, with prefab use sites allowed wherever a part can go. */
+export type AuthoredSpecInput = z.input<typeof authoringSchema>;
 export type Joint = NonNullable<AssetSpec['joints']>[number];
 export type AssetSpecInput = z.input<typeof specSchema>;
 
@@ -625,10 +865,12 @@ type PlacedPart = Omit<Part, 'children'> & {
 const MAX_MESHES = 4000;
 
 export function parseSpec(input: unknown): AssetSpec {
-  const result = specSchema.safeParse(input);
+  // Prefabs are gone by the time anything below this line runs.
+  const ready = expandPrefabs(input);
+  const result = specSchema.safeParse(ready);
   if (!result.success) {
     const issue = result.error.issues[0];
-    const where = issue.path.length ? ` at ${issue.path.join('.')}` : '';
+    const where = issue.path.length ? ` at ${prefabWhere(ready, issue.path)}` : '';
     throw Error(`Invalid asset spec${where}: ${issue.message}`);
   }
   return result.data;
@@ -1025,7 +1267,11 @@ function geometryFor(
     case 'loft':
       return loftGeometry(part);
     case 'sphere':
-      return new T.SphereGeometry(0.5, detail * 2, detail);
+      // At the default detail a subdivided icosahedron reads rounder than a
+      // 12 x 6 lat-long sphere and costs 80 triangles against 132.
+      return detail <= 6
+        ? new T.IcosahedronGeometry(0.5, 1)
+        : new T.SphereGeometry(0.5, detail * 2, detail);
     case 'icosahedron':
       return new T.IcosahedronGeometry(0.5, detail > 8 ? 2 : detail > 4 ? 1 : 0);
     case 'octahedron':
@@ -1362,6 +1608,7 @@ function makeMesh(part: PlacedPart, context: BuildContext, rigPart?: string) {
   mesh.receiveShadow = true;
   if (rigPart) mesh.userData.rigPart = rigPart;
   if (part.origin) mesh.userData.specPath = part.origin;
+  if (part.prefab) mesh.userData.prefab = part.prefab;
   // Surface mode rebuilds this part as a distance field rather than reading
   // its triangles back, so it needs the authored shape, not just the result.
   mesh.userData.prim = {
@@ -1381,6 +1628,10 @@ function makeMesh(part: PlacedPart, context: BuildContext, rigPart?: string) {
     deform: part.deform,
     subtract: part.subtract,
     material: part.material,
+    field: part.field,
+    lipschitz: part.lipschitz,
+    paint: part.paint,
+    wrap: part.wrap,
   };
   return mesh;
 }
@@ -2034,6 +2285,20 @@ export function buildSpec(input: unknown, options: SurfaceOptions = {}) {
     // No finishing pass here: it would weld the vertex colours into one flat
     // material and recompute the normals the field already got right.
   } else {
+    if (spec.trim !== false) {
+      // Faces hidden inside a neighbour that moves with them are waste; see
+      // `trimHidden` for why the group matters.
+      const t = mark();
+      const binder = spec.joints?.length ? jointBinder(spec) : null;
+      trimHidden(model, {
+        group: (mesh) => {
+          if (binder) return String(binder(mesh.userData.specPath as number[] | undefined));
+          if (spec.rig) return (mesh.userData.rigPart as string | undefined) ?? null;
+          return 'all';
+        },
+      });
+      measure('build.trim', t);
+    }
     finishModel(model, spec.kind);
   }
   if (spec.rig || spec.joints?.length) options.onPhase?.('skinning');
@@ -2050,5 +2315,5 @@ export function buildSpec(input: unknown, options: SurfaceOptions = {}) {
 
 /** JSON Schema for the spec, handed to agents so they can author against it. */
 export function specJSONSchema() {
-  return z.toJSONSchema(specSchema, { io: 'input' });
+  return z.toJSONSchema(authoringSchema, { io: 'input' });
 }

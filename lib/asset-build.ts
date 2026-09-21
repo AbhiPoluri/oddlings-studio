@@ -9,6 +9,7 @@ import {
   materialOf,
   materialSuffix,
   splitUvSeams,
+  type MaterialSpec,
   type SurfaceMaterial,
 } from './asset-uv';
 import { type Recipe, fileName } from './asset-recipe';
@@ -72,18 +73,18 @@ export function finishModel(model: T.Object3D, prefix: string) {
       geometry.computeVertexNormals();
       const old = o.material as T.MeshStandardMaterial;
       const hex = old.color.getHexString();
-      const prim = o.userData.prim as
-        | { material?: { roughness?: number; metalness?: number; emissive?: string; emissiveStrength?: number } }
-        | undefined;
+      const prim = o.userData.prim as { material?: MaterialSpec } | undefined;
       const wanted = materialOf(prim?.material);
       const key = `${hex}|${materialKey(wanted)}`;
       let shared = palette.get(key);
       if (!shared) {
-        shared = old;
-        shared.name = isDefaultMaterial(wanted)
+        old.name = isDefaultMaterial(wanted)
           ? `paint_${hex}`
           : `paint_${hex}_${materialSuffix(wanted)}`;
-        applyMaterial(shared, wanted);
+        // Assigned, not mutated: a preset that needs transmission, clearcoat
+        // or sheen comes back as a `MeshPhysicalMaterial` built from this one,
+        // and the standard material it replaces is disposed for us.
+        shared = applyMaterial(old, wanted);
         palette.set(key, shared);
       } else if (shared !== old) old.dispose();
       o.material = shared;
@@ -180,6 +181,16 @@ export function objBundle(
   fallback?: string,
   texture?: string,
   emissiveTexture?: string,
+  /**
+   * The other baked channels, by file name.
+   *
+   * MTL grew PBR keywords late and unofficially, but `norm`, `map_Pr` and
+   * `map_Pm` are what Blender and the PBR-aware importers read, and writing
+   * them costs three lines for a material that already ships the images. An
+   * importer that does not know them ignores them, which is the same place
+   * this was before.
+   */
+  maps?: { normal?: string; roughness?: string; metalness?: string },
 ) {
   const base = fileName(name);
   // Cut the planned uv seams first, or the OBJ ships without `vt` lines and
@@ -226,7 +237,14 @@ export function objBundle(
         : entry.color.clone().convertLinearToSRGB();
       const map = entry.mapped ? `map_Kd ${texture}\n` : '';
       const glow = emissionOf(entry.material, entry.glowing, emissiveTexture);
-      return `newmtl ${materialName}\nKa 0.1 0.1 0.1\nKd ${c.r.toFixed(5)} ${c.g.toFixed(5)} ${c.b.toFixed(5)}\nKs 0 0 0\nNs ${shininess(entry.material)}\nd 1\nillum 2\n${map}${glow}`;
+      const pbr = entry.mapped
+        ? [
+            maps?.normal ? `norm ${maps.normal}\n` : '',
+            maps?.roughness ? `map_Pr ${maps.roughness}\n` : '',
+            maps?.metalness ? `map_Pm ${maps.metalness}\n` : '',
+          ].join('')
+        : '';
+      return `newmtl ${materialName}\nKa 0.1 0.1 0.1\nKd ${c.r.toFixed(5)} ${c.g.toFixed(5)} ${c.b.toFixed(5)}\nKs 0 0 0\nNs ${shininess(entry.material)}\nd 1\nillum 2\n${map}${glow}${pbr}`;
     })
     .join('\n');
   return { obj, mtl, base };

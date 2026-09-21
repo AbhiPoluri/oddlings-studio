@@ -15,9 +15,23 @@
  * check.
  */
 import { pathKey, type Path, type Selection } from '@/lib/spec-edit';
+import { describeMark, type DrawnMark, type Mark } from '@/lib/draw-marks';
 import type { ReviewNote } from '@/node/studio-api';
 
 export type { ReviewNote };
+
+/**
+ * A note's id.
+ *
+ * Only has to be unique inside one review file, and the CLI quotes it back
+ * when it resolves one — so a readable stamp beats a UUID nobody can match up
+ * against a line in a terminal. `randomUUID` is absent on insecure origins.
+ */
+let minted = 0;
+export function noteId(): string {
+  minted += 1;
+  return `n${Date.now().toString(36)}${minted.toString(36)}`;
+}
 
 /** A note the studio is about to write. The id is the caller's, so this is pure. */
 export function newNote(fields: {
@@ -26,6 +40,8 @@ export function newNote(fields: {
   partName: string | null;
   text: string;
   at: string;
+  /** The stroke it was drawn as, for a note made with the Draw tool. */
+  mark?: Mark;
 }): ReviewNote {
   return {
     id: fields.id,
@@ -37,7 +53,52 @@ export function newNote(fields: {
     at: fields.at,
     resolvedAt: null,
     reply: null,
+    ...(fields.mark ? { mark: fields.mark } : null),
   };
+}
+
+/**
+ * The note a finished stroke becomes.
+ *
+ * The label is optional because most marks do not need one — a ring round the
+ * visor with "bigger" typed under it says as much as a paragraph would, and a
+ * ring with nothing typed still says "look at this". An unlabelled mark takes
+ * the shape's own description as its text, because `text` is the one field
+ * every reader of a review file already knows how to show, and a note that
+ * read as blank in the CLI would be a note nobody acted on.
+ *
+ * `part` is the first of the mark's parts so every existing reader — the
+ * outliner badge, the panel's Select button, the agent's `note.part` — points
+ * somewhere useful without being taught about marks.
+ */
+export function markNote(fields: {
+  id: string;
+  mark: Mark;
+  text: string;
+  at: string;
+}): ReviewNote {
+  const first = fields.mark.parts[0] ?? null;
+  return newNote({
+    id: fields.id,
+    part: first?.path ?? null,
+    partName: first?.name ?? null,
+    text: fields.text.trim() || describeMark(fields.mark),
+    at: fields.at,
+    mark: fields.mark,
+  });
+}
+
+/**
+ * The marks the viewport should be drawing.
+ *
+ * Open notes only: resolving a note is the reviewer saying the matter is
+ * closed, and a scribble that outlived its question is just something in the
+ * way of the model.
+ */
+export function drawnMarks(notes: ReviewNote[]): DrawnMark[] {
+  return notes
+    .filter((note) => note.status === 'open' && note.mark)
+    .map((note) => ({ ...note.mark!, id: note.id }));
 }
 
 /**

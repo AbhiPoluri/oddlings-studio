@@ -44,14 +44,18 @@ function chunk(type: string, body: Uint8Array) {
 }
 
 /**
- * Encode a baked atlas as an 8-bit RGBA PNG.
+ * Encode an 8-bit RGBA image as a PNG.
  *
  * Every row uses filter 0. The atlas is flat colour in large blocks, which
  * deflate already collapses to a couple of hundred kilobytes, so the per-row
  * predictors would buy bytes nobody is counting and cost a pass over four
  * megabytes to do it.
+ *
+ * Takes the three fields an image is, not a whole `ColorAtlas`: the headless
+ * renderer produces pictures of models rather than textures, and they go down
+ * the same four chunks. An atlas still passes unchanged.
  */
-export function encodePng(atlas: ColorAtlas) {
+export function encodePng(atlas: Pick<ColorAtlas, 'width' | 'height' | 'rgba'>) {
   const { width, height, rgba } = atlas;
   const stride = width * 4;
   // PNG prefixes each scanline with its filter byte, so the raw stream is one

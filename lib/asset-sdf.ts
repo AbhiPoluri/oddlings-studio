@@ -464,6 +464,18 @@ export type Prim = {
   /** Carve out of the field instead of adding to it (surface mode). */
   subtract?: boolean;
   material?: NonNullable<Part['material']>;
+  /** A `field` part's own distance expression, and how fast it may change. */
+  field?: string;
+  fieldLipschitz?: number;
+  /** A `paint` expression: the part's colour as code, per vertex. */
+  paint?: string;
+  /** Authored `wrap`, before its target names are resolved. */
+  wrap?: NonNullable<Part['wrap']>;
+  /**
+   * `wrap` resolved: the primitives this one hugs. Filled in by the surface
+   * builder once every primitive exists; a wrap with no targets is inert.
+   */
+  wrapTargets?: Prim[];
   /** A loft's built triangles, for the mesh-SDF path. */
   mesh?: T.BufferGeometry;
 };
@@ -487,7 +499,159 @@ export type PrimSource = Pick<
   | 'deform'
   | 'subtract'
   | 'material'
+  | 'field'
+  | 'lipschitz'
+  | 'paint'
+  | 'wrap'
 >;
+
+
+/**
+ * The toolkit a `field` expression sees as `s`.
+ *
+ * Every function measures in the part's canonical unit box, the same frame the
+ * built-in shapes are evaluated in: x, y and z run from -0.5 to 0.5 across the
+ * declared `size`, and the number returned is a distance in that frame. The
+ * primitives are the standard exact fields, `smin`/`smax` the polynomial blend
+ * the union uses, `noise`/`fbm` the builder's own value noise so a displaced
+ * field is reproducible from the seed, and `rep` folds space for repetition.
+ */
+export type FieldTools = ReturnType<typeof fieldTools>;
+export function fieldTools(seed: number) {
+  const length = (x: number, y: number, z = 0) => Math.hypot(x, y, z);
+  const smin = (a: number, b: number, k: number) => {
+    if (k <= 0) return Math.min(a, b);
+    const h = Math.max(k - Math.abs(a - b), 0) / k;
+    return Math.min(a, b) - h * h * k * 0.25;
+  };
+  const smax = (a: number, b: number, k: number) => -smin(-a, -b, k);
+  const noise = (x: number, y: number, z: number) => noise3(x, y, z, seed);
+  const fbm = (x: number, y: number, z: number, octaves = 4) => {
+    let sum = 0,
+      amp = 0.5,
+      f = 1,
+      norm = 0;
+    for (let i = 0; i < octaves; i++) {
+      sum += amp * noise3(x * f, y * f, z * f, seed + i * 131);
+      norm += amp;
+      amp *= 0.5;
+      f *= 2.03;
+    }
+    return sum / norm;
+  };
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+  /** Fold a coordinate into a cell of `period`, centred, for domain repetition. */
+  const rep = (v: number, period: number) => v - period * Math.round(v / period);
+  return {
+    length,
+    smin,
+    smax,
+    noise,
+    fbm,
+    clamp,
+    mix,
+    rep,
+    abs: Math.abs,
+    sphere: (x: number, y: number, z: number, r: number) => length(x, y, z) - r,
+    /** Box with half-extents hx, hy, hz. */
+    box: (x: number, y: number, z: number, hx: number, hy: number, hz: number) => {
+      const qx = Math.abs(x) - hx,
+        qy = Math.abs(y) - hy,
+        qz = Math.abs(z) - hz;
+      return (
+        length(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) +
+        Math.min(Math.max(qx, qy, qz), 0)
+      );
+    },
+    /** Rounded box: half-extents and a corner radius. */
+    rbox: (x: number, y: number, z: number, hx: number, hy: number, hz: number, r: number) => {
+      const qx = Math.abs(x) - hx + r,
+        qy = Math.abs(y) - hy + r,
+        qz = Math.abs(z) - hz + r;
+      return (
+        length(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) +
+        Math.min(Math.max(qx, qy, qz), 0) -
+        r
+      );
+    },
+    /** Cylinder along Y: radius r, half-height h. */
+    cyl: (x: number, y: number, z: number, r: number, h: number) => {
+      const dx = length(x, z) - r,
+        dy = Math.abs(y) - h;
+      return Math.min(Math.max(dx, dy), 0) + length(Math.max(dx, 0), Math.max(dy, 0));
+    },
+    /** Capsule along Y between -h and h with radius r. */
+    capsule: (x: number, y: number, z: number, r: number, h: number) =>
+      length(x, y - clamp(y, -h, h), z) - r,
+    /** Torus in the XZ plane: ring radius R, tube radius r. */
+    torus: (x: number, y: number, z: number, R: number, r: number) =>
+      length(length(x, z) - R, y) - r,
+    /** Cone along Y from a base of radius r at y=-h to a point at y=h. */
+    cone: (x: number, y: number, z: number, r: number, h: number) => {
+      const q = length(x, z);
+      const t = clamp((y + h) / (2 * h), 0, 1);
+      const rr = r * (1 - t);
+      const dx = q - rr,
+        dy = Math.abs(y) - h;
+      return Math.min(Math.max(dx, dy), 0) + length(Math.max(dx, 0), Math.max(dy, 0));
+    },
+    /** Hollow out a field into a shell of the given thickness. */
+    onion: (d: number, thickness: number) => Math.abs(d) - thickness,
+  };
+}
+
+type FieldFn = (x: number, y: number, z: number, s: FieldTools, M: Math) => number;
+const compiled = new Map<string, FieldFn>();
+
+/** A field with no expression is a unit sphere, as a loft with no stations is a box. */
+export const DEFAULT_FIELD = 's.sphere(x, y, z, 0.5)';
+
+/**
+ * Turn a `field` expression into a function, or explain why it cannot be one.
+ *
+ * The expression is JavaScript with `x`, `y`, `z`, the toolkit `s` and `M`
+ * (Math) in scope. A bare expression is returned; a body with its own
+ * `return` is run as written, so multi-line fields with local variables work.
+ * Compiled once per distinct string and shared by every copy of the part.
+ */
+export function compileField(field: string): FieldFn {
+  const cached = compiled.get(field);
+  if (cached) return cached;
+  const body = /\breturn\b/.test(field) ? field : `return (${field});`;
+  let fn: FieldFn;
+  try {
+    fn = new Function('x', 'y', 'z', 's', 'M', body) as FieldFn;
+  } catch (error) {
+    throw Error(`"field" does not compile: ${(error as Error).message}`);
+  }
+  const tools = fieldTools(0);
+  const probe = fn(0.1, 0.2, 0.3, tools, Math);
+  if (typeof probe !== 'number' || !Number.isFinite(probe))
+    throw Error('"field" must return a finite number; it returned ' + String(probe) + ' at (0.1, 0.2, 0.3).');
+  compiled.set(field, fn);
+  return fn;
+}
+
+const toolsBySeed = new Map<number, FieldTools>();
+function fieldEval(prim: Prim, x: number, y: number, z: number) {
+  const fn = compileField(prim.field ?? DEFAULT_FIELD);
+  let tools = toolsBySeed.get(prim.seed);
+  if (!tools) {
+    tools = fieldTools(prim.seed);
+    toolsBySeed.set(prim.seed, tools);
+  }
+  const d = fn(x, y, z, tools, Math);
+  // A field that blows up somewhere is treated as empty there rather than
+  // poisoning the whole grid with NaN.
+  // The expression's own value, undivided. The declared `lipschitz` bound is
+  // honoured where it matters — the block sampler widens its slack by it (see
+  // `slope` in asset-surface) — rather than by shrinking every distance here,
+  // which would make the smooth union treat the part as close over a region
+  // `lipschitz` times too wide and inflate it, and would hand it its
+  // neighbours' skin at paint time.
+  return Number.isFinite(d) ? d : 1;
+}
 
 const scratch = new T.Vector3();
 
@@ -582,6 +746,12 @@ export function distanceTo(prim: Prim, x: number, y: number, z: number) {
           ? loftFieldOf(prim).distance(lx, ly, lz)
           : sdBox(lx, ly, lz, a[1], a[2], a[3]);
       break;
+    case 'field':
+      // The author's own expression, in the canonical box. Divided by its
+      // declared Lipschitz bound so a displaced field still under-reports
+      // distance, which is what keeps the block sampler honest.
+      d = fieldEval(prim, lx, ly, lz);
+      break;
     case 'octahedron':
       d = sdOctahedron(lx, ly, lz, a[0]);
       break;
@@ -606,7 +776,38 @@ export function distanceTo(prim: Prim, x: number, y: number, z: number) {
   // the point it is evaluated at faster than the query point moves, and the
   // block test only stays sound while the reported distance cannot outrun the
   // step that produced it.
-  return warp ? (d * prim.lipschitz) / warp.lipschitz : d * prim.lipschitz;
+  // The two shapes measured in local metres (an extrude, a bevelled box) pay
+  // one more factor under a warp. Their query point goes canonical (divided by
+  // the stretch), through the inverse warp, and back to metres (multiplied by
+  // the stretch): a bend can turn a step along the part's thin axis into one
+  // along its long axis, so the round trip stretches by up to the ratio of
+  // the two, and a 4.5 cm plate bent 12° was changing five times faster than
+  // distance. Canonical shapes never leave the divided frame, so the min
+  // stretch `prim.lipschitz` already covers them.
+  const metricShape =
+    (prim.shape === 'extrude' && a[0] >= 3) ||
+    ((prim.shape === 'box' || prim.shape === 'plane') && a.length > 3 && a[3] > 0);
+  const anisotropy =
+    warp && metricShape
+      ? Math.max(...prim.stretch) / Math.max(1e-9, Math.min(...prim.stretch))
+      : 1;
+  const metres = warp
+    ? (d * prim.lipschitz) / (warp.lipschitz * anisotropy)
+    : d * prim.lipschitz;
+  const targets = prim.wrapTargets;
+  if (!targets || !targets.length || !prim.wrap) return metres;
+  // A wrapped part is the intersection of its own solid with a shell of its
+  // targets: the points between `gap` and `gap + thickness` off their union.
+  // Both operands are distance bounds, and the max of two is one, so the
+  // sampler's block test stays sound.
+  let toTarget = Infinity;
+  for (const target of targets) {
+    const dt = distanceTo(target, x, y, z);
+    if (dt < toTarget) toTarget = dt;
+  }
+  const inner = toTarget - prim.wrap.gap;
+  const shell = Math.max(inner - prim.wrap.thickness, -inner);
+  return Math.max(metres, shell);
 }
 
 /** Scratch for the inverse warp, so a hot query allocates nothing. */

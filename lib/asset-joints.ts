@@ -128,13 +128,10 @@ export function rigJoints(
       | { index: Uint16Array; paths: (number[] | undefined)[] }
       | undefined;
     const meshBone = boneFor(object.userData.specPath as number[] | undefined);
-    const ids: number[] = [];
-    const weights: number[] = [];
-    for (let i = 0; i < position.count; i++) {
-      const bone = owners ? boneFor(owners.paths[owners.index[i]]) : meshBone;
-      ids.push(bone, 0, 0, 0);
-      weights.push(1, 0, 0, 0);
-    }
+    const boneOf = new Uint16Array(position.count);
+    for (let i = 0; i < position.count; i++)
+      boneOf[i] = owners ? boneFor(owners.paths[owners.index[i]]) : meshBone;
+    const { ids, weights } = softenBoundaries(geometry, boneOf);
     geometry.setAttribute('skinIndex', new T.Uint16BufferAttribute(ids, 4));
     geometry.setAttribute('skinWeight', new T.Float32BufferAttribute(weights, 4));
 
@@ -149,6 +146,84 @@ export function rigJoints(
   });
   model.updateMatrixWorld(true);
   return model;
+}
+
+/**
+ * Skin weights that blend across the border between two bones.
+ *
+ * A fused mesh binds every vertex to the bone of the part that owns it, and
+ * that is exactly right everywhere except along the line where two parts
+ * meet: there, one vertex follows the leg and its neighbour follows the body,
+ * and the moment the leg turns the triangles between them shear open. A
+ * couple of rings of blended weight either side of the border is what every
+ * skinning tool does by hand; here it is done by diffusion. Each vertex
+ * starts fully on its own bone, then twice takes half its weight from the
+ * average of its neighbours. Away from a border that changes nothing. On the
+ * border it leaves the vertex leaning to its own bone with a real share of
+ * the neighbour, so the seam stretches instead of tearing. Up to four bones
+ * per vertex, as the skin attributes allow.
+ */
+function softenBoundaries(geometry: T.BufferGeometry, boneOf: Uint16Array) {
+  const count = boneOf.length;
+  const index = geometry.index;
+  const ids: number[] = [];
+  const weights: number[] = [];
+  if (!index) {
+    for (let i = 0; i < count; i++) {
+      ids.push(boneOf[i], 0, 0, 0);
+      weights.push(1, 0, 0, 0);
+    }
+    return { ids, weights };
+  }
+  // Neighbours, compressed. Duplicated vertices (seams, creases) are welded
+  // by position so a border split for colour is not also a border for skin.
+  const position = geometry.attributes.position as T.BufferAttribute;
+  const canon = new Uint32Array(count);
+  const seen = new Map<string, number>();
+  for (let i = 0; i < count; i++) {
+    const key = `${position.getX(i)},${position.getY(i)},${position.getZ(i)}`;
+    const first = seen.get(key);
+    canon[i] = first === undefined ? (seen.set(key, i), i) : first;
+  }
+  const adjacency: number[][] = Array.from({ length: count }, () => []);
+  const array = index.array;
+  for (let t = 0; t < index.count; t += 3) {
+    const a = canon[array[t]], b = canon[array[t + 1]], c = canon[array[t + 2]];
+    adjacency[a].push(b, c);
+    adjacency[b].push(c, a);
+    adjacency[c].push(a, b);
+  }
+  // Only vertices with a differently-boned neighbour, and their neighbours,
+  // ever take part; everything else stays one-hot without any work.
+  let current: Map<number, number>[] = Array.from({ length: count }, (_, i) => new Map([[boneOf[i], 1]]));
+  for (let pass = 0; pass < 2; pass++) {
+    const next: Map<number, number>[] = current.slice();
+    for (let i = 0; i < count; i++) {
+      const c = canon[i];
+      const around = adjacency[c];
+      if (!around.length) continue;
+      let mixed = false;
+      for (const n of around) if (boneOf[n] !== boneOf[i]) { mixed = true; break; }
+      if (!mixed && pass === 0) continue;
+      const sum = new Map<number, number>();
+      for (const n of around)
+        for (const [bone, w] of current[n]) sum.set(bone, (sum.get(bone) ?? 0) + w / around.length);
+      const blended = new Map<number, number>();
+      for (const [bone, w] of current[i]) blended.set(bone, w * 0.5);
+      for (const [bone, w] of sum) blended.set(bone, (blended.get(bone) ?? 0) + w * 0.5);
+      next[i] = blended;
+    }
+    current = next;
+  }
+  for (let i = 0; i < count; i++) {
+    const top = [...current[canon[i]].entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const total = top.reduce((a, [, w]) => a + w, 0) || 1;
+    for (let k = 0; k < 4; k++) {
+      ids.push(top[k] ? top[k][0] : 0);
+      weights.push(top[k] ? top[k][1] / total : 0);
+    }
+  }
+  return { ids, weights };
 }
 
 /**

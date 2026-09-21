@@ -4,11 +4,13 @@ import { dirname, join, resolve } from 'node:path';
 import * as T from 'three';
 import { zipSync, strToU8 } from 'fflate';
 import { buildAsset, objBundle, stats } from '../lib/asset-build';
-import { toGLB, clipsFor, unityReadme } from '../lib/asset-bundle';
+import { toGLB, clipsFor, unityReadme, skeletonNotes } from '../lib/asset-bundle';
 import { buildSpec, type AssetSpec } from '../lib/asset-spec';
 import { auditModel, type Audit } from '../lib/asset-audit';
+import { withClipFindings } from '../lib/asset-audit-clips';
 import { readySurface } from '../lib/asset-surface';
-import { bakeColorAtlas, splitUvSeams } from '../lib/asset-uv';
+import { splitUvSeams } from '../lib/asset-uv';
+import { bakeSurface } from '../lib/asset-bake';
 import { encodePng } from '../lib/asset-png';
 import { markActive } from './active-spec';
 import { flatten } from '../lib/spec-edit';
@@ -68,7 +70,7 @@ export async function writeAsset(
   const model = isRecipe ? buildAsset(source.recipe) : buildSpec(source.spec);
   const clips = isRecipe ? clipsFor(source.recipe) : specClips(source.spec);
   const measured = stats(model);
-  const audit = auditModel(model, {
+  const geometry = auditModel(model, {
     // Only a character rig should face the rig checks. A joint rig has two
     // bones and no legs, so asking whether anything binds to a thigh would
     // report a swinging tire as broken.
@@ -83,11 +85,16 @@ export async function writeAsset(
           ]),
         ),
   });
-  // Cut the uv seams and bake the vertex colours into an atlas. After the
-  // audit on purpose: the audit reads the welded index to prove the shell is
-  // closed, and a uv seam is a tear in that index.
+  // A generator's model has no spec to pose, so only an authored one is
+  // sampled for parts that run through each other while a clip plays.
+  const audit = isRecipe ? geometry : withClipFindings(geometry, source.spec);
+  // Bake the atlas, then cut the uv seams. After the audit on purpose: the
+  // audit reads the welded index to prove the shell is closed, and a uv seam
+  // is a tear in that index. The bake comes first because it reads the uv plan
+  // rather than the cut uvs, and because the welded triangles are the ones the
+  // paint expressions were written against.
+  const atlas = bakeSurface(model);
   splitUvSeams(model);
-  const atlas = bakeColorAtlas(model);
   const png = atlas ? encodePng(atlas) : null;
   // Faceted assets have flat materials and no vertex colours, so there is
   // nothing for a texture to carry and no PNG is written.
@@ -96,7 +103,7 @@ export async function writeAsset(
   // varies. A spec with no `material` block produces none of them, so what
   // lands on disk is exactly what used to.
   const extras: { name: string; data: Uint8Array }[] = [];
-  for (const channel of ['roughness', 'metalness', 'emissive'] as const) {
+  for (const channel of ['roughness', 'metalness', 'emissive', 'normal'] as const) {
     const map = atlas?.maps?.[channel];
     if (map) extras.push({ name: `${base}-${channel}.png`, data: encodePng(map) });
   }
@@ -125,13 +132,18 @@ export async function writeAsset(
           isRecipe ? undefined : source.spec.color,
           texture,
           emissiveTexture,
+          {
+            ...(atlas?.maps?.normal ? { normal: `${base}-normal.png` } : {}),
+            ...(atlas?.maps?.roughness ? { roughness: `${base}-roughness.png` } : {}),
+            ...(atlas?.maps?.metalness ? { metalness: `${base}-metalness.png` } : {}),
+          },
         );
         if (formats.includes('obj')) {
           files.push(await put(join(outDir, `${base}.obj`), bundle.obj));
           files.push(await put(join(outDir, `${base}.mtl`), bundle.mtl));
         }
         if (formats.includes('unity')) {
-          const glb = await toGLB(model, clips);
+          const glb = await toGLB(model, clips, atlas);
           const zip = zipSync(
             {
               [`${base}/${base}.glb`]: new Uint8Array(glb),
@@ -147,6 +159,7 @@ export async function writeAsset(
                   extras.map((extra) =>
                     extra.name.slice(extra.name.lastIndexOf('-') + 1, -4),
                   ),
+                  skeletonNotes(model, clips),
                 ),
               ),
               ...(png ? { [`${base}/${base}.png`]: png } : {}),
@@ -164,15 +177,15 @@ export async function writeAsset(
     }
 
     if (formats.includes('glb')) {
-      const glb = await toGLB(model, clips);
+      const glb = await toGLB(model, clips, atlas);
       files.push(await put(join(outDir, `${base}.glb`), new Uint8Array(glb)));
     }
 
     // Last, so callers that reach for `files[0]` still find the model rather
-    // than its texture. A GLB cannot embed this: GLTFExporter needs an image
-    // source it can only get from a canvas, which neither the CLI nor the
-    // worker has — so the atlas ships beside the model and the GLB keeps its
-    // vertex colours.
+    // than its texture. The GLB embeds the same atlas when the asset paints —
+    // `lib/node-shims.ts` gives the exporter the canvas it insists on — and
+    // the PNGs still ship beside the model for the OBJ, which has no way to
+    // carry an image inside itself.
     if (png && formats.some((format) => format !== 'json')) {
       files.push(await put(join(outDir, `${base}.png`), png));
       for (const extra of extras)
@@ -207,6 +220,17 @@ export async function inspectGLB(path: string) {
   const { readFile } = await import('node:fs/promises');
   const buffer = await readFile(resolve(path));
   const loader = new GLTFLoader();
+  // Node has no Image, so three's texture loader cannot decode the embedded
+  // PNGs and warns for each one. Inspection reads counts, bones, clips and
+  // extras, never pixels, so a plugin answers every texture with an empty one
+  // before the parser's own loader is asked.
+  loader.register(
+    () =>
+      ({
+        name: 'oddlings-inspect-no-textures',
+        loadTexture: () => Promise.resolve(new T.Texture()),
+      }) as unknown as import('three/addons/loaders/GLTFLoader.js').GLTFLoaderPlugin,
+  );
   const gltf = await loader.parseAsync(
     buffer.buffer.slice(
       buffer.byteOffset,
@@ -222,6 +246,8 @@ export async function inspectGLB(path: string) {
     path: resolve(path),
     stats: stats(gltf.scene),
     bones,
+    /** The skeleton hand-off block. See lib/asset-rig-extras.ts. */
+    extras: gltf.scene.userData.oddlings ?? null,
     animations: gltf.animations.map((c) => ({
       name: c.name,
       duration: Number(c.duration.toFixed(3)),

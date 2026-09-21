@@ -22,6 +22,14 @@ import {
   type StudioAction,
   type StudioState,
 } from './reducer';
+import {
+  FILTER_KINDS,
+  FILTER_LABEL,
+  PRESETS,
+  filterPatch,
+  type FilterKind,
+  type PresetId,
+} from './filters';
 
 export type ExportFormat = 'glb' | 'obj' | 'unity' | 'json';
 export type NewKind = 'empty' | 'blueprint' | 'import' | 'url';
@@ -100,6 +108,44 @@ function overlay(
     keys: [shortcut],
     enabled: always,
     run: ({ dispatch }) => dispatch({ type: 'overlay', key }),
+  };
+}
+
+/**
+ * One filter's own switch.
+ *
+ * Deliberately keyless. Seven filters and four presets is eleven more chords
+ * than a studio has spare, and the palette is where a thing you use once a
+ * session belongs — `P` stays on the stack as a whole, which is the toggle
+ * that used to be Pixel preview and the one worth reaching for mid-orbit.
+ */
+function filterToggle(kind: FilterKind): StudioCommand {
+  return {
+    id: `filter.${kind}`,
+    label: `${FILTER_LABEL[kind]} filter`,
+    group: 'Filters',
+    enabled: always,
+    run: ({ dispatch, state }) => {
+      const on = !state.filters[kind].on;
+      dispatch({
+        type: 'filters',
+        // Turning one filter on with the stack switched off would light the
+        // row up and change nothing on screen, so it brings the stack with it.
+        // Only that way round: switching the last filter off from the palette
+        // must not leave the master switch on with nothing under it.
+        patch: { ...filterPatch(kind, { on }), on: state.filters.on || on },
+      });
+    },
+  };
+}
+
+function filterPreset(id: PresetId, label: string): StudioCommand {
+  return {
+    id: `filter.preset.${id}`,
+    label: `Filter preset: ${label}`,
+    group: 'Filters',
+    enabled: always,
+    run: ({ dispatch }) => dispatch({ type: 'filterPreset', preset: id }),
   };
 }
 
@@ -223,12 +269,48 @@ export const COMMANDS: StudioCommand[] = [
     run: (context) => gizmoKey(context, 's', 'scale'),
   },
 
+  // — Tools ————————————————————————————————————————————————————
+  {
+    id: 'tool.draw',
+    label: 'Draw on the model',
+    group: 'Tools',
+    keys: ['D'],
+    // Deliberately not canvas-owned: the draw surface sits over the canvas, so
+    // while this tool is on the canvas does not have focus and a canvas-owned
+    // key would be a key that only worked on the way in.
+    enabled: hasSpec,
+    run: ({ dispatch, state }) =>
+      dispatch({ type: 'tool', tool: state.tool === 'draw' ? 'select' : 'draw' }),
+  },
+  {
+    id: 'tool.select',
+    label: 'Select tool',
+    group: 'Tools',
+    // No chord of its own. Escape on the drawing surface is the way out, and
+    // that one is answered where the surface is — binding it here as well
+    // would be a second claim on a key `select.none` already has.
+    enabled: always,
+    run: ({ dispatch }) => dispatch({ type: 'tool', tool: 'select' }),
+  },
+
   // — Overlays ————————————————————————————————————————————————
   overlay('toggle.wireframe', 'wireframe', 'Wireframe', 'Z'),
   overlay('toggle.grid', 'grid', 'Grid', 'H'),
   overlay('toggle.skeleton', 'skeleton', 'Skeleton', 'B'),
-  overlay('toggle.pixel', 'pixel', 'Pixel preview', 'P'),
   overlay('toggle.rotate', 'rotate', 'Turntable', 'T'),
+  {
+    id: 'toggle.filters',
+    label: 'Viewport filters',
+    group: 'Overlays',
+    keys: ['P'],
+    enabled: always,
+    run: ({ dispatch, state }) =>
+      dispatch({ type: 'filters', patch: { on: !state.filters.on } }),
+  },
+
+  // — Filters ——————————————————————————————————————————————————
+  ...FILTER_KINDS.map(filterToggle),
+  ...PRESETS.map((entry) => filterPreset(entry.id, entry.label)),
   {
     id: 'view.compare',
     label: 'Compare with the previous build',

@@ -16,6 +16,14 @@ import { initialRecipe, type Recipe } from '@/lib/asset-recipe';
 import type { AssetSpec } from '@/lib/asset-spec';
 import { clipsOf } from '@/lib/asset-joints';
 import { diffSpecs, sameSelection, type Selection } from '@/lib/spec-edit';
+import {
+  applyPreset,
+  DEFAULT_FILTERS,
+  patchFilters,
+  type Filters,
+  type FiltersPatch,
+  type PresetId,
+} from './filters';
 import { BIND_POSE } from '@/components/timeline';
 import type { SpecRow } from '@/node/studio-api';
 
@@ -72,7 +80,6 @@ export type Overlays = {
   wireframe: boolean;
   grid: boolean;
   skeleton: boolean;
-  pixel: boolean;
   rotate: boolean;
   /** Draw the previous agent build behind this one, as a ghost. */
   compare: boolean;
@@ -105,6 +112,21 @@ export type Playback = {
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale';
 
+/**
+ * What the pointer does over the viewport.
+ *
+ * Two, and they are genuinely exclusive: drawing needs every drag the orbit
+ * controls also want, so a tool that shared the mouse with them would be a
+ * tool that worked until you moved the camera. `select` is the studio as it
+ * has always been — orbit, pick, drag a gizmo. `draw` puts a surface over the
+ * canvas and every drag on it is a stroke.
+ *
+ * Beside the gizmo mode rather than inside it: the gizmo mode says what a
+ * handle does once something is selected, and this says whether anything can
+ * be selected at all.
+ */
+export type Tool = 'select' | 'draw';
+
 /** A recipe kept in this browser's library, with a thumbnail if one was taken. */
 export type Saved = { id: string; recipe: Recipe; thumbnail: string };
 
@@ -130,7 +152,18 @@ export type StudioState = {
   isolate: Selection;
   /** A mirror of the viewport's own gizmo mode; see `actions.ts`. */
   gizmo: GizmoMode;
+  /** Whether the pointer picks and orbits, or draws review marks. */
+  tool: Tool;
   overlays: Overlays;
+  /**
+   * The viewport's post-processing stack.
+   *
+   * Beside `overlays` rather than inside it because an overlay is a boolean and
+   * these are a dozen numbers with ranges — and because they are the one part
+   * of the view that is persisted between sessions, which a toggle that says
+   * "draw the grid" has no business being caught up in.
+   */
+  filters: Filters;
   playback: Playback;
   follow: Follow;
   builds: BuildEntry[];
@@ -233,14 +266,15 @@ export const initialState: StudioState = {
   hover: null,
   isolate: null,
   gizmo: 'translate',
+  tool: 'select',
   overlays: {
     wireframe: false,
     grid: true,
     skeleton: false,
-    pixel: false,
     rotate: false,
     compare: false,
   },
+  filters: DEFAULT_FILTERS,
   playback: { clip: BIND_POSE, playing: false, time: 0, speed: 1, clips: [] },
   follow: {
     status: 'waiting',
@@ -312,7 +346,12 @@ export type StudioAction =
   /** Show one branch alone, or show everything again when it is already alone. */
   | { type: 'isolate'; selection: Selection }
   | { type: 'gizmo'; mode: GizmoMode }
+  | { type: 'tool'; tool: Tool }
   | { type: 'overlay'; key: keyof Overlays; value?: boolean }
+  /** Change some part of the filter stack. Anything left out keeps its value. */
+  | { type: 'filters'; patch: FiltersPatch }
+  /** Replace the whole stack with one of the named looks. */
+  | { type: 'filterPreset'; preset: PresetId }
   | { type: 'clip'; name: string }
   | { type: 'playing'; playing: boolean }
   | { type: 'time'; time: number }
@@ -594,6 +633,14 @@ export function reducer(
     case 'gizmo':
       return { ...state, gizmo: action.mode };
 
+    case 'tool':
+      // Drawing over a document with no parts in it would resolve every stroke
+      // against nothing, so the tool is simply not available there.
+      return {
+        ...state,
+        tool: action.tool === 'draw' && !state.doc.spec ? 'select' : action.tool,
+      };
+
     case 'overlay':
       return {
         ...state,
@@ -602,6 +649,17 @@ export function reducer(
           [action.key]: action.value ?? !state.overlays[action.key],
         },
       };
+
+    case 'filters': {
+      const filters = patchFilters(state.filters, action.patch);
+      // `patchFilters` hands the same object back when a slider was dragged to
+      // where it already was, which is what keeps the store from writing to
+      // `localStorage` and the viewport from pushing uniforms for nothing.
+      return filters === state.filters ? state : { ...state, filters };
+    }
+
+    case 'filterPreset':
+      return { ...state, filters: applyPreset(action.preset) };
 
     case 'clip':
       // The clock belongs to the clip, so switching rewinds rather than

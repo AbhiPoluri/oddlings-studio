@@ -157,15 +157,18 @@ export function creaseSplit(
 
 /**
  * Canonical vertex ids by position, for topology checks on a mesh whose
- * vertices were split for normals or uvs. Two vertices within a nanometre
- * of each other are the same point.
+ * vertices were split for normals, seams or uvs. Two vertices at exactly the
+ * same coordinates are the same point.
  */
 export function weldByPosition(geometry: T.BufferGeometry): Uint32Array {
   const position = geometry.attributes.position as T.BufferAttribute;
   const canon = new Uint32Array(position.count);
   const seen = new Map<string, number>();
   for (let i = 0; i < position.count; i++) {
-    const key = `${Math.round(position.getX(i) * 1e6)},${Math.round(position.getY(i) * 1e6)},${Math.round(position.getZ(i) * 1e6)}`;
+    // Exact, not rounded: seam and crease copies are bit-for-bit duplicates,
+    // and rounding would also weld two genuinely distinct vertices that sit
+    // within a micron of each other on a dense grid.
+    const key = `${position.getX(i)},${position.getY(i)},${position.getZ(i)}`;
     const first = seen.get(key);
     if (first === undefined) {
       seen.set(key, i);

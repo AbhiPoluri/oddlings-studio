@@ -1,5 +1,8 @@
 import * as T from 'three';
 import { creaseSplit } from './asset-smooth';
+import { cutSeams, framesOf, paintAt } from './asset-paint';
+import { presetPaint } from './asset-materials';
+import type { Part } from './asset-spec';
 import { MeshoptSimplifier } from 'meshoptimizer';
 import {
   applyMaterial,
@@ -52,6 +55,11 @@ export type SurfaceSettings = {
    * harder than this stay sharp and everything gentler is shaded smooth.
    */
   crease?: number;
+  /**
+   * Feature size in metres: how far the decimated surface may drift from the
+   * field. Details smaller than this flatten; unset keeps 2% of the extent.
+   */
+  feature?: number;
 };
 
 /** Knobs that change how a surface is built without changing what it is. */
@@ -173,6 +181,9 @@ function primFor(
       deform: source.deform,
       subtract: source.subtract,
       material: source.material,
+      // A limb has no unit box, so its paint runs in world metres — which is
+      // what the guide has always promised and what this line makes true.
+      paint: source.paint ?? presetPaint(source.material),
     };
   }
 
@@ -218,6 +229,11 @@ function primFor(
     deform: source.deform,
     subtract: source.subtract,
     material: source.material,
+    field: source.field,
+    fieldLipschitz: source.lipschitz,
+    // A preset draws its own pattern unless the part brought one.
+    paint: source.paint ?? presetPaint(source.material),
+    wrap: source.wrap,
   };
 }
 
@@ -421,8 +437,12 @@ function amplitude(prim: Prim) {
  * It exists so that a shape that turns out not to be gets a one-line fix
  * instead of a silently wrong block test.
  */
-function slope(_prim: Prim) {
-  return 1;
+function slope(prim: Prim) {
+  // A `field` part declares how much faster than distance its expression can
+  // change; the block test grows its slack by that so a displaced surface can
+  // never hide inside a block the centre sample called uniform. Every other
+  // shape is an exact distance.
+  return prim.shape === 'field' ? Math.max(1, prim.fieldLipschitz ?? 1) : 1;
 }
 
 /**
@@ -1088,10 +1108,17 @@ function protectSmallFeatures(
   const size = new T.Vector3();
   const small = prims
     .map((prim, index) => {
-      const span = Math.max(...prim.box.getSize(size).toArray());
+      const extents = prim.box.getSize(size).toArray();
+      const span = Math.max(...extents);
+      // A thin part is as easy to erase as a small one: a ring, a cable or a
+      // band a centimetre thick loses its curve to a handful of cheap
+      // collapses however long it is. Thin counts as small, and gets locks
+      // along its whole length rather than one part's share.
+      const thin = Math.min(...extents) < limit / 2;
       return {
         index,
         span,
+        thin,
         // Where to look for the vertices this part owns. Not its own box: an
         // eye sunk into a head owns the patch of head surface that bulges over
         // it, and that patch sits outside the eye entirely. One part-width
@@ -1101,7 +1128,7 @@ function protectSmallFeatures(
         near: prim.box.clone().expandByScalar(span + reach),
       };
     })
-    .filter((entry) => entry.span < limit)
+    .filter((entry) => entry.span < limit || entry.thin)
     // Smallest first: they are the ones a collapse erases outright, and the
     // ones that keep their protection when the share below runs out. Ties by
     // primitive index, so the order never depends on the sort's stability.
@@ -1147,7 +1174,8 @@ function protectSmallFeatures(
   for (const entry of small) {
     const list = owned.get(entry.index);
     if (!list?.length) continue;
-    const wanted = Math.min(PROTECT_PER_PART, list.length);
+    const share = entry.thin ? PROTECT_PER_PART * Math.ceil(entry.span / limit) : PROTECT_PER_PART;
+    const wanted = Math.min(share, list.length);
     if (locked + wanted > room) break;
     // Strided rather than the first N: the vertices come in grid order, so the
     // first twenty of an eye are one horizontal band of it. Spreading them over
@@ -1184,6 +1212,81 @@ function compact(positions: Float32Array, indices: Uint32Array) {
   return { positions: new Float32Array(keptPositions), indices: out };
 }
 
+/** `compact` for a seamed mesh: the per-vertex owner records come along. */
+function compactSeamed(
+  seamed: ReturnType<typeof cutSeams>,
+  indices: Uint32Array,
+): ReturnType<typeof cutSeams> {
+  const remap = new Int32Array(seamed.positions.length / 3).fill(-1);
+  const positions: number[] = [];
+  const owners: number[] = [];
+  const rigOwners: number[] = [];
+  const out = new Uint32Array(indices.length);
+  for (let i = 0; i < indices.length; i++) {
+    const v = indices[i];
+    if (remap[v] < 0) {
+      remap[v] = positions.length / 3;
+      positions.push(
+        seamed.positions[v * 3],
+        seamed.positions[v * 3 + 1],
+        seamed.positions[v * 3 + 2],
+      );
+      owners.push(seamed.owners[v]);
+      rigOwners.push(seamed.rigOwners[v]);
+    }
+    out[i] = remap[v];
+  }
+  return {
+    positions: Float32Array.from(positions),
+    indices: out,
+    owners: Uint16Array.from(owners),
+    rigOwners: Uint16Array.from(rigOwners),
+    added: seamed.added,
+  };
+}
+
+/**
+ * Point every wrapped primitive at the primitives it hugs.
+ *
+ * `wrap.on` names parts; a name covers every copy of that part — mirrored,
+ * repeated — and everything under it, so "torso" wraps the torso and the pecs
+ * hung off it. A wrap that names itself, or a name nothing carries, is an
+ * authoring error worth stopping on: the belt would otherwise quietly build
+ * as a ring.
+ */
+function resolveWraps(prims: Prim[], spec: { parts: Part[] } | undefined) {
+  if (!prims.some((prim) => prim.wrap)) return;
+  if (!spec) throw Error('"wrap" needs the spec to resolve its target names.');
+  const byName = new Map<string, number[][]>();
+  const walk = (parts: Part[], prefix: number[]) => {
+    parts.forEach((part, index) => {
+      const path = [...prefix, index];
+      if (part.name) byName.set(part.name, [...(byName.get(part.name) ?? []), path]);
+      if (part.children) walk(part.children, path);
+    });
+  };
+  walk(spec.parts, []);
+  const under = (path: number[] | undefined, root: number[]) =>
+    !!path && path.length >= root.length && root.every((v, i) => path[i] === v);
+  for (const prim of prims) {
+    if (!prim.wrap) continue;
+    const names = Array.isArray(prim.wrap.on) ? prim.wrap.on : [prim.wrap.on];
+    const targets: Prim[] = [];
+    for (const name of names) {
+      const roots = byName.get(name);
+      if (!roots)
+        throw Error(`"wrap" on a part names "${name}", but no part is called that.`);
+      for (const other of prims) {
+        if (other === prim || other.subtract) continue;
+        if (roots.some((root) => under(other.specPath, root))) targets.push(other);
+      }
+    }
+    if (!targets.length)
+      throw Error(`"wrap" on a part names only itself or cuts; wrap a solid neighbour instead.`);
+    prim.wrapTargets = targets;
+  }
+}
+
 /**
  * Turn a built model's primitives into one polygon mesh.
  *
@@ -1204,6 +1307,7 @@ export function surfaceModel(
   const t0 = mark();
   const prims = primsOf(source, fallback);
   if (!prims.length) throw Error('Surface mode found no primitives to blend.');
+  resolveWraps(prims, source.userData.spec as { parts: Part[] } | undefined);
   measure('surface.prims', t0);
 
   options.onPhase?.('sampling');
@@ -1221,56 +1325,93 @@ export function surfaceModel(
 
   options.onPhase?.('decimating');
   const t3 = mark();
-  let mesh = compact(raw.positions, raw.indices);
-  const budget = Math.max(64, settings.budget) * 3;
-  if (mesh.indices.length > budget) {
+  const full = compact(raw.positions, raw.indices);
+  // How far a collapse may move the surface, as a fraction of the extent.
+  // The default is tight enough to keep every fillet; `feature` in metres
+  // lets the author say what is too small to matter, and the budget flows
+  // from those fillets to silhouette and the large forms.
+  const extent = Math.max(grid.nx, grid.ny, grid.nz) * grid.step;
+  const tolerance = 0.02;
+  // `feature`: before any budget is applied, collapse everything the surface
+  // can lose without drifting more than the feature size from where it was.
+  // A count target alone never does this — the decimator reaches the count
+  // long before the error limit binds — so this pass has no count target at
+  // all: it runs until the next collapse would cost more than `feature`.
+  // Studs, fillets and ridges below that size go here, and the budget pass
+  // then spends every triangle on what is left, which is the large forms.
+  let base = full;
+  if (settings.feature && settings.feature > 0) {
+    const t = mark();
+    const flattened = MeshoptSimplifier.simplify(
+      full.indices,
+      full.positions,
+      3,
+      3,
+      settings.feature / Math.max(extent, 1e-6),
+      ['LockBorder'],
+    );
+    base = compact(full.positions, flattened[0] as Uint32Array);
+    measure('surface.feature', t);
+  }
+  const decimate = (triangles: number) => {
+    const budget = Math.max(64, triangles) * 3;
+    const full = base;
+    if (full.indices.length <= budget) return full;
     // The decimator ranks every collapse by the error it adds to the whole
     // mesh, which is exactly the wrong ranking for a face: erasing an eye
     // costs a hundredth of what flattening a shoulder does, so the eye goes
     // first. Pinning a handful of each small part's vertices takes those
     // collapses off the table without touching the rest of the ranking.
     const lock = protectSmallFeatures(
-      mesh.positions,
+      full.positions,
       prims,
       grid.step,
       settings.blend + grid.step,
-      settings.budget,
+      triangles,
     );
     const simplified = lock
       ? MeshoptSimplifier.simplifyWithAttributes(
-          mesh.indices,
-          mesh.positions,
+          full.indices,
+          full.positions,
           3,
           NO_ATTRIBUTES,
           0,
           [],
           lock,
           budget,
-          0.02,
+          tolerance,
           ['LockBorder'],
         )
       : MeshoptSimplifier.simplify(
-          mesh.indices,
-          mesh.positions,
+          full.indices,
+          full.positions,
           3,
           budget,
-          0.02,
+          tolerance,
           ['LockBorder'],
         );
-    mesh = compact(mesh.positions, simplified[0] as Uint32Array);
-  }
+    return compact(full.positions, simplified[0] as Uint32Array);
+  };
+  let mesh = decimate(settings.budget);
   measure('surface.decimate', t3);
 
-  let geometry = new T.BufferGeometry();
-  geometry.setAttribute(
-    'position',
-    new T.BufferAttribute(mesh.positions, 3),
-  );
-  geometry.setIndex(new T.BufferAttribute(mesh.indices, 1));
+  const assemble = () => {
+    const made = new T.BufferGeometry();
+    made.setAttribute('position', new T.BufferAttribute(mesh.positions, 3));
+    made.setIndex(new T.BufferAttribute(mesh.indices, 1));
+    return made;
+  };
+  let geometry = assemble();
 
   options.onPhase?.('painting');
   const t4 = mark();
-  paint(geometry, prims);
+  paint(
+    geometry,
+    prims,
+    mesh !== full
+      ? { budget: settings.budget, step: grid.step, blend: settings.blend, tolerance }
+      : undefined,
+  );
   // Before the unwrap: grouping reorders the index, and the unwrap's charts
   // and the seam cut are both keyed by triangle position in it.
   const tuples = dressMaterials(geometry, prims);
@@ -1299,7 +1440,7 @@ export function surfaceModel(
     measure('surface.crease', t6);
   }
 
-  const material = new T.MeshStandardMaterial({
+  let material = new T.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 1,
     vertexColors: true,
@@ -1311,9 +1452,11 @@ export function surfaceModel(
   // and `surfaceMaterials` describe, and `dressSurfaceMaterials` builds on the
   // way out — see the note on `dressMaterials`.
   if (tuples?.length === 1) {
-    applyMaterial(material, tuples[0]);
     if (!isDefaultMaterial(tuples[0]))
       material.name = `surface_${materialSuffix(tuples[0])}`;
+    // Assigned: a preset with transmission, clearcoat or sheen hands back a
+    // physical material rather than writing into this one.
+    material = applyMaterial(material, tuples[0]);
   }
 
   const finished = new T.Mesh(geometry, material);
@@ -1452,27 +1595,90 @@ function dressMaterials(geometry: T.BufferGeometry, prims: Prim[]) {
  * the bone index exact. Interpolating a bone index halfway between an arm and
  * a head would bind that vertex to whatever bone happens to sit between them.
  */
-function paint(geometry: T.BufferGeometry, prims: Prim[]) {
+/** What `paint` needs to hold the triangle budget after it has cut seams. */
+type Fit = { budget: number; step: number; blend: number; tolerance: number };
+
+function paint(geometry: T.BufferGeometry, prims: Prim[], fit?: Fit) {
   const position = geometry.attributes.position as T.BufferAttribute;
-  const colors = new Float32Array(position.count * 3);
-  const owners = new Uint16Array(position.count);
-  for (let i = 0; i < position.count; i++) {
-    const nearest = ownerAt(
-      prims,
-      position.getX(i),
-      position.getY(i),
-      position.getZ(i),
-    );
-    owners[i] = nearest;
-    const color = prims[nearest].color;
-    colors[i * 3] = color.r;
-    colors[i * 3 + 1] = color.g;
-    colors[i * 3 + 2] = color.b;
+  const found = new Uint16Array(position.count);
+  for (let i = 0; i < position.count; i++)
+    found[i] = ownerAt(prims, position.getX(i), position.getY(i), position.getZ(i));
+  // Crisp seams: split the triangles that straddle two differently-coloured
+  // parts along the curve where ownership changes, so no triangle is ever
+  // asked to blend two parts' colours across itself. See `cutSeams`.
+  let seamed = cutSeams(
+    position.array as Float32Array,
+    (geometry.index as T.BufferAttribute).array as Uint32Array,
+    found,
+    prims,
+  );
+  if (seamed.added) {
+    bump('surface.seamVertices', seamed.added);
+    // The cut adds triangles — on a character with long seams as many as half
+    // again — and the budget is a promise about the finished mesh. So the
+    // mesh is decimated once more, now with the seams in it. Each side of a
+    // seam has its own vertices, which makes every seam a topological border,
+    // and the decimator locks borders: the interior pays the whole bill and
+    // the seam curves come through exactly as cut. Collapses never invent
+    // vertices, so the owner of every surviving vertex is still known.
+    if (fit && seamed.indices.length / 3 > fit.budget * 1.01) {
+      const target = Math.max(64, fit.budget) * 3;
+      const lock = protectSmallFeatures(
+        seamed.positions,
+        prims,
+        fit.step,
+        fit.blend + fit.step,
+        fit.budget,
+      );
+      const simplified = lock
+        ? MeshoptSimplifier.simplifyWithAttributes(
+            seamed.indices,
+            seamed.positions,
+            3,
+            NO_ATTRIBUTES,
+            0,
+            [],
+            lock,
+            target,
+            fit.tolerance,
+            ['LockBorder'],
+          )
+        : MeshoptSimplifier.simplify(
+            seamed.indices,
+            seamed.positions,
+            3,
+            target,
+            fit.tolerance,
+            ['LockBorder'],
+          );
+      seamed = compactSeamed(seamed, simplified[0] as Uint32Array);
+    }
+    geometry.setAttribute('position', new T.BufferAttribute(seamed.positions, 3));
+    geometry.setIndex(new T.BufferAttribute(seamed.indices, 1));
   }
+  const owners = seamed.owners;
+  const rigOwners = seamed.rigOwners;
+  const count = seamed.positions.length / 3;
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++)
+    paintAt(
+      prims[owners[i]],
+      seamed.positions[i * 3],
+      seamed.positions[i * 3 + 1],
+      seamed.positions[i * 3 + 2],
+      colors,
+      i * 3,
+    );
   geometry.setAttribute('color', new T.BufferAttribute(colors, 3));
+  // Every part reduced to what its paint needs — frame, expression, seed,
+  // material tuple — as plain data. The atlas bake evaluates the expression
+  // once per texel rather than once per vertex, and it runs in the worker, in
+  // the CLI and on the main thread; a `Prim` reaches none of those places, and
+  // this record reaches all three.
+  geometry.userData.surfacePaint = framesOf(prims);
   // The rigger reads this to weight each vertex to the bone its own primitive
   // was pinned to, instead of falling back to one bone for the whole mesh.
-  geometry.userData.rigParts = Array.from(owners, (o) => prims[o].rigPart);
+  geometry.userData.rigParts = Array.from(rigOwners, (o) => prims[o].rigPart);
   // And the audit reads this to say which authored parts a stray shell is made
   // of. Without it a piece floating free of the body is just an extra lump of
   // triangles in a mesh that otherwise looks fine.

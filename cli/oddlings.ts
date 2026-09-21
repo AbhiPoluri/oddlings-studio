@@ -13,12 +13,14 @@ import { parseRecipe } from '../lib/asset-recipe';
 import { parseSpec, specJSONSchema, SHAPES, RIG_PARTS } from '../lib/asset-spec';
 import { writeAsset, inspectGLB, FORMATS, type Format } from '../node/write-asset';
 import { auditModel, type Audit, type Hint } from '../lib/asset-audit';
+import { withClipFindings } from '../lib/asset-audit-clips';
 import { buildSpec } from '../lib/asset-spec';
 import { readySurface } from '../lib/asset-surface';
 import { markActive } from '../node/active-spec';
 import { flatten } from '../lib/spec-edit';
 import { measureSpec, type SpecMeasure } from '../lib/asset-measure';
 import {
+  describeMark,
   loadNotes,
   openNotes,
   resolveNote,
@@ -26,6 +28,10 @@ import {
   saveNotes,
 } from '../lib/review-notes';
 import { specTemplate, TEMPLATE_KINDS, type TemplateKind } from '../mcp/spec-guide';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileName } from '../lib/asset-recipe';
+import { renderPngs, VIEWS, type ViewName } from '../lib/asset-render';
 
 const USAGE = `oddlings — procedural game assets from code
 
@@ -35,7 +41,8 @@ const USAGE = `oddlings — procedural game assets from code
   new <${TEMPLATE_KINDS.join('|')}>
                                     Print a starter spec that already audits clean
   build <spec.json> [options]       Build an asset authored from scratch
-  audit <spec.json>                 Check geometry without writing anything
+  render <spec.json> [options]      Write PNGs of the model, no browser needed
+  audit <spec.json> [--visual]      Check geometry without writing anything
   measure <spec.json> [--parts a,b] Boxes, gaps to neighbours and the skeleton
   notes <spec.json>                 Read and close a reviewer's notes
   schema [spec|shapes]              Print the spec JSON Schema or shape list
@@ -50,6 +57,9 @@ Options
   --parts <list>      measure: comma-separated part names (default: all)
   --resolve <id>      notes: close this note
   --reply <text>      notes: what you did about it
+  --size <px>         render: frame edge in pixels (default: 512)
+  --views <list>      render: ${VIEWS.join(', ')}
+  --visual            audit: also report what the model looks like
   --json              Print machine-readable output only
   --strict            Exit non-zero when the geometry audit reports an error
 
@@ -59,6 +69,8 @@ Examples
   oddlings build ./specs/lantern-keeper.json --out ./Assets --format glb,obj
   oddlings build ./specs/kaiju-surface.spec.json --out ./Assets   # one fused mesh
   oddlings measure ./specs/wizard.spec.json --parts hat,staff
+  oddlings render ./specs/wizard.spec.json --out ./shots --views front,side
+  oddlings audit ./specs/wizard.spec.json --visual
   oddlings notes ./specs/wizard.spec.json --resolve n1a --reply "widened the brim"
 `;
 
@@ -71,6 +83,9 @@ type Options = {
   parts?: string[];
   resolve?: string;
   reply?: string;
+  size: number;
+  views?: ViewName[];
+  visual: boolean;
   json: boolean;
   strict: boolean;
 };
@@ -80,6 +95,8 @@ function parseOptions(argv: string[]): Options {
     strength: 0.45,
     out: './assets',
     formats: ['glb', 'json'],
+    size: 512,
+    visual: false,
     json: false,
     strict: false,
   };
@@ -136,6 +153,25 @@ function parseOptions(argv: string[]): Options {
         i++;
         break;
       }
+      case '--size':
+        options.size = Number(value);
+        if (!Number.isInteger(options.size) || options.size < 16 || options.size > 2048)
+          fail('--size needs a whole number of pixels between 16 and 2048.');
+        i++;
+        break;
+      case '--views': {
+        if (!value) fail('--views needs a comma-separated list.');
+        const wanted = value.split(',').map((v) => v.trim()).filter(Boolean);
+        const bad = wanted.filter((v) => !VIEWS.includes(v as ViewName));
+        if (bad.length)
+          fail(`Unknown view: ${bad.join(', ')}. Pick from ${VIEWS.join(', ')}.`);
+        options.views = wanted as ViewName[];
+        i++;
+        break;
+      }
+      case '--visual':
+        options.visual = true;
+        break;
       case '--json':
         options.json = true;
         break;
@@ -256,6 +292,13 @@ function printNoteList(
   for (const note of open) {
     const where = note.partName ?? (note.part ? note.part.join('.') : 'whole asset');
     console.log(`  ${note.id.padEnd(14)} ${where.padEnd(18)} ${note.text}`);
+    // Drawn rather than typed: the shape is the other half of what was said,
+    // and the full geometry is in the file for anything that wants it. Only
+    // when it adds something — an unlabelled mark already uses this sentence
+    // as its text, and printing it twice says nothing twice.
+    const shape = note.mark ? describeMark(note.mark) : null;
+    if (shape && shape !== note.text)
+      console.log(`  ${''.padEnd(14)} ${''.padEnd(18)} ↳ ${shape}`);
   }
   console.log(
     `  Close one with: oddlings notes ${specPath} --resolve <id> --reply "what you changed"`,
@@ -405,20 +448,60 @@ async function main() {
       if (options.strict && !built.audit.ok) process.exit(1);
       return;
     }
+    case 'render': {
+      if (!positional[0]) fail('Pass a spec JSON file to render.');
+      const spec = parseSpec(await readJSON(positional[0]));
+      const model = buildSpec(spec);
+      const rendered = renderPngs(model, {
+        size: options.size,
+        ...(options.views ? { views: options.views } : {}),
+      });
+      const base = fileName(options.name ?? spec.name);
+      await mkdir(resolve(options.out), { recursive: true });
+      const files: { view: string; file: string; fill: number }[] = [];
+      for (const image of rendered.images) {
+        const file = join(resolve(options.out), `${base}-${image.view}.png`);
+        await writeFile(file, image.png);
+        files.push({ view: image.view, file, fill: Number(image.fill.toFixed(3)) });
+      }
+      if (options.json)
+        return console.log(
+          JSON.stringify(
+            {
+              name: spec.name,
+              size: options.size,
+              triangles: rendered.triangles,
+              ms: rendered.ms,
+              views: files,
+            },
+            null,
+            2,
+          ),
+        );
+      console.log(
+        `${spec.name} — ${rendered.triangles.toLocaleString()} tris · ${files.length} views at ${options.size}px · ${rendered.ms} ms`,
+      );
+      for (const file of files)
+        console.log(
+          `  → ${file.file}  (${file.view}, silhouette ${(file.fill * 100).toFixed(0)}% of frame)`,
+        );
+      return;
+    }
     case 'audit': {
       if (!positional[0]) fail('Pass a spec JSON file to audit.');
       const spec = parseSpec(await readJSON(positional[0]));
       const model = buildSpec(spec);
-      const audit = auditModel(model, {
+      const audit = withClipFindings(auditModel(model, {
         rigged: Boolean(spec.rig),
         scale: spec.scale,
+        visual: options.visual,
         labels: new Map(
           flatten(spec).map((row) => [
             row.path.join('.'),
             row.part.name ?? row.part.shape,
           ]),
         ),
-      });
+      }), spec);
       const { triangles, meshes, bones } = stats(model);
       // Auditing is the tightest iteration loop there is, so it is the most
       // useful place to keep the studio's preview in step, and the most

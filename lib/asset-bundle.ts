@@ -1,13 +1,24 @@
+import './node-shims';
 import * as T from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { zipSync, strToU8 } from 'fflate';
 import { buildAsset, dressSurfaceMaterials, objBundle } from './asset-build';
 import { buildSpec, type AssetSpec } from './asset-spec';
 import { readySurface } from './asset-surface';
-import { bakeColorAtlas, splitUvSeams } from './asset-uv';
+import { splitUvSeams, type ColorAtlas } from './asset-uv';
+import {
+  alreadyTextured,
+  atlasTextures,
+  bakeSurface,
+  dressTextures,
+  dropVertexColours,
+  paintsTexels,
+  stripBakeData,
+} from './asset-bake';
 import { encodePng } from './asset-png';
 import { rigClips } from './asset-rig';
 import { clipsOf, specClips } from './asset-joints';
+import { rigExtras } from './asset-rig-extras';
 import { disposeScene } from './three-world';
 import { type Recipe, fileName } from './asset-recipe';
 
@@ -18,6 +29,14 @@ import { type Recipe, fileName } from './asset-recipe';
 export async function toGLB(
   model: T.Object3D,
   animations: T.AnimationClip[] = [],
+  /**
+   * The atlas to embed, when the caller has already baked one.
+   *
+   * `null` says "do not embed", and leaving it out bakes here. The CLI bakes
+   * before it splits, because it writes the same atlas out as PNGs beside the
+   * model, and baking it twice would be a second or two for identical bytes.
+   */
+  atlas?: ColorAtlas | null,
 ) {
   // Cut the uv seams surface mode planned. Deferred to here on purpose: the
   // welded index is what the audit reads, so the tear happens once, on the way
@@ -30,8 +49,27 @@ export async function toGLB(
   // and the same boundary: the studio's worker channel carries one material
   // per mesh, so the array is built here rather than at build time.
   dressSurfaceMaterials(model);
+  // Then the maps, after the materials, because every one of them is a factor
+  // the texture multiplies and `dressTextures` has to be the last word on the
+  // factors. Only an asset that paints gets them: a model of flat parts is
+  // exactly its vertex colours, and a megabyte of PNG saying so is a megabyte.
+  if (paintsTexels(model) && !alreadyTextured(model)) {
+    const baked = atlas === undefined ? bakeSurface(model) : atlas;
+    if (baked) {
+      dressTextures(model, atlasTextures(baked));
+      dropVertexColours(model);
+    }
+  }
+  stripBakeData(model);
   const scene = new T.Scene();
   scene.add(model);
+  // The skeleton as data, so a game can drive this file without a sidecar. The
+  // spec rides on the model from `buildSpec`; a recipe carries none and gets no
+  // extras. See lib/asset-rig-extras.ts.
+  scene.userData.oddlings = rigExtras(
+    model.userData.spec as AssetSpec | undefined,
+    model,
+  );
   const output = await new GLTFExporter().parseAsync(scene, {
     binary: true,
     trs: true,
@@ -52,6 +90,55 @@ export function clipsFor(recipe: Recipe) {
  * same pack built in the studio and on the CLI differs, and a README promising
  * a file that is not in the zip is worse than one that never mentions it.
  */
+/**
+ * What the GLB actually carries, for the README to describe. Counted off the
+ * built model and the clips going into the file, not off what a creature rig
+ * would carry, because a joints mechanism has its own bones and its own clip
+ * names and a prop has neither.
+ */
+export type SkeletonNotes = {
+  kind: 'rig' | 'joints' | 'static';
+  bones: number;
+  joints: number;
+  clips: string[];
+};
+
+export function skeletonNotes(
+  model: T.Object3D,
+  clips: T.AnimationClip[],
+): SkeletonNotes {
+  let bones = 0;
+  model.traverse((o) => {
+    if (o instanceof T.Bone) bones++;
+  });
+  const spec = model.userData.spec as
+    | { rig?: unknown; joints?: unknown[] }
+    | undefined;
+  const joints = Array.isArray(spec?.joints) ? spec.joints.length : 0;
+  const kind = bones === 0 ? 'static' : joints > 0 && !spec?.rig ? 'joints' : 'rig';
+  return { kind, bones, joints, clips: clips.map((clip) => clip.name) };
+}
+
+function skeletonSentence(skeleton?: SkeletonNotes) {
+  if (!skeleton)
+    return 'The GLB includes a 14-bone skinned Generic rig and Idle, Walk, Jump, Wave, and Attack clips when the creature rig is enabled.';
+  const list = (names: string[]) =>
+    names.length > 1
+      ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+      : names[0];
+  const clips = skeleton.clips.length
+    ? `the ${skeleton.clips.length === 1 ? 'clip' : 'clips'} ${list(skeleton.clips)}`
+    : 'no animation clips';
+  switch (skeleton.kind) {
+    case 'static':
+      return 'The GLB is the same geometry as a plain hierarchy: no skeleton, no skin weights, no animation clips.';
+    case 'joints':
+      return `The GLB includes a ${skeleton.bones}-bone skeleton for a mechanism of ${skeleton.joints} joints under a Root bone, skinned as Generic, and ${clips}. Joints that share a clip name move in one clip; a joint with no clip name exports its motion under its own name. The skeleton is also written as data at scenes[0].extras.oddlings (bones, pivots, chains and leaf end points) for driving it from code.`;
+    default:
+      return `The GLB includes a ${skeleton.bones}-bone skinned Generic rig and ${clips}. The skeleton is also written as data at scenes[0].extras.oddlings (bones, pivots, chains and leaf end points).`;
+  }
+}
+
 export function unityReadme(
   name: string,
   textured = false,
@@ -61,6 +148,7 @@ export function unityReadme(
    * keeps the notes for those assets the notes they always were.
    */
   channels: string[] = [],
+  skeleton?: SkeletonNotes,
 ) {
   return `${name} — Oddlings Studio
 
@@ -71,24 +159,28 @@ UNITY IMPORT
 4. Drag the imported model into your scene. Save as a prefab if desired.
 
 Scale: numeric coordinates are meters; Y is up. The model faces +Z before any importer axis conversion.
-The OBJ is a static mesh with flat normals and solid-color materials. The GLB includes a 14-bone skinned Generic rig and Idle, Walk, Jump, Wave, and Attack clips when the creature rig is enabled. Environments are static. Every mesh carries a UV0 channel.${
+The OBJ is a static mesh with flat normals and solid-color materials. ${skeletonSentence(skeleton)} Every mesh carries a UV0 channel.${
     textured
-      ? ` A baked color atlas ships beside the model as ${fileName(name)}.png, wired to the OBJ through map_Kd. The GLB keeps the same colors as vertex colors and does not embed the image, so point a material at the PNG after import if you want it there too.`
+      ? ` A baked color atlas ships beside the model as ${fileName(name)}.png, wired to the OBJ through map_Kd. An asset that paints its surface carries the same atlas inside the GLB as a real texture, in place of vertex colors — glTF multiplies the two, so a model with both would show every pattern twice over. An asset of flat parts keeps its vertex colors and embeds nothing.`
       : ''
   }${
     channels.length
       ? ` Material maps for ${channels.join(', ')} ship beside it as ${channels
           .map((channel) => `${fileName(name)}-${channel}.png`)
-          .join(', ')}; the GLB carries the same values on its own materials, and the MTL wires the emissive one through map_Ke. Assign the rest to the imported material's matching slots.`
+          .join(', ')}; the GLB carries them as its own textures, and the MTL wires them through map_Ke, norm, map_Pr and map_Pm. Assign any your importer skips to the imported material's matching slots.`
       : ''
-  } No collision shapes, LODs, ${channels.length ? 'normal maps' : 'normal/roughness maps'} or lightmap UVs are included. Generate colliders and lightmap UVs in Unity as needed.
+  } No collision shapes, LODs${channels.includes('normal') ? '' : ', normal maps'} or lightmap UVs are included. Generate colliders and lightmap UVs in Unity as needed.
 The pixelated viewport is a preview effect, not baked into the model.
 
 EDIT AGAIN
 Import recipe.json into Oddlings Studio to recover exactly these generator settings.
 
 GLB ALTERNATIVE
-The included GLB preserves the scene hierarchy, skin weights, bones and animation clips when enabled. Unity needs a glTF importer, such as Unity glTFast. Install com.unity.cloud.gltfast with Package Manager, then place the GLB in Assets. Treat this non-humanoid rig as Generic, not Humanoid. Use imported clips with an Animator or the importer animation component according to importer settings. Walk is in-place (no forward root motion). The rig is a starter body rig, not a facial rig.
+The included GLB preserves the scene hierarchy, skin weights, bones and animation clips when enabled. Unity needs a glTF importer, such as Unity glTFast. Install com.unity.cloud.gltfast with Package Manager, then place the GLB in Assets.${
+    skeleton?.kind === 'static'
+      ? ''
+      : ` Treat this non-humanoid rig as Generic, not Humanoid. glTFast imports the clips as Mecanim clips and leaves an Animator with no controller, so add the clips to an Animator Controller (or switch the importer to Legacy). Clips are in place (no forward root motion).${skeleton?.kind === 'joints' ? '' : ' The rig is a starter body rig, not a facial rig.'}`
+  }
 https://github.com/Unity-Technologies/com.unity.cloud.gltfast
 `;
 }
@@ -109,7 +201,9 @@ export async function unityPack(recipe: Recipe) {
         [`${base}/${base}.obj`]: strToU8(obj),
         [`${base}/${base}.mtl`]: strToU8(mtl),
         [`${base}/recipe.json`]: strToU8(JSON.stringify(recipe, null, 2)),
-        [`${base}/README.txt`]: strToU8(unityReadme(recipe.name)),
+        [`${base}/README.txt`]: strToU8(
+          unityReadme(recipe.name, false, [], skeletonNotes(model, clipsFor(recipe))),
+        ),
       },
       { level: 6 },
     );
@@ -162,13 +256,13 @@ export async function specUnityPack(spec: AssetSpec) {
     const base = fileName(spec.name);
     // Bake before the OBJ is written: the material library has to name the
     // texture, and only a surface asset has one to name.
+    const atlas = bakeSurface(staticModel);
     splitUvSeams(staticModel);
-    const atlas = bakeColorAtlas(staticModel);
     const png = atlas ? encodePng(atlas) : null;
     // The material channels ride along the same way, one file per channel the
     // asset actually varies in. None of them exist for a spec with no
     // `material` block.
-    const extras = (['roughness', 'metalness', 'emissive'] as const).flatMap(
+    const extras = (['roughness', 'metalness', 'emissive', 'normal'] as const).flatMap(
       (channel) => {
         const map = atlas?.maps?.[channel];
         return map
@@ -182,6 +276,11 @@ export async function specUnityPack(spec: AssetSpec) {
       spec.color,
       png ? `${base}.png` : undefined,
       atlas?.maps?.emissive ? `${base}-emissive.png` : undefined,
+      {
+        ...(atlas?.maps?.normal ? { normal: `${base}-normal.png` } : {}),
+        ...(atlas?.maps?.roughness ? { roughness: `${base}-roughness.png` } : {}),
+        ...(atlas?.maps?.metalness ? { metalness: `${base}-metalness.png` } : {}),
+      },
     );
     const glb = await toGLB(model, specClips(spec));
     const zip = zipSync(
@@ -197,6 +296,7 @@ export async function specUnityPack(spec: AssetSpec) {
             spec.name,
             Boolean(png),
             extras.map(([path]) => path.slice(path.lastIndexOf('-') + 1, -4)),
+            skeletonNotes(model, specClips(spec)),
           ),
         ),
       },

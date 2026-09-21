@@ -1,6 +1,45 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { z } from 'zod';
+import { MAX_POINTS, type Mark } from './draw-marks';
+
+export { describeMark } from './draw-marks';
+export type { Mark } from './draw-marks';
+
+const vec3 = z.tuple([z.number(), z.number(), z.number()]);
+
+/**
+ * A stroke the reviewer drew over the model, resolved when they drew it.
+ *
+ * Here rather than in `draw-marks.ts` because this is the wire format and this
+ * file is what guards it — the studio writes these, the CLI and the MCP tools
+ * read them, and neither end can be trusted to have the same build of the
+ * other. The lengths are capped for the same reason a note's text is: a review
+ * file is read by an agent with a context window, and a thousand points of a
+ * shaky hand is not information.
+ */
+export const markSchema = z
+  .object({
+    gesture: z.enum(['circle', 'remove', 'arrow', 'sketch']),
+    /** The parts the stroke was about, as spec paths, possibly none. */
+    parts: z
+      .array(
+        z.object({
+          path: z.array(z.number().int().min(0)).max(24),
+          name: z.string().max(200).nullable(),
+        }),
+      )
+      .max(64),
+    /** The stroke in world metres: on the model, the ground, or the view plane. */
+    worldPoints: z.array(vec3).min(2).max(MAX_POINTS),
+    /** Where it was drawn from, so the agent can picture what was on screen. */
+    cameraPose: z.object({
+      position: vec3,
+      target: vec3,
+      fov: z.number(),
+    }),
+  })
+  .strict();
 
 /**
  * Notes a human leaves on an asset, for the agent that authored it.
@@ -35,6 +74,15 @@ export const noteSchema = z
     resolvedAt: z.string().nullable(),
     /** What the agent did about it. The half that makes this a conversation. */
     reply: z.string().nullable(),
+    /**
+     * The stroke this note was drawn as, when it was drawn rather than typed.
+     *
+     * Optional, and it stays optional: every note written before there was a
+     * Draw tool is still a valid note, and a note typed into the panel still
+     * has no mark. A reader that does not know about marks ignores this and
+     * loses nothing — the text still says what the reviewer wanted.
+     */
+    mark: markSchema.optional(),
   })
   .strict();
 
@@ -119,6 +167,7 @@ export type NewNote = {
   part?: number[] | null;
   partName?: string | null;
   by?: 'human' | 'agent';
+  mark?: Mark;
 };
 
 /** Append a note. Immutable: the input document is not touched. */
@@ -137,6 +186,7 @@ export function addNote(notes: ReviewNotes, note: NewNote): ReviewNotes {
         at: new Date().toISOString(),
         resolvedAt: null,
         reply: null,
+        ...(note.mark ? { mark: note.mark } : null),
       }),
     ],
   };

@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Critter Crosser: Centipede</title>
+<style>
+  :root { --bg: #1b2a1e; --ink: #e8efd8; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 ui-monospace, Menlo, monospace; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; image-rendering: crisp-edges; }
+  #hud { position: fixed; left: 16px; top: 12px; text-shadow: 0 1px 0 #000; pointer-events: none; }
+  #hud b { font-size: 22px; display: block; }
+  #help { position: fixed; left: 16px; bottom: 12px; opacity: 0.75; text-shadow: 0 1px 0 #000; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><b id="score">0 apples</b><span id="speed"></span></div>
+<div id="help">WASD or arrows to slither · shift to sprint · space to rear up · R to reset</div>
+<div id="loading">loading the centipede…</div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as T from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ---------------------------------------------------------------- scene
+const canvas = document.getElementById('c');
+const renderer = new T.WebGLRenderer({ canvas, antialias: false });
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = T.PCFShadowMap;
+renderer.toneMapping = T.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const PIXEL = 0.35; // render scale: chunky pixels, upscaled with nearest
+function resize() {
+  renderer.setSize(Math.round(innerWidth * PIXEL), Math.round(innerHeight * PIXEL), false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+const scene = new T.Scene();
+scene.background = new T.Color('#5a8f9b');
+scene.fog = new T.Fog('#5a8f9b', 18, 60);
+const camera = new T.PerspectiveCamera(42, 1, 0.05, 200);
+scene.add(new T.HemisphereLight('#e2e6d8', '#3f5a3a', 1.6));
+const sun = new T.DirectionalLight('#fff0cf', 2.6);
+sun.position.set(-6, 12, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -14; sun.shadow.camera.right = 14;
+sun.shadow.camera.top = 14; sun.shadow.camera.bottom = -14;
+sun.shadow.normalBias = 0.05;
+scene.add(sun);
+scene.add(sun.target);
+
+// ground: a checker of two greens drawn into a canvas texture so it stays crisp
+const tile = document.createElement('canvas');
+tile.width = tile.height = 64;
+const g2 = tile.getContext('2d');
+for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+  g2.fillStyle = (x + y) % 2 ? '#6fa04a' : '#639343';
+  g2.fillRect(x * 8, y * 8, 8, 8);
+}
+const groundTex = new T.CanvasTexture(tile);
+groundTex.wrapS = groundTex.wrapT = T.RepeatWrapping;
+groundTex.repeat.set(60, 60);
+groundTex.magFilter = T.NearestFilter;
+groundTex.colorSpace = T.SRGBColorSpace;
+// Rolling ground: a heightfield the feet and body read, not just a picture.
+function groundY(x, z) {
+  return (
+    0.16 * Math.sin(x * 0.55 + 1.3) * Math.cos(z * 0.47) +
+    0.09 * Math.sin(x * 1.3 - z * 0.9 + 0.7) +
+    0.05 * Math.sin(x * 2.7 + z * 2.2) * Math.cos(x * 0.9 - z * 1.7) +
+    0.025 * Math.sin(x * 6.1 + 2.1) * Math.sin(z * 5.3)
+  );
+}
+const groundGeo = new T.PlaneGeometry(120, 120, 180, 180);
+groundGeo.rotateX(-Math.PI / 2);
+{
+  const p = groundGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, groundY(p.getX(i), p.getZ(i)));
+  groundGeo.computeVertexNormals();
+}
+const ground = new T.Mesh(groundGeo, new T.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+ground.receiveShadow = true;
+scene.add(ground);
+
+// scenery: rocks and stumps to weave between (they are solid), and apples to eat
+const props = new T.Group();
+scene.add(props);
+const solids = []; // {x, z, r} circles the head cannot enter
+const rng = mulberry32(7);
+const rockMat = new T.MeshStandardMaterial({ color: '#7d7a72', roughness: 1, flatShading: true });
+const stumpMat = new T.MeshStandardMaterial({ color: '#6b4a2a', roughness: 1, flatShading: true });
+for (let i = 0; i < 40; i++) {
+  const r = 0.3 + rng() * 0.9;
+  const rock = rng() > 0.5;
+  const m = new T.Mesh(rock ? new T.IcosahedronGeometry(r, 0) : new T.CylinderGeometry(r * 0.6, r * 0.7, r * 1.2, 7), rng() > 0.5 ? rockMat : stumpMat);
+  m.position.set((rng() - 0.5) * 80, 0, (rng() - 0.5) * 80);
+  if (m.position.length() < 5) m.position.x += 6;
+  m.position.y = groundY(m.position.x, m.position.z) + r * 0.45;
+  m.rotation.y = rng() * Math.PI;
+  m.castShadow = m.receiveShadow = true;
+  props.add(m);
+  solids.push({ x: m.position.x, z: m.position.z, r: rock ? r * 0.85 : r * 0.7 });
+}
+const apples = [];
+const appleGeo = new T.IcosahedronGeometry(0.22, 1);
+const appleMat = new T.MeshStandardMaterial({ color: '#d63b2f', roughness: 0.5, flatShading: true });
+function spawnApple() {
+  const a = new T.Mesh(appleGeo, appleMat);
+  a.position.set((rng() - 0.5) * 60, 0, (rng() - 0.5) * 60);
+  a.position.y = groundY(a.position.x, a.position.z) + 0.22;
+  a.castShadow = true;
+  scene.add(a);
+  apples.push(a);
+}
+for (let i = 0; i < 14; i++) spawnApple();
+
+const creature = new URLSearchParams(location.search).get('creature') || 'centipede';
+addEventListener('keydown', (e) => {
+  if (e.key === '1' && creature !== 'centipede') location.search = '';
+  if (e.key === '2' && creature !== 'walker') location.search = '?creature=walker';
+});
+document.getElementById('help').textContent = creature === 'walker'
+  ? 'WASD or arrows to walk · shift to sprint · space to crouch · R to reset · 1 centipede'
+  : 'WASD or arrows to slither · shift to sprint · space to rear up · R to reset · 2 walker';
+
+if (creature === 'walker') {
+// ---------------------------------------------------------------- walker
+// A quadruped with real knees. Each leg is hip -> knee -> ankle, posed by a
+// two-bone IK from the hip to wherever its foot is planted; the body rides
+// on the feet and tilts with them; legs step when the body has carried their
+// home too far from the planted foot, diagonals together, neighbours never.
+const loader = new GLTFLoader();
+const [gltf, rigData] = await Promise.all([
+  loader.loadAsync('./grave-walker.glb'),
+  fetch('./walker-rig.json').then((r) => r.json()),
+]);
+const rig = gltf.scene;
+scene.add(rig);
+rig.traverse((o) => { if (o.isSkinnedMesh) { o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true; } });
+const bodyBone = rig.getObjectByName('Body');
+const BODY0 = new T.Vector3(...rigData.body);
+const legs = rigData.legs.map((l) => {
+  const hip = new T.Vector3(...l.hip), knee = new T.Vector3(...l.knee), ankle = new T.Vector3(...l.ankle), foot = new T.Vector3(...l.foot);
+  const femur0 = knee.clone().sub(hip), tibia0 = ankle.clone().sub(knee);
+  const n0 = femur0.clone().cross(tibia0).normalize();
+  return {
+    tag: l.tag,
+    hipBone: rig.getObjectByName(`Hip_${l.tag}`), kneeBone: rig.getObjectByName(`Knee_${l.tag}`), ankleBone: rig.getObjectByName(`Ankle_${l.tag}`),
+    hipLocal: hip.clone().sub(BODY0), footLocal: foot.clone().sub(BODY0),
+    L1: femur0.length(), L2: tibia0.length(), femur0: femur0.normalize(), tibia0: tibia0.normalize(), n0,
+    ankleDrop: ankle.y - foot.y,
+    planted: foot.clone(), from: foot.clone(), to: foot.clone(), swing: -1, duration: 0.3,
+    side: l.tag[1], end: l.tag[0],
+  };
+});
+const neighboursOf = (leg) => legs.filter((o) => o !== leg && (o.side === leg.side || o.end === leg.end));
+document.getElementById('loading').remove();
+
+let body = { x: 0, z: 0, heading: 0, yaw: 0, speed: 0, y: BODY0.y, pitch: 0, roll: 0 };
+let surge = 0, crouch = 0, score = 0, time = 0;
+const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+function resetWalker() {
+  body = { x: 0, z: 0, heading: 0, yaw: 0, speed: 0, y: BODY0.y, pitch: 0, roll: 0 };
+  for (const leg of legs) {
+    const x = leg.footLocal.x, z = leg.footLocal.z;
+    leg.planted.set(x, groundY(x, z) + 0.03, z);
+    leg.swing = -1;
+  }
+}
+resetWalker();
+function clearOfRocks(p) {
+  for (const s of solids) {
+    const dx = p.x - s.x, dz = p.z - s.z, d = Math.hypot(dx, dz);
+    if (d < s.r + 0.08) {
+      const nx = d > 1e-6 ? dx / d : 1, nz = d > 1e-6 ? dz / d : 0;
+      p.x = s.x + nx * (s.r + 0.08); p.z = s.z + nz * (s.r + 0.08);
+    }
+  }
+  return p;
+}
+const keys = new Set();
+addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); if (e.key === ' ') e.preventDefault(); });
+addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+addEventListener('resize', resize);
+resize();
+window.dbg = { body: () => body, keys, legs, groundY, solids };
+
+const tmpM = new T.Matrix4(), inv = new T.Matrix4(), m0 = new T.Matrix4(), m1 = new T.Matrix4();
+const q = new T.Quaternion(), qBody = new T.Quaternion(), scl = new T.Vector3(1, 1, 1);
+const v1 = new T.Vector3(), v2 = new T.Vector3(), v3 = new T.Vector3(), v4 = new T.Vector3(), pos = new T.Vector3();
+const euler = new T.Euler();
+const scoreEl = document.getElementById('score'), speedEl = document.getElementById('speed');
+function placeBoneWorld(bone, position, quaternion) {
+  tmpM.compose(position, quaternion, scl);
+  bone.parent.updateWorldMatrix(true, false);
+  inv.copy(bone.parent.matrixWorld).invert();
+  tmpM.premultiply(inv);
+  tmpM.decompose(bone.position, bone.quaternion, bone.scale);
+  bone.updateMatrixWorld(true);
+}
+// The rotation that carries a bind frame (forward f0, plane normal n0) onto
+// the current one (f1, n1): what a bone must turn by so its segment points
+// down the solved leg and its plates face the way they did at bind.
+function frameQuat(f0, n0, f1, n1, out) {
+  m0.makeBasis(f0, n0, v4.crossVectors(f0, n0));
+  m1.makeBasis(f1, n1, v4.crossVectors(f1, n1));
+  m0.transpose();
+  return out.setFromRotationMatrix(m1.multiply(m0));
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  time += dt;
+  // --- intent ---
+  const forward = keys.has('w') || keys.has('arrowup'), back = keys.has('s') || keys.has('arrowdown');
+  const left = keys.has('a') || keys.has('arrowleft'), right = keys.has('d') || keys.has('arrowright');
+  const target = forward ? (keys.has('shift') ? 4.5 : 2.5) : back ? -1.2 : 0;
+  body.speed += (target - body.speed) * Math.min(1, dt * 3);
+  body.heading += ((left ? 1 : 0) - (right ? 1 : 0)) * dt * 1.3;
+  crouch += ((keys.has(' ') ? 1 : 0) - crouch) * Math.min(1, dt * 4);
+  if (keys.has('r')) resetWalker();
+  const moving = Math.min(1, Math.abs(body.speed) / 1.5);
+  const sign = body.speed < 0 ? -1 : 1;
+  surge *= Math.max(0, 1 - dt * 5);
+  const v = body.speed * (1 + surge * 0.5) * (1 - crouch * 0.6);
+  body.x += Math.sin(body.heading) * v * dt;
+  body.z += Math.cos(body.heading) * v * dt;
+  for (const s of solids) {
+    const dx = body.x - s.x, dz = body.z - s.z, d = Math.hypot(dx, dz), keep = s.r + 0.5;
+    if (d < keep) { const nx = d > 1e-6 ? dx / d : 1, nz = d > 1e-6 ? dz / d : 0; body.x = s.x + nx * keep; body.z = s.z + nz * keep; body.speed *= 0.6; }
+  }
+  // The body turns after the legs: yaw follows heading with a lag, so the
+  // front feet reach into the turn first.
+  body.yaw += wrapAngle(body.heading - body.yaw) * Math.min(1, dt * 4);
+
+  // --- legs: need-based steps, diagonals may swing together ---
+  const stride = 0.4 + 0.22 * Math.abs(body.speed);
+  for (const leg of legs) {
+    const hx = leg.footLocal.x * Math.cos(body.yaw) + leg.footLocal.z * Math.sin(body.yaw);
+    const hz = -leg.footLocal.x * Math.sin(body.yaw) + leg.footLocal.z * Math.cos(body.yaw);
+    const home = { x: body.x + hx, z: body.z + hz };
+    if (leg.swing < 0) {
+      const dx = leg.planted.x - home.x, dz = leg.planted.z - home.z;
+      const far = Math.hypot(dx, dz);
+      const backward = -(dx * Math.sin(body.yaw) + dz * Math.cos(body.yaw)) * sign;
+      const threshold = stride * 0.5;
+      const busy = neighboursOf(leg).some((o) => o.swing >= 0);
+      const must = far > threshold * 2.2;
+      if ((moving > 0.02 || far > 0.25) && ((backward > threshold && !busy) || (far > threshold && !busy && moving < 0.02) || must)) {
+        leg.swing = 0;
+        leg.duration = Math.max(0.16, 0.34 - Math.abs(body.speed) * 0.04);
+        leg.from.copy(leg.planted);
+        const dir = body.heading;
+        const to = clearOfRocks({ x: home.x + Math.sin(dir) * stride * 0.5 * sign * moving, z: home.z + Math.cos(dir) * stride * 0.5 * sign * moving });
+        leg.to.set(to.x, groundY(to.x, to.z) + 0.03, to.z);
+      } else {
+        leg.planted.y = groundY(leg.planted.x, leg.planted.z) + 0.03;
+      }
+    }
+    if (leg.swing >= 0) {
+      leg.swing += dt / leg.duration;
+      const t = Math.min(1, leg.swing);
+      leg.planted.lerpVectors(leg.from, leg.to, t);
+      const mid = groundY((leg.from.x + leg.to.x) / 2, (leg.from.z + leg.to.z) / 2);
+      leg.planted.y = Math.max(leg.planted.y, mid + 0.03) + Math.sin(t * Math.PI) * 0.3;
+      if (t >= 1) { leg.swing = -1; leg.planted.copy(leg.to); surge = Math.min(0.4, surge + 0.15); }
+    }
+  }
+
+  // --- body rides on its feet ---
+  const stance = legs.filter((l) => l.swing < 0);
+  const feetY = (stance.length ? stance : legs).reduce((a, l) => a + l.planted.y, 0) / (stance.length || legs.length);
+  const wantY = feetY - 0.03 + (BODY0.y - 0.08) - crouch * 0.35 + surge * 0.04;
+  body.y += (wantY - body.y) * Math.min(1, dt * 6);
+  const front = legs.filter((l) => l.end === 'f'), backL = legs.filter((l) => l.end === 'b');
+  const lefts = legs.filter((l) => l.side === 'l'), rights = legs.filter((l) => l.side === 'r');
+  const avgY = (list) => list.reduce((a, l) => a + l.planted.y, 0) / list.length;
+  body.pitch += (Math.atan2(avgY(backL) - avgY(front), 1.6) * 0.7 - crouch * 0.15 - body.pitch) * Math.min(1, dt * 5);
+  body.roll += (Math.atan2(avgY(lefts) - avgY(rights), 1.6) * 0.7 - body.roll) * Math.min(1, dt * 5);
+  const bob = Math.sin(time * 9) * 0.01 * moving;
+  qBody.setFromEuler(euler.set(body.pitch, body.yaw, body.roll, 'YXZ'));
+  pos.set(body.x, body.y + bob, body.z);
+  placeBoneWorld(bodyBone, pos, qBody);
+
+  // --- two-bone IK per leg ---
+  for (const leg of legs) {
+    const H = v1.copy(leg.hipLocal).applyQuaternion(qBody).add(pos);
+    const Tgt = v2.set(leg.planted.x, leg.planted.y + leg.ankleDrop, leg.planted.z);
+    const dir = v3.subVectors(Tgt, H);
+    const reach = leg.L1 + leg.L2 - 0.01;
+    let d = dir.length();
+    if (d > reach) { dir.multiplyScalar(reach / d); d = reach; Tgt.copy(H).add(dir); }
+    dir.normalize();
+    // Knee bends up and outward: the pole is up plus the direction from the
+    // body to this hip, which is how the bind pose stands.
+    const out = v4.set(leg.hipLocal.x, 0, leg.hipLocal.z).normalize().applyQuaternion(qBody);
+    const pole = out.multiplyScalar(0.6).add(new T.Vector3(0, 1, 0)).normalize();
+    const perp = pole.sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
+    const cosA = Math.max(-1, Math.min(1, (leg.L1 * leg.L1 + d * d - leg.L2 * leg.L2) / (2 * leg.L1 * d)));
+    const sinA = Math.sqrt(1 - cosA * cosA);
+    const K = dir.clone().multiplyScalar(leg.L1 * cosA).add(perp.clone().multiplyScalar(leg.L1 * sinA)).add(H);
+    const f1 = K.clone().sub(H).normalize();
+    const t1 = Tgt.clone().sub(K).normalize();
+    const n1 = f1.clone().cross(t1).normalize();
+    if (n1.lengthSq() < 1e-6) n1.copy(perp).cross(dir).normalize();
+    placeBoneWorld(leg.hipBone, H, frameQuat(leg.femur0, leg.n0, f1, n1, q));
+    placeBoneWorld(leg.kneeBone, K, frameQuat(leg.tibia0, leg.n0, t1, n1, q));
+    placeBoneWorld(leg.ankleBone, Tgt, q.identity());
+  }
+
+  // --- apples, HUD, camera ---
+  for (let i = apples.length - 1; i >= 0; i--) {
+    const a = apples[i];
+    a.rotation.y += dt;
+    if (Math.hypot(a.position.x - body.x, a.position.z - body.z) < 0.9) {
+      scene.remove(a); apples.splice(i, 1); score++; spawnApple();
+      scoreEl.textContent = `${score} apple${score === 1 ? '' : 's'}`;
+    }
+  }
+  speedEl.textContent = `${Math.abs(v).toFixed(1)} m/s`;
+  const camTarget = v1.set(body.x - Math.sin(body.heading) * 7.5, body.y + 2.6, body.z - Math.cos(body.heading) * 7.5);
+  camera.position.lerp(camTarget, Math.min(1, dt * 3));
+  camera.lookAt(body.x, body.y, body.z);
+  sun.position.set(body.x - 6, 12, body.z + 8);
+  sun.target.position.set(body.x, 0, body.z);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+} else {
+// ---------------------------------------------------------------- centipede
+const loader = new GLTFLoader();
+const [gltf, rigData] = await Promise.all([
+  loader.loadAsync('./critter-centipede.glb'),
+  fetch('./centipede-rig.json').then((r) => r.json()),
+]);
+const rig = gltf.scene;
+scene.add(rig);
+rig.traverse((o) => {
+  if (o.isSkinnedMesh) { o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true; }
+});
+const boneNames = ['Head', ...Array.from({ length: 11 }, (_, i) => `Seg${i + 1}`)];
+const bones = boneNames.map((n) => rig.getObjectByName(n));
+rig.updateMatrixWorld(true);
+// Bind pose: where each pivot sits and how far apart consecutive pivots are.
+const bind = bones.map((b) => b.getWorldPosition(new T.Vector3()));
+const spacing = bind.map((p, i) => (i ? p.distanceTo(bind[i - 1]) : 0));
+const restY = bind.map((p) => p.y);
+// Legs: one bone each, hung off its segment. The rig file says where each
+// leg's root and tip sit in the bind pose, in the same frame as the segments.
+const legs = rigData.legs.map((leg) => {
+  const segIndex = boneNames.indexOf(leg.segment);
+  const segAt = bind[segIndex];
+  const root = new T.Vector3(...leg.root);
+  const tip = new T.Vector3(...leg.tip);
+  return {
+    bone: rig.getObjectByName(leg.name),
+    segIndex,
+    side: leg.side,
+    // Root and tip relative to the segment pivot: rotate with the segment's yaw.
+    rootLocal: root.clone().sub(segAt),
+    tipLocal: tip.clone().sub(segAt),
+    bindDir: tip.clone().sub(root).normalize(),
+    planted: tip.clone(),
+    from: tip.clone(),
+    to: tip.clone(),
+    swing: -1, // <0 planted, 0..1 mid swing
+  };
+});
+document.getElementById('loading').remove();
+
+// ---------------------------------------------------------------- locomotion
+// Procedural, in the sense that matters: nothing here is a cycle. Each leg
+// steps when its foot has been left too far from where it belongs, waits
+// for its neighbours, lands on the real ground (not a plane), and refuses to
+// land inside a rock. The body sits on its feet and tilts with the terrain.
+// Walk straight on flat ground and the legs settle into a wave on their own;
+// turn, climb, or brush a rock and every step changes.
+const N = bones.length;
+let head = { x: 0, z: 0, heading: 0, speed: 0, yaw: 0 };
+const path = [];
+let surge = 0;
+const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const legRng = mulberry32(3);
+for (const leg of legs) {
+  leg.quirk = 0.85 + legRng() * 0.3;   // per-leg step threshold scale
+  leg.lift = 0.045 + legRng() * 0.03;  // per-leg swing height
+  leg.swing = -1; leg.t = 0; leg.duration = 0.2;
+}
+function resetPath() {
+  path.length = 0;
+  for (let i = 0; i < 400; i++)
+    path.unshift({ x: head.x - Math.sin(head.heading) * i * 0.05, z: head.z - Math.cos(head.heading) * i * 0.05, s: -i * 0.05 });
+  for (const leg of legs) {
+    const i = leg.segIndex;
+    // Staggered along the body so the first steps do not all fall due at
+    // once; from there the neighbour rule keeps them apart.
+    const stagger = (((i * 0.25 + (leg.side === 'l' ? 0 : 0.5)) % 1) - 0.5) * 0.12;
+    const x = head.x + bind[i].x + leg.tipLocal.x - bind[0].x + Math.sin(head.heading) * stagger;
+    const z = head.z + bind[i].z + leg.tipLocal.z - bind[0].z + Math.cos(head.heading) * stagger;
+    leg.planted.set(x, groundY(x, z) + 0.012, z);
+    leg.swing = -1;
+  }
+}
+resetPath();
+function pointBehind(distance) {
+  const last = path[path.length - 1];
+  const want = last.s - distance;
+  for (let i = path.length - 1; i > 0; i--) {
+    const a = path[i - 1], b = path[i];
+    if (a.s <= want) {
+      const t = (want - a.s) / Math.max(1e-6, b.s - a.s);
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, dx: b.x - a.x, dz: b.z - a.z };
+    }
+  }
+  const a = path[0];
+  return { x: a.x, z: a.z, dx: path[1].x - a.x, dz: path[1].z - a.z };
+}
+// Keep a foot target out of the rocks: slide it to the rock's rim.
+function clearOfRocks(p) {
+  for (const s of solids) {
+    const dx = p.x - s.x, dz = p.z - s.z, d = Math.hypot(dx, dz);
+    if (d < s.r + 0.03) {
+      const nx = d > 1e-6 ? dx / d : 1, nz = d > 1e-6 ? dz / d : 0;
+      p.x = s.x + nx * (s.r + 0.03); p.z = s.z + nz * (s.r + 0.03);
+    }
+  }
+  return p;
+}
+const legsOf = Array.from({ length: N }, (_, i) => legs.filter((l) => l.segIndex === i));
+const neighbours = (leg) => legs.filter((o) => o !== leg && (
+  (o.segIndex === leg.segIndex) ||
+  (Math.abs(o.segIndex - leg.segIndex) === 1 && o.side === leg.side)));
+
+const keys = new Set();
+addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); if (e.key === ' ') e.preventDefault(); });
+addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+addEventListener('resize', resize);
+resize();
+window.dbg = { head: () => head, keys, legs, bones, bind, rigData, solids, groundY };
+
+const tmpM = new T.Matrix4(), inv = new T.Matrix4(), q = new T.Quaternion(), qYaw = new T.Quaternion();
+const pos = new T.Vector3(), scl = new T.Vector3(1, 1, 1), v1 = new T.Vector3(), v2 = new T.Vector3(), v3 = new T.Vector3();
+const euler = new T.Euler();
+let score = 0, time = 0, rear = 0;
+const scoreEl = document.getElementById('score'), speedEl = document.getElementById('speed');
+
+function placeBoneWorld(bone, position, quaternion) {
+  tmpM.compose(position, quaternion, scl);
+  bone.parent.updateWorldMatrix(true, false);
+  inv.copy(bone.parent.matrixWorld).invert();
+  tmpM.premultiply(inv);
+  tmpM.decompose(bone.position, bone.quaternion, bone.scale);
+  bone.updateMatrixWorld(true);
+}
+const segYaw = new Array(N).fill(0), segPitch = new Array(N).fill(0), segRoll = new Array(N).fill(0);
+const segPos = bones.map(() => new T.Vector3());
+const segGround = new Array(N).fill(0);
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  time += dt;
+
+  // --- intent ---
+  const sprint = keys.has('shift');
+  const forward = keys.has('w') || keys.has('arrowup');
+  const back = keys.has('s') || keys.has('arrowdown');
+  const left = keys.has('a') || keys.has('arrowleft');
+  const right = keys.has('d') || keys.has('arrowright');
+  const target = forward ? (sprint ? 2.6 : 1.4) : back ? -0.8 : 0;
+  head.speed += (target - head.speed) * Math.min(1, dt * 4);
+  const turn = (left ? 1 : 0) - (right ? 1 : 0);
+  head.heading += turn * dt * (0.8 + 1.4 * Math.min(1, Math.abs(head.speed) / 1.4));
+  if (keys.has('r')) { head = { x: 0, z: 0, heading: 0, speed: 0, yaw: 0 }; resetPath(); }
+  rear += ((keys.has(' ') ? 1 : 0) - rear) * Math.min(1, dt * 5);
+  const moving = Math.min(1, Math.abs(head.speed));
+  const sign = head.speed < 0 ? -1 : 1;
+
+  // --- advance; climbing costs speed, plants add surges ---
+  surge *= Math.max(0, 1 - dt * 6);
+  const slope = (groundY(head.x + Math.sin(head.heading) * 0.3, head.z + Math.cos(head.heading) * 0.3) - groundY(head.x, head.z)) / 0.3;
+  const v = head.speed * (1 + surge) * (1 - rear * 0.7) * (1 - Math.max(0, slope) * 0.8);
+  head.x += Math.sin(head.heading) * v * dt;
+  head.z += Math.cos(head.heading) * v * dt;
+  for (const s of solids) {
+    const dx = head.x - s.x, dz = head.z - s.z;
+    const d = Math.hypot(dx, dz), keep = s.r + 0.22;
+    if (d < keep) {
+      const nx = d > 1e-6 ? dx / d : 1, nz = d > 1e-6 ? dz / d : 0;
+      head.x = s.x + nx * keep; head.z = s.z + nz * keep;
+      head.speed *= 0.6;
+    }
+  }
+  const prev = path[path.length - 1];
+  const step = Math.hypot(head.x - prev.x, head.z - prev.z);
+  if (step > 0.004) {
+    path.push({ x: head.x, z: head.z, s: prev.s + step * sign });
+    if (path.length > 2000) path.shift();
+  }
+
+  // --- segments on the path, on the ground, tilted to it ---
+  let behind = 0;
+  for (let i = 0; i < N; i++) {
+    behind += spacing[i];
+    const p = i === 0 ? { x: head.x, z: head.z, dx: 0, dz: 0 } : pointBehind(behind - spacing[0]);
+    segPos[i].set(p.x, 0, p.z);
+    if (i > 0) segYaw[i] = Math.atan2(p.dx, p.dz);
+  }
+  const neck = Math.atan2(segPos[0].x - segPos[1].x, segPos[0].z - segPos[1].z);
+  const look = Math.max(-0.35, Math.min(0.35, wrapAngle(head.heading - neck)));
+  head.yaw += wrapAngle(neck + look - head.yaw) * Math.min(1, dt * 10);
+  segYaw[0] = head.yaw;
+  for (let i = 0; i < N; i++) {
+    const yaw = segYaw[i];
+    const fx = Math.sin(yaw), fz = Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    const h = groundY(segPos[i].x, segPos[i].z);
+    const hf = groundY(segPos[i].x + fx * 0.12, segPos[i].z + fz * 0.12), hb = groundY(segPos[i].x - fx * 0.12, segPos[i].z - fz * 0.12);
+    const hl = groundY(segPos[i].x + rx * 0.14, segPos[i].z + rz * 0.14), hr = groundY(segPos[i].x - rx * 0.14, segPos[i].z - rz * 0.14);
+    // The body rides on its feet: legged segments sit at the mean height of
+    // their planted feet plus their rest clearance; the head and tail follow.
+    const stance = legsOf[i].filter((l) => l.swing < 0);
+    const feetY = stance.length ? stance.reduce((a, l) => a + l.planted.y, 0) / stance.length - 0.012 : h;
+    segGround[i] += ((stance.length ? feetY * 0.6 + h * 0.4 : h) - segGround[i]) * Math.min(1, dt * 12);
+    segPitch[i] += (-Math.atan2(hf - hb, 0.24) - segPitch[i]) * Math.min(1, dt * 8);
+    segRoll[i] += (Math.atan2(hl - hr, 0.28) - segRoll[i]) * Math.min(1, dt * 8);
+  }
+
+  // --- legs: step when needed, not on a clock ---
+  // Stride grows with speed so the legs can keep up: a leg can only swing so
+  // fast, and past that the body outruns its feet and every leg fires at once.
+  const strideLen = 0.12 + 0.08 * Math.abs(head.speed);
+  for (const leg of legs) {
+    const i = leg.segIndex;
+    const yaw = segYaw[i];
+    qYaw.setFromAxisAngle(v2.set(0, 1, 0), yaw);
+    const home = leg.tipLocal.clone().applyQuaternion(qYaw);
+    home.x += segPos[i].x; home.z += segPos[i].z;
+    if (leg.swing < 0) {
+      const dx = leg.planted.x - home.x, dz = leg.planted.z - home.z;
+      const far = Math.hypot(dx, dz);
+      // How far behind home the foot is along the direction of travel: a foot
+      // that has been swept back is the one that needs to step.
+      const backward = -(dx * Math.sin(yaw) + dz * Math.cos(yaw)) * sign;
+      const threshold = strideLen * 0.55 * leg.quirk;
+      const busy = neighbours(leg).some((o) => o.swing >= 0);
+      const must = far > threshold * 2.4;
+      if (moving > 0.02 && ((backward > threshold && !busy) || must)) {
+        leg.swing = 0;
+        // A swing takes about 40% of the leg's cycle at this speed, so most legs
+        // are on the ground at any moment and the wave has room to form.
+        leg.duration = Math.max(0.045, Math.min(0.2, (0.4 * strideLen) / Math.max(0.3, Math.abs(head.speed))));
+        leg.from.copy(leg.planted);
+        // Land ahead of home along where the front is heading, so a turn is
+        // the front legs reaching round, then check the spot is not a rock.
+        const steer = Math.max(-0.5, Math.min(0.5, wrapAngle(head.heading - yaw))) * Math.max(0, 1 - i / 6);
+        const dir = yaw + steer;
+        const to = clearOfRocks({ x: home.x + Math.sin(dir) * strideLen * 0.5 * sign, z: home.z + Math.cos(dir) * strideLen * 0.5 * sign });
+        leg.to.set(to.x, groundY(to.x, to.z) + 0.012, to.z);
+      } else {
+        // Kick-off: as the foot nears the point of stepping, it drags back
+        // and lifts a touch. The push before the lift.
+        const k = Math.max(0, Math.min(1, (backward - threshold * 0.6) / (threshold * 0.4)));
+        if (k > 0 && moving > 0.02) {
+          leg.planted.x -= Math.sin(yaw) * 0.2 * k * dt * Math.abs(head.speed) * sign;
+          leg.planted.z -= Math.cos(yaw) * 0.2 * k * dt * Math.abs(head.speed) * sign;
+        }
+        leg.planted.y = groundY(leg.planted.x, leg.planted.z) + 0.012 + k * 0.015;
+      }
+    }
+    if (leg.swing >= 0) {
+      leg.swing += dt / leg.duration;
+      const t = Math.min(1, leg.swing);
+      leg.planted.lerpVectors(leg.from, leg.to, t);
+      // Arc over whatever is between the two spots.
+      const mid = groundY((leg.from.x + leg.to.x) / 2, (leg.from.z + leg.to.z) / 2);
+      leg.planted.y = Math.max(leg.planted.y, mid + 0.012) + Math.sin(t * Math.PI) * leg.lift;
+      if (t >= 1) {
+        leg.swing = -1;
+        leg.planted.copy(leg.to);
+        if (i <= 3) surge = Math.min(0.3, surge + 0.1);
+      }
+    }
+  }
+
+  // --- pose the body ---
+  for (let i = 0; i < N; i++) {
+    const lift = rear * Math.max(0, 1 - i / 4) * 0.45;
+    const pitch = segPitch[i] - rear * Math.max(0, 1 - i / 4) * 0.9 - surge * 0.08 * Math.max(0, 1 - i / 3);
+    segPos[i].y = segGround[i] + restY[i] + lift + surge * 0.02 * Math.max(0, 1 - i / 4);
+    q.setFromEuler(euler.set(pitch, segYaw[i], segRoll[i], 'YXZ'));
+    placeBoneWorld(bones[i], segPos[i], q);
+  }
+  // --- pose the legs toward their feet ---
+  for (const leg of legs) {
+    const i = leg.segIndex;
+    q.setFromEuler(euler.set(segPitch[i], segYaw[i], segRoll[i], 'YXZ'));
+    const root = v1.copy(leg.rootLocal).applyQuaternion(q).add(segPos[i]);
+    const lifted = rear * Math.max(0, 1 - i / 4);
+    const foot = v2.copy(leg.planted);
+    if (lifted > 0) {
+      const home = leg.tipLocal.clone().applyQuaternion(q).add(segPos[i]);
+      foot.lerp(home.setY(root.y - 0.05), lifted);
+    }
+    // Aim the leg with a yaw about the body's up and a pitch about the leg's
+    // own lateral axis, never a roll: the arch of the leg stays upright and
+    // the knee keeps pointing at the sky whatever the foot does.
+    const want = foot.sub(root).normalize();
+    const b = leg.bindDir;
+    const dyaw = Math.atan2(want.x, want.z) - Math.atan2(b.x, b.z);
+    const dpitch = Math.asin(Math.max(-1, Math.min(1, want.y))) - Math.asin(Math.max(-1, Math.min(1, b.y)));
+    const lateral = v3.set(b.z, 0, -b.x).normalize(); // up × horizontal bind direction
+    q.setFromAxisAngle(lateral, -dpitch);
+    qYaw.setFromAxisAngle(v2.set(0, 1, 0), dyaw);
+    q.premultiply(qYaw);
+    placeBoneWorld(leg.bone, root, q);
+  }
+
+  // --- apples ---
+  for (let i = apples.length - 1; i >= 0; i--) {
+    const a = apples[i];
+    a.rotation.y += dt;
+    if (Math.hypot(a.position.x - head.x, a.position.z - head.z) < 0.45) {
+      scene.remove(a); apples.splice(i, 1); score++; spawnApple();
+      scoreEl.textContent = `${score} apple${score === 1 ? '' : 's'}`;
+    }
+  }
+  speedEl.textContent = `${Math.abs(v).toFixed(1)} m/s`;
+
+  // --- chase camera ---
+  const hy = groundY(head.x, head.z);
+  const camTarget = pos.set(head.x - Math.sin(head.heading) * 4.6, hy + 2.4, head.z - Math.cos(head.heading) * 4.6);
+  camera.position.lerp(camTarget, Math.min(1, dt * 3));
+  camera.lookAt(head.x, hy + 0.35, head.z);
+  sun.position.set(head.x - 6, 12, head.z + 8);
+  sun.target.position.set(head.x, 0, head.z);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+}
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+</script>
+</body>
+</html>

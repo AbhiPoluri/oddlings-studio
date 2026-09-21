@@ -88,6 +88,28 @@ not a right-hand one. Write the mirrored profile out as its own part.
   curved spine gives a better solid than a bent box. Segments along the axis
   are added automatically; a twisted box still pinches a few percent between
   rings, so use a round section when the volume matters.
+- "field" is the escape hatch: the part IS a signed distance function you
+  write yourself, as a JavaScript expression in "field". It runs in the part's
+  unit box - x, y, z from -0.5 to 0.5 across "size" - and returns a distance,
+  negative inside. In scope: "s", a toolkit of exact fields and operators
+  (s.sphere(x,y,z,r), s.box(x,y,z,hx,hy,hz), s.rbox(...,r), s.cyl(x,y,z,r,h),
+  s.capsule, s.torus(x,y,z,R,r), s.cone(x,y,z,r,h), s.smin(a,b,k),
+  s.smax(a,b,k), s.onion(d,t), s.rep(v,period), s.noise(x,y,z), s.fbm(x,y,z,
+  octaves), s.length, s.clamp, s.mix, s.abs) and "M" for Math. A bare
+  expression is returned; write "return" yourself for a multi-line body with
+  locals. This is what the built-in shapes cannot do: bark ridges as
+  sin(atan2(z,x)*24)*0.02 on a cylinder, scales as a folded noise, a hollow
+  shell with onion, a hundred rivets as one rep() call, a rock as a sphere
+  minus fbm. Two rules. It only builds under surface mode; the faceted builder
+  draws its bounding box and the audit says field-needs-surface. And a
+  displaced field changes faster than distance, so declare "lipschitz": the
+  largest slope of the expression - 1 + amplitude*frequency for a sine ridge,
+  roughly 1 + 3*amplitude*frequency for fbm - or the sampler skips cells the
+  surface actually crosses and the mesh tears. Overstating it only costs a
+  little precision; understating it costs holes.
+
+    { "shape": "field", "size": [0.6, 1.2, 0.6], "lipschitz": 3,
+      "field": "s.cyl(x, y, z, 0.42, 0.5) + 0.03 * M.sin(M.atan2(z, x) * 18) + 0.04 * s.fbm(x * 6, y * 6, z * 6)" }
 
 COMPOSITION
 - children inherit their parent's transform, so build a head once and hang
@@ -154,6 +176,31 @@ COMPOSITION
   tail, teeth along a jaw, rivets down a seam - and add "rest" as well when
   the row has to touch a body lumpier than the path's own surface.
 
+PREFABS
+A part you are about to write out for the ninth time goes in "defs" instead,
+and each place it belongs becomes { "use": "<name>" }. The def's whole subtree
+lands there - children, colours, rig bindings and all - before anything is
+validated, so the rivet you fix once is fixed in all nine.
+A use site may set name, position, rotation, size, color, material, rigPart,
+mirror, repeat, rest and children, and nothing else: it places a copy, it does
+not redraw it. Arrays replace whole - a "size" is a size, not three numbers to
+patch - and "children" are ADDED to the def's rather than swapped for them, so
+one copy can carry a lamp the others do not. "mirror" and "repeat" mean what
+they mean anywhere: a mirrored use reflects the whole subtree and swaps the
+_l/_r bindings inside it, a repeat copies the subtree as a whole. Give each use
+its own "name" if anything resolves by name - "rest.on", "repeat.path",
+"joints.binds" - or two copies called "bracket" both answer to it. Defs may use
+defs; a loop is refused by name. In the studio, nudging one copy is written
+back onto its use site, and an edit INSIDE a copy is refused rather than
+quietly moved into the def and applied to all nine.
+
+    { "defs": { "rivet": { "name": "rivet", "shape": "sphere",
+                           "size": [0.05, 0.05, 0.05], "color": "#2f3336" } },
+      "parts": [ { "name": "pauldron", "shape": "sphere", "size": [0.3, 0.26, 0.3],
+                   "mirror": "x", "children": [
+          { "use": "rivet", "position": [0.22, 0, 0] },
+          { "use": "rivet", "position": [0.17, 0.03, 0.14] } ] } ] }
+
 LOOK
 Keep "detail" low (4-8). The studio's look is faceted and flat-shaded, and a
 low-poly primitive reads better than a smooth one. "jitter" (0.1-0.4) erodes a
@@ -169,17 +216,122 @@ the same number barely ripples a wide lathe and clearly roughens a thin limb.
 Raise jitter rather than part detail if a surface asset looks too clean.
 
 MATERIALS
-"material" on any part sets "roughness" (default 1), "metalness" (0),
-"emissive" (none) and "emissiveStrength" (1); leaving it out is exactly the
-matte finish every asset had before. Parts that share a colour and a tuple
-share one material, so a faceted asset stays as cheap as it was. A fused
-surface keeps one mesh and splits its triangles into groups by tuple, one glTF
-material per group with vertex colours on, so an engine gets real materials
-rather than a single flat shell; emissive strength travels as
-KHR_materials_emissive_strength, which means a lamp authored at 3 arrives as a
-lamp. Exports bake an extra atlas PNG per channel that actually varies - none
-for an asset that authors no materials - and the OBJ's material library
-carries Ns from roughness plus Ke and map_Ke for emission.
+"material" on any part is either a preset name or the numbers themselves.
+
+  stone      matte rock, mottled, 4 mm of relief
+  sandstone  bedded sand, fine horizontal banding
+  marble     polished, dark veining, a light lacquer
+  wood       grain rings up the part
+  planks     boards with gaps, each board its own tone
+  bricks     running-bond courses with mortar between them
+  tiles      glazed squares, matte grout
+  iron       cast and hammered, uneven sheen
+  steel      milled and near-mirror, faint brushing
+  rust       oxide creeping over metal; the crust is not metal any more
+  bronze     cast bronze going green in the hollows
+  gold       soft, bright, barely rough
+  bone       dry, porous, grained along its length
+  cloth      woven, sheen at grazing angles
+  leather    pebbled hide, darker where it creases
+  glass      clear and transmissive; give it a pale colour, not a dark one
+  water      ripples, refraction at 1.33
+  lava       black crust split by glowing cracks
+  ember      charcoal with heat still in it
+  obsidian   volcanic glass, conchoidal facets under a hard lacquer
+
+A preset sets roughness and metalness, the emission where it glows, the glTF
+extension the look needs - transmission and ior for glass and water, clearcoat
+for marble, tiles and obsidian, sheen for cloth - and a default "paint"
+pattern, which the part uses UNLESS it carries a "paint" of its own. Presets
+shade the part's own "color" rather than replacing it, so set a colour as
+well: "material": "gold" with a grey colour is grey metal. Rust's oxide and
+lava's crust are the exceptions, because there the material is the colour.
+
+    "material": "bricks"
+    "material": { "preset": "rust", "roughness": 0.7 }      the preset, one field moved
+    "material": { "roughness": 0.2, "metalness": 1 }        no preset, just the numbers
+
+The bare block is what it always was: "roughness" (default 1), "metalness"
+(0), "emissive" (none) and "emissiveStrength" (1), and leaving "material" out
+entirely is the matte finish every asset had before the library existed.
+Parts that share a colour and a tuple share one material, so a faceted asset
+stays as cheap as it was. A fused surface keeps one mesh and splits its
+triangles into groups by tuple, one glTF material per group; emissive strength
+travels as KHR_materials_emissive_strength, so a lamp authored at 3 arrives as
+a lamp.
+
+PAINT
+Colour on a fused surface is per vertex, and the seams between parts are cut
+for you: where a red part meets a blue one the builder finds the curve where
+one field takes over from the other, splits the straddling triangles along it
+and gives each side its own vertices, so a belt edge or an eye rim is a crisp
+curve and never a triangle-wide smear. Nothing to set; parts that share a
+colour, material and paint are not cut at all.
+
+"paint" on any part is the colour twin of "field": a JavaScript expression
+over x, y, z in the part's unit box (-0.5..0.5 across "size"; a limb has no
+box, so its paint runs in world metres), with the same toolkit "s", "M" for
+Math, "base" - the part's own colour as [r,g,b] - and "size", the part's
+metres along x, y and z, so a pattern can be authored in world units and come
+out the same size on a crate and on a wall.
+
+It is baked PER TEXEL, not per vertex: every texel of the atlas asks the
+expression what it paints at that texel's own point on the surface, so a brick
+or a scale pattern is exactly as crisp at 3,000 triangles as at 30,000. The
+atlas is 1024 texels square on export and 512 in the studio. Vertex colours
+are still written on the mesh, and the OBJ and the studio fall back to them;
+a GLB that embeds the atlas drops them, because glTF multiplies vertex colour
+INTO the base colour and a file carrying both would show every pattern twice.
+
+Return a colour - an [r,g,b] array in 0..1 or a "#hex" string - or an object:
+
+    { color, bump, roughness, metalness, emissive }
+
+"bump" is a height in METRES, small: 0.002 for grain, 0.01 for brick courses.
+It is finite-differenced into a tangent-space normal map, so relief catches
+the light without costing a triangle. "roughness" and "metalness" override the
+part's tuple at that texel. "emissive" is a colour, or a number 0..1 scaling
+the part's emissive colour. Any field left out falls back to the material.
+
+Colour helpers: s.rgb("#hex") -> [r,g,b], s.blend(a, b, t), s.shade(c, k),
+s.step(lo, hi, v) (a smooth 0..1 ramp).
+
+Pattern helpers, in metres - pass x * size[0] and friends, not x:
+    s.bricks(x, y, size, mortar)   -> { m, r }  running-bond courses
+    s.planks(x, y, width, gap)     -> { m, r }  boards along x
+    s.tiles(x, y, size, grout)     -> { m, r }  a square grid
+    s.scales(x, y, size)           -> { m, r }  overlapping rows of discs
+    s.stripes(v, period, duty)     -> 0..1      bands along one axis
+    s.speckle(x, y, z, scale, density) -> 0..1  seeded dots
+    s.worn(x, y, z, scale, amount)     -> 0..1  wear, high along noisy edges
+"m" is 0 in the groove and 1 on the face, smooth across the edge; "r" is a
+stable 0..1 per brick, plank, tile or scale, for varying their colour.
+
+    "paint": "s.blend(base, s.rgb('#3a2a1c'), s.step(0.2, 0.5, -y))"          dirt toward the bottom
+    "paint": "M.sin(y * 40) > 0 ? base : s.shade(base, 0.6)"                    stripes
+    "paint": "const b = s.bricks(x * size[0], y * size[1], 0.24, 0.02); return { color: b.m > 0.5 ? s.shade(base, 0.8 + b.r * 0.4) : s.rgb('#b9b3a6'), bump: b.m * 0.008 }"
+    "paint": "const w = s.worn(x * size[0], y * size[1], z * size[2], 8, 1); return { color: s.shade(base, 1 - w * 0.4), roughness: 0.4 + w * 0.6 }"
+
+The studio's viewport draws the baked atlas - colour, normal, roughness,
+metalness and emission - on the fused mesh while you edit, so what you see is
+what the GLB carries. Exports write one PNG per channel beside the OBJ and
+embed the same images in the GLB as baseColorTexture, normalTexture,
+metallicRoughnessTexture and emissiveTexture; an asset that paints nothing
+embeds nothing and keeps its vertex colours.
+
+WRAP
+A belt is not a ring. Author it as a ring and the hips, which are not round,
+poke through it at the sides - the commonest clipping in a kitbashed body.
+"wrap": { "on": "torso", "thickness": 0.03 } turns the part into a shell that
+hugs the named part(s): it keeps its own extent (height, angular range,
+footprint) and becomes a band "thickness" metres deep sitting "gap" metres
+off the target's surface wherever the two overlap. Name several parts to hug
+their union ("on": ["torso", "thigh-l"] follows the hips down onto both
+thighs), and a name covers every copy of the part and its children. Make the
+wrapped part generous - a cylinder wider than anything it has to cover -
+because only the overlap survives. Straps, cuffs, collars, boot tops, chest
+plates, saddle girths: anything that sits ON a body wants this. Surface mode
+only; the faceted builder draws the plain shape and the audit says so.
 
 SUBTRACT
 Set "subtract": true on a part to carve it out of the surface instead of
@@ -291,6 +443,22 @@ A spec may declare at most 64 joints, which is an eight-legged walker with a
 hip, a knee and an ankle on every leg and room left over. Past that, bind
 several parts to one joint rather than giving each its own.
 
+SKELETON IN THE GLB
+Every rigged export ("rig" or "joints") carries the skeleton as data at
+scenes[0].extras.oddlings - in three.js, gltf.scene.userData.oddlings; the
+inspect tool returns it as "extras". No sidecar file is needed to drive the
+model from a game. Shape: { version: 1, units: "m", scale, root: { name, at },
+bones: [{ name, index, parent, at, end? }], chains: [{ leaf, bones: [root
+... leaf] }] }. "at" is the pivot in model space before "scale", the same
+numbers as the bind pose; "index" is the skeleton index the skin weights point
+at. "end" appears on leaf bones only: how far the geometry bound to that bone
+reaches along the chain - the sole under an ankle, the crown of a head -
+measured from the built mesh, and covering everything bound to the bone, so a
+staff pinned to a forearm puts that forearm's "end" at the staff's tip.
+"chains" is one entry per leaf, root first: a humanoid rig always has five
+(Head, Forearm_L/R, Foot_L/R); a joints mechanism has one per childless joint.
+Static specs and recipe-built models carry no oddlings block.
+
 MESH BACKEND
 By default each part is exported as its own closed solid, and the model is a
 pile of primitives pushed into each other. That reads fine but it is not a game
@@ -311,10 +479,27 @@ along the longest axis - raise it to resolve small features like teeth, lower
 it for speed. It goes up to 512; the grid is detail cubed, so 320 is a
 33-million-point volume and 512 is four times that, several seconds and half a
 gigabyte per build, worth it only for a hero asset with features finer than
-its size divided by 320. budget goes up to 1,000,000 triangles. budget is the triangle count the mesh is decimated down to, so
-you get a game budget rather than whatever the grid happened to produce.
+its size divided by 320. budget is the triangle count the mesh is decimated
+down to, so you get a game budget rather than whatever the grid happened to
+produce; it goes up to 1,000,000. For a game character 4,000 to 8,000 is the
+right range now that "crease" shades curves smoothly - a 1.7 m character at
+7,000 is hard to tell from the same one at 22,000 at any distance a player
+sees it from, and 90% of the triangles in a high budget go to fillets and
+studs covering half the surface. Put detail in materials, not triangles.
 shading "flat" keeps the studio's faceted look at a low budget; "smooth" reads
 as a sculpt and wants a higher one.
+
+"feature" is a size in metres: anything the surface can lose without drifting
+further than that from the field is collapsed BEFORE the budget is applied,
+so studs, seams, fillets and ridges below the feature size flatten and every
+budgeted triangle goes to silhouette and the large forms. It bites fast: on a
+2.5 m walker at a 5,000 budget, 0.005 changed nothing, 0.01 landed at 4,700
+with every detail intact, 0.02 at 2,200 with the eye ring flattened and the
+runes smeared, 0.03 at 1,500. Use 0.005 to 0.015 on a character to shed the
+rivets and keep the face; 0.02 and up is a distant-LOD look; leave it unset
+for a hero render. The audit's "budget" line says which parts took the triangles and
+calls out one that took far more than its share of the surface - that number
+is the argument for feature, for a larger blend, or for dropping the part.
 
 One more knob decides whether the result reads as clean or as clay. A shell
 decimated to a game budget is genuinely faceted — at 9,000 triangles on a
@@ -334,6 +519,16 @@ measured to widen the spread of facet angles, not narrow it.
 
 Do not add "jitter" to make plates look worked and then wonder why they look
 rough: jitter is erosion, and under a crease it reads as exactly that.
+
+A faceted build is a kitbash, and the builder trims it: every face buried
+inside a neighbouring part, or lying flat on one, is dropped, which is what
+stops the underside of a crate flickering against the deck it sits on and
+takes a fifth to a third of the triangles out of a typical prop for free. The
+rule that keeps it safe under animation is that only parts bound to the same
+bone or joint may hide each other - a shoulder ball inside a torso is left
+whole, because the Walk clip swings it out. A part under a rig with no
+"rigPart" of its own is never trimmed. The audit reports what went as
+"trimmed"; set top-level "trim": false to keep every part a closed solid.
 
 Use surface for anything organic, and for anything that has to deform: a
 creature, a person, a character. Leave it off for hard-surface props and
@@ -402,6 +597,43 @@ A detached-part hint moves the part until it touches the body; a no-surface
 hint pushes it out along its neighbour's normal until one grid cell of it
 stands proud. Apply the move and re-audit rather than guessing a second time.
 
+CLIP-THROUGH
+A clip-through finding means one part crosses another once the asset moves:
+each clip is sampled at eight frames, every part is posed on the bone that
+carries it, and the depth parts on DIFFERENT bones reach inside each other is
+measured. The message names the clip, the worst frame and the depth in
+millimetres - a warning past 5 mm, an error past 25 mm. Fix it in the spec:
+cut "spin.degrees" until the arc clears, move the joint's "at" so the part
+swings past its neighbour instead of into it, or move the part and leave the
+clearance the arc needs. Parts meant to move as one belong on the same joint -
+add the name to that joint's "binds" and they are never compared. Overlap
+already there in the bind pose is ignored, so a rope sunk into its bough is
+fine; only what the motion adds is reported. A surface asset or a rigged
+character gets one note instead of a fault, because its parts are blended, or
+skinned onto limbs that are meant to sweep through the body.
+
+LOOKING AT THE ASSET
+Do not open a browser and do not take screenshots. "render_spec" (MCP) and
+"oddlings render <spec> --views front,side" (CLI) write PNGs of the model and
+return their paths - front, three-quarter, side and top by default; the full
+set is front, back, side, left, top, bottom, three-quarter. A whole turnaround
+takes a few hundred milliseconds and is byte-identical for the same spec, so
+two renders can be diffed directly. Surface assets render with their baked
+paint. Read the files back as images when you need to see the thing.
+
+"audit_spec" with "visual": true (CLI: "oddlings audit <spec> --visual") is
+cheaper than looking and says more. It adds three findings. "silhouette"
+reports the fraction of the frame the model covers from each angle - a number
+to interpret, not a complaint. "low-contrast" warns about a pair of parts that
+meet along a long border and differ by less than a colour difference of 10
+there: they read as one shape, so change one colour or put a lip, a groove or
+a darker trim between them. "unseen-triangles" is the share of the mesh that
+shows in none of the six axis views, with the parts wasting the most; a part
+at 100% is sealed inside another, so delete it or make it proud of its
+neighbour. Work the numbers first and render only to confirm: two rounds of
+"audit_spec" with "visual": true plus one render replaces six rounds of
+screenshots.
+
 MEASURING
 Do not write a script to measure your own model. "measure_spec" (MCP) and
 "oddlings measure" (CLI) report, for every authored part: its world bounding
@@ -430,6 +662,23 @@ change, then close each note with "resolve_note" (MCP) or
 "oddlings notes <spec> --resolve <id> --reply \\"...\\"". The reply is not
 optional politeness: it is the only thing the reviewer sees, and a note
 resolved without one reads as a note ignored.
+
+A note may also carry a "mark": a stroke the human drew straight onto the
+model in the studio, resolved into geometry the moment they drew it.
+"mark.gesture" is one of four. "circle" rings the parts it encloses. "remove"
+is a scribble or a cross over something that should go. "arrow" points at the
+part its tip landed on. "sketch" is a shape drawn in empty space for something
+that is not there yet. "mark.parts" lists what the stroke is about, as spec
+paths with the names they had - act on those paths, do not re-derive them from
+the points; for a circle or a remove the first entry is whatever sat under the
+middle of the stroke. "mark.worldPoints" is the stroke in world metres, on the
+model's surface for a circle, a remove or an arrow, and on a plane facing the
+camera for a sketch: an arrow's last point is the thing it points at, and a
+sketch's extent is the size of the thing being asked for, with its first point
+where it goes. "mark.cameraPose" (position, target, fov) is where the reviewer
+was standing, which says which side of the model they were judging. The note's
+text is the instruction; the mark is the location. An unlabelled mark takes
+its own description as its text.
 
 BUDGET
 Specs cap at 200 top-level parts and 4000 meshes after mirrors and repeats

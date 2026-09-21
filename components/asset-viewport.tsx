@@ -8,6 +8,7 @@ import {
 } from 'react';
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { Move3d, Rotate3d, Scale3d } from 'lucide-react';
 import { stats } from '@/lib/asset-export';
@@ -16,6 +17,7 @@ import type { BuildPhase } from '@/lib/asset-surface';
 import { gauge } from '@/lib/perf';
 import { createBuildClient, type BuildClient } from '@/lib/build-client';
 import {
+  flatten,
   frameIsExact,
   frameOf,
   partAt,
@@ -30,6 +32,30 @@ import {
   type Vec3,
 } from '@/lib/spec-edit';
 import { disposeScene, lighting } from '@/lib/three-world';
+import {
+  atlasTextures,
+  dressTextures,
+  unpackMaps,
+  type BakedMaps,
+} from '@/lib/asset-bake';
+import { applyMaterial, splitUvSeams, type SurfaceMaterial } from '@/lib/asset-uv';
+import {
+  filtersActive,
+  type Filters,
+} from '@/components/studio/filters';
+import {
+  createFilterChain,
+  type FilterChain,
+} from '@/components/viewport-filters';
+import {
+  resolveStroke as resolveDrawnStroke,
+  type DrawnMark,
+  type Gesture,
+  type Mark,
+  type PartCentre,
+  type Point2,
+} from '@/lib/draw-marks';
+import { strokeWorld } from '@/lib/draw-anchor';
 import { skeletonOf } from '@/lib/asset-rig';
 import { boneLayout, clipsOf } from '@/lib/asset-joints';
 import type { Recipe } from '@/lib/asset-recipe';
@@ -50,6 +76,14 @@ export type ViewHandle = {
   frame: (selection: Selection) => void;
   /** Turn the camera to an axis, or back to the three-quarter view. */
   view: (which: ViewName) => void;
+  /**
+   * Resolve one finished review stroke against what is on screen, now.
+   *
+   * At capture time on purpose: which parts a loop encloses and where a point
+   * of it sits in the world are both answers about this camera, and the camera
+   * moves a moment later. Null for a stroke too short to be a gesture.
+   */
+  resolveStroke: (points: Point2[]) => Mark | null;
 };
 export type AssetStats = ReturnType<typeof stats> & {
   /** Frames drawn in the last second; absent until a second has passed. */
@@ -70,7 +104,16 @@ type Props = {
   onMoveBone?: (name: string, at: Vec3) => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
-  pixel: boolean;
+  /**
+   * The post-processing stack, or a stack with everything off.
+   *
+   * This replaced a `pixel: boolean` that shrank the drawing buffer to 0.45×
+   * and let the browser magnify it. With every filter off the viewport renders
+   * exactly as it did before there was a composer at all — no render target is
+   * allocated and no extra pass runs — so the cost of the feature is paid only
+   * by the people using it.
+   */
+  filters: Filters;
   wireframe: boolean;
   grid: boolean;
   rotate: boolean;
@@ -88,6 +131,14 @@ type Props = {
   onTime?: (seconds: number) => void;
   /** The clips the built asset exports, reported after every model build. */
   onClips?: (clips: { name: string; duration: number }[]) => void;
+  /**
+   * Review marks to draw over the model, anchored to the world points they
+   * were resolved to — so they stay on the thing they were drawn on when the
+   * camera orbits, which is the whole reason they are 3D lines and not pixels.
+   */
+  marks?: DrawnMark[];
+  /** A click landed on one of those marks. */
+  onMarkPick?: (id: string) => void;
   /** A second, dimmer outline: what the pointer or the outliner is over. */
   hover?: Selection;
   /** What the pointer is over, so the outliner can highlight in reverse. */
@@ -217,6 +268,14 @@ type Runtime = {
   handles: T.Group;
   /** A box round the geometry the selected bone carries. */
   bound: T.Box3Helper;
+  /**
+   * The reviewer's drawn marks, as lines in the world.
+   *
+   * A scene child and never a child of `model`, for the reason the ghost is:
+   * the picker, the framing, the statistics and isolation all walk `model`,
+   * and a scribble is none of those things.
+   */
+  marks: T.Group;
   /** Handle radius in world units, sized off the model so scale 40 works too. */
   handleSize: number;
   model: T.Group | null;
@@ -233,6 +292,16 @@ type Runtime = {
   ghost: T.Group | null;
   grid: T.GridHelper;
   floor: T.Mesh;
+  /** The filter stack, built the first time a filter is switched on. */
+  chain: FilterChain | null;
+  /**
+   * Draw one frame: through the stack when a filter is on, plainly otherwise.
+   *
+   * Everything that puts a frame on the canvas goes through this rather than
+   * calling `renderer.render` — except the thumbnail grab, which wants the
+   * asset and not the look someone is previewing it through.
+   */
+  draw: () => void;
   fit: () => void;
   resize: () => void;
   /**
@@ -372,6 +441,133 @@ function ownedVertices(geometry: T.BufferGeometry, owners: SurfaceOwners) {
   }
   owned.set(geometry, table);
   return table;
+}
+
+/**
+ * The authored part a raycast hit belongs to.
+ *
+ * Two shapes of answer, because a part is two different things depending on
+ * how the asset was built: its own mesh in solid mode, and a run of vertices
+ * inside one fused mesh in surface mode. Shared by the picker and by the draw
+ * resolver so a stroke and a click can never disagree about what they landed on.
+ */
+function pathOfHit(hit: T.Intersection): Path | null {
+  const mesh = hit.object as T.Mesh;
+  const direct = mesh.userData.specPath as Path | undefined;
+  if (direct) return [...direct];
+  const owners = mesh.geometry?.userData.surfaceOwners as
+    | SurfaceOwners
+    | undefined;
+  if (!owners || !hit.face) return null;
+  for (const vertex of [hit.face.a, hit.face.b, hit.face.c]) {
+    const path = owners.paths[owners.index[vertex]];
+    if (path) return [...path];
+  }
+  return null;
+}
+
+/** Where a screen ray meets the model, and what it met, for a drawn stroke. */
+function hitModel(model: T.Object3D, camera: T.Camera, at: T.Vector2) {
+  const caster = new T.Raycaster();
+  caster.setFromCamera(at, camera);
+  const found = caster
+    .intersectObject(model, true)
+    .find((hit) => hit.object.visible);
+  if (!found) return null;
+  return {
+    point: [found.point.x, found.point.y, found.point.z] as [number, number, number],
+    path: pathOfHit(found),
+  };
+}
+
+/**
+ * Every authored part with a place in the world, for the enclosure test.
+ *
+ * Measured off the built model rather than off the spec's numbers: a part
+ * inside a repeat or a mirror sits where the build put it, and a loop drawn
+ * round the copy on the left must name the part that made it.
+ */
+function partCentres(model: T.Object3D, spec: AssetSpec): PartCentre[] {
+  const out: PartCentre[] = [];
+  const middle = new T.Vector3();
+  for (const row of flatten(spec)) {
+    const box = worldBounds(model, row.path);
+    if (box.isEmpty()) continue;
+    box.getCenter(middle);
+    out.push({
+      path: row.path,
+      name: row.part.name ?? row.part.shape,
+      centre: [middle.x, middle.y, middle.z],
+    });
+  }
+  return out;
+}
+
+/** One colour per gesture, so what a mark means is readable without reading it. */
+const MARK_COLOR: Record<Gesture, string> = {
+  circle: '#7fd2c8',
+  remove: '#e09a8a',
+  arrow: '#e8d18a',
+  sketch: '#a9d67f',
+};
+
+/**
+ * One mark as scene objects.
+ *
+ * Drawn through the model rather than into it — `depthTest: false` and a high
+ * render order — because a ring round a part is about the part's silhouette,
+ * and a ring that disappeared into the shoulder it was drawn on would be
+ * pointing at nothing. A circle closes its loop; an arrow gets a head, since a
+ * line with no head does not say which end of it is the point.
+ */
+function markObject(mark: DrawnMark): T.Object3D {
+  const group = new T.Group();
+  group.userData.markId = mark.id;
+  const color = new T.Color(MARK_COLOR[mark.gesture]);
+  const material = new T.LineBasicMaterial({
+    color,
+    depthTest: false,
+    transparent: true,
+    opacity: 0.95,
+  });
+  const points = mark.worldPoints.map((p) => new T.Vector3(p[0], p[1], p[2]));
+  const geometry = new T.BufferGeometry().setFromPoints(points);
+  const line =
+    mark.gesture === 'circle'
+      ? new T.LineLoop(geometry, material)
+      : new T.Line(geometry, material);
+  line.renderOrder = 123;
+  line.userData.markId = mark.id;
+  group.add(line);
+  if (mark.gesture === 'arrow' && points.length >= 2) {
+    const tip = points[points.length - 1];
+    const before = points[points.length - 2];
+    const span = tip.distanceTo(points[0]);
+    const head = new T.Mesh(
+      new T.ConeGeometry(Math.max(span * 0.06, 0.01), Math.max(span * 0.16, 0.03), 8),
+      new T.MeshBasicMaterial({ color, depthTest: false, transparent: true }),
+    );
+    head.position.copy(tip);
+    head.quaternion.setFromUnitVectors(
+      new T.Vector3(0, 1, 0),
+      tip.clone().sub(before).normalize(),
+    );
+    head.renderOrder = 123;
+    head.userData.markId = mark.id;
+    group.add(head);
+  }
+  return group;
+}
+
+/** Give a mark's objects back to the GPU. */
+function disposeMark(object: T.Object3D) {
+  object.traverse((child) => {
+    const mesh = child as T.Mesh;
+    mesh.geometry?.dispose();
+    const material = mesh.material;
+    if (Array.isArray(material)) material.forEach((m) => m.dispose());
+    else material?.dispose();
+  });
 }
 
 function worldBounds(model: T.Object3D, path: Path) {
@@ -525,6 +721,93 @@ function sliceOf(source: T.Mesh, kept: number[]) {
     slice.bind(source.skeleton, source.bindMatrix);
   }
   return slice;
+}
+
+/**
+ * Put the baked atlas on the fused mesh, so the studio draws what an engine
+ * will.
+ *
+ * Until now the preview drew vertex colours and nothing else, which meant that
+ * every per-texel pattern, every millimetre of relief and every rough or
+ * polished patch was invisible in the one place an author is actually looking.
+ * The worker bakes the atlas beside the model and parks it on the geometry;
+ * this hangs it on the material.
+ *
+ * Called after the model has been handed to `onModel`, and that order is the
+ * whole trick. A textured mesh needs one vertex per chart, `splitUvSeams` is
+ * what makes those vertices, and a split vertex is a torn index — which the
+ * audit would read as a hole in the shell. So the audit sees the welded mesh,
+ * the screen sees the split one, and everything keyed by vertex comes across
+ * the split with it: `surfaceOwners.index`, `rigParts` and the skin weights
+ * are all remapped, so selecting a part and framing a bone still work on
+ * exactly the geometry they did before.
+ */
+/**
+ * A small indoor environment, built once per renderer.
+ *
+ * Metal is a mirror, and a mirror with nothing to reflect is black: without
+ * this, `material: "gold"` would draw as a dark ring and read as a bug rather
+ * than as the absence of a sky. Only meshes carrying a baked atlas get it, so
+ * every asset that authored no material looks exactly as it did, and the
+ * intensity is low enough that a matte part is lifted rather than washed out.
+ */
+const environments = new WeakMap<T.WebGLRenderer, T.Texture>();
+
+function environmentFor(renderer: T.WebGLRenderer) {
+  const known = environments.get(renderer);
+  if (known) return known;
+  const pmrem = new T.PMREMGenerator(renderer);
+  const made = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+  environments.set(renderer, made);
+  return made;
+}
+
+function dressPreview(model: T.Object3D, renderer: T.WebGLRenderer) {
+  let maps: BakedMaps | undefined;
+  model.traverse((object) => {
+    if (!maps && object instanceof T.Mesh)
+      maps = object.geometry.userData.bakedMaps as BakedMaps | undefined;
+  });
+  if (!maps) return;
+  splitUvSeams(model);
+  model.traverse((object) => {
+    if (!(object instanceof T.Mesh) || Array.isArray(object.material)) return;
+    // The worker's channel carries one material per mesh and only the fields a
+    // standard material has, so a preset's transmission, clearcoat or sheen
+    // arrives as the tuple on `userData` and is rebuilt here. Only where the
+    // whole shell shares one material: a fused mesh of several is drawn with
+    // one material and its per-texel roughness and metalness, which is most of
+    // the difference and none of the risk of handing the viewport an array.
+    const tuples = object.geometry.userData.surfaceMaterials as
+      | SurfaceMaterial[]
+      | undefined;
+    if (tuples?.length === 1)
+      object.material = applyMaterial(
+        object.material as T.MeshStandardMaterial,
+        tuples[0],
+      );
+  });
+  dressTextures(model, atlasTextures(unpackMaps(maps)));
+  const environment = environmentFor(renderer);
+  model.traverse((object) => {
+    if (!(object instanceof T.Mesh)) return;
+    if (!object.geometry.userData.surfacePaint) return;
+    for (const material of Array.isArray(object.material)
+      ? object.material
+      : [object.material]) {
+      const standard = material as T.MeshStandardMaterial;
+      if (!standard.isMeshStandardMaterial) continue;
+      standard.envMap = environment;
+      standard.envMapIntensity = 0.55;
+      standard.needsUpdate = true;
+    }
+  });
+  // The bytes are on the GPU now, and leaving four megabytes of them on
+  // `userData` would keep them alive for as long as the model is on screen.
+  model.traverse((object) => {
+    if (object instanceof T.Mesh) delete object.geometry.userData.bakedMaps;
+  });
 }
 
 /** The ghost a part-owning mesh is drawn as while something else is isolated. */
@@ -718,6 +1001,16 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        /**
+         * A picture of the asset, deliberately unfiltered.
+         *
+         * `renderer.render` rather than `v.draw()`: the thumbnail is of the
+         * thing, and a pixelated or scanlined one would be wrong in the
+         * Projects list for as long as it was cached — the same reasoning that
+         * already hides the grid, the gizmo and the comparison ghost below.
+         * `components/studio/offscreen.ts` has its own renderer and never had
+         * a composer, so the bulk thumbnail run is unfiltered for free.
+         */
         capture() {
           const v = runtime.current;
           if (!v) throw Error('The 3D viewport is unavailable.');
@@ -728,6 +1021,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
             h = v.handles.visible,
             b = v.bound.visible,
             o = v.hoverBox.visible,
+            // A reviewer's scribbles are the least permanent thing on screen,
+            // and a thumbnail is cached: one with a ring round the helmet in it
+            // would outlive the note that put it there.
+            m = v.marks.visible,
             // A comparison is a thing you are doing, not a property of the
             // asset — a thumbnail with last build's silhouette baked into it
             // would be wrong in the list for as long as it was cached.
@@ -742,6 +1039,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           v.handles.visible = false;
           v.bound.visible = false;
           v.hoverBox.visible = false;
+          v.marks.visible = false;
           if (v.ghost) v.ghost.visible = false;
           v.transform.getHelper().visible = false;
           v.renderer.render(v.scene, v.camera);
@@ -753,9 +1051,13 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           v.handles.visible = h;
           v.bound.visible = b;
           v.hoverBox.visible = o;
+          v.marks.visible = m;
           if (v.ghost) v.ghost.visible = w;
           v.transform.getHelper().visible = t;
-          v.renderer.render(v.scene, v.camera);
+          // Back to whatever the viewport was showing, filters and all —
+          // otherwise the canvas holds this bare, unfiltered frame until
+          // something else happens to want one.
+          v.draw();
           return output;
         },
         home() {
@@ -766,6 +1068,33 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         },
         view(which) {
           runtime.current?.view(which);
+        },
+        resolveStroke(points) {
+          const v = runtime.current;
+          const spec = live.current.spec;
+          const el = canvas.current;
+          if (!v?.model || !spec || !el) return null;
+          const rect = el.getBoundingClientRect();
+          if (!rect.width || !rect.height) return null;
+          const size = { width: rect.width, height: rect.height };
+          return resolveDrawnStroke(
+            points,
+            strokeWorld({
+              camera: v.camera,
+              size,
+              target: v.controls.target,
+              hit: (at) =>
+                hitModel(
+                  v.model!,
+                  v.camera,
+                  new T.Vector2(
+                    (at.x / size.width) * 2 - 1,
+                    -(at.y / size.height) * 2 + 1,
+                  ),
+                ),
+            }),
+            partCentres(v.model, spec),
+          );
         },
         front() {
           const v = runtime.current;
@@ -882,6 +1211,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
       // now, and should stay put while the bone is dragged off it.
       scene.add(bound);
 
+      // Review marks. Added to the scene, never to the model: see `Runtime`.
+      const marks = new T.Group();
+      scene.add(marks);
+
       const transform = new TransformControls(camera, canvas.current);
       transform.size = 0.95;
       transform.space = 'world';
@@ -899,6 +1232,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         hoverBox,
         handles,
         bound,
+        marks,
         handleSize: 0.02,
         // Replaced by the render loop below, which is the only thing that can
         // actually grant frames; until then a wake is a no-op, and the loop
@@ -912,6 +1246,12 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         ghost: null,
         grid,
         floor,
+        chain: null,
+        draw() {
+          const chain = filtersActive(live.current.filters) ? filters() : null;
+          if (chain) chain.render();
+          else renderer.render(scene, camera);
+        },
         fit() {
           if (!v.model) return;
           // A bottom view lifts the orbit ceiling; a refit is a fresh start and
@@ -953,9 +1293,10 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           if (!el) return;
           const width = Math.max(1, el.clientWidth);
           const height = Math.max(1, el.clientHeight);
-          const ratio = live.current.pixel
-            ? 0.45
-            : Math.min(devicePixelRatio, 1.5);
+          // One ratio for every look now. Pixelate is a size the composer
+          // renders at, not a drawing buffer someone else has to magnify, so
+          // the canvas is always the canvas.
+          const ratio = Math.min(devicePixelRatio, 1.5);
           renderer.setSize(
             Math.max(1, Math.round(width * ratio)),
             Math.max(1, Math.round(height * ratio)),
@@ -963,6 +1304,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           );
           camera.aspect = width / height;
           camera.updateProjectionMatrix();
+          v.chain?.setSize(width, height, ratio);
         },
         /**
          * Put the proxy on a part: union centre of every copy, turned to the
@@ -1339,6 +1681,55 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
       runtime.current = v;
 
       /**
+       * Hide the editing furniture, and hand back the way to put it back.
+       *
+       * The Outline filter paints the scene with one normal material to read
+       * its shape out of, and a `GridHelper` painted that way is a shape too —
+       * forty lines' worth of edges across the floor. Same list `capture()`
+       * hides, and the same reason: none of this is the asset.
+       */
+      function hideFurniture(): () => void {
+        const hidden: T.Object3D[] = [
+          grid,
+          floor,
+          proxy,
+          handles,
+          bound,
+          hoverBox,
+          marks,
+          transform.getHelper(),
+        ];
+        if (v.ghost) hidden.push(v.ghost);
+        if (v.helper) hidden.push(v.helper);
+        const was = hidden.map((object) => object.visible);
+        for (const object of hidden) object.visible = false;
+        return () => {
+          for (let i = 0; i < hidden.length; i++) hidden[i].visible = was[i];
+        };
+      }
+
+      /**
+       * The filter stack, built on first use.
+       *
+       * Three render targets and five compiled programs is not much, but it is
+       * not nothing either, and a studio nobody has switched a filter on in
+       * should not be holding any of it.
+       */
+      function filters(): FilterChain {
+        if (v.chain) return v.chain;
+        const chain = createFilterChain({
+          renderer,
+          scene,
+          camera,
+          hideFurniture,
+        });
+        v.chain = chain;
+        chain.apply(live.current.filters);
+        v.resize();
+        return chain;
+      }
+
+      /**
        * Which snap grid the modifiers are asking for, and the gizmo set to it.
        *
        * Held rather than read from an event because the gizmo's own pointer
@@ -1649,19 +2040,32 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           .intersectObject(v.model, true)
           .find((found) => found.object.visible);
         if (!hit) return null;
-        const mesh = hit.object as T.Mesh;
-        const direct = mesh.userData.specPath as Path | undefined;
-        if (direct) return { kind: 'part', path: [...direct] };
-        const owners = mesh.geometry?.userData.surfaceOwners as
-          | { index: Uint16Array; paths: (Path | undefined)[] }
-          | undefined;
-        if (owners && hit.face) {
-          for (const vertex of [hit.face.a, hit.face.b, hit.face.c]) {
-            const path = owners.paths[owners.index[vertex]];
-            if (path) return { kind: 'part', path: [...path] };
-          }
-        }
-        return null;
+        const path = pathOfHit(hit);
+        return path ? { kind: 'part', path } : null;
+      }
+      /**
+       * The drawn mark under the pointer, if any.
+       *
+       * Its own raycaster because a line is a line: picking one needs a
+       * generous threshold in world units, and lending the picker's raycaster
+       * that threshold would make every click on the model slightly wrong.
+       */
+      const markCaster = new T.Raycaster();
+      function markAt(clientX: number, clientY: number): string | null {
+        if (!v.marks.children.length || !v.marks.visible) return null;
+        const rect = el.getBoundingClientRect();
+        markCaster.params.Line = { threshold: Math.max(v.handleSize * 2, 0.02) };
+        markCaster.setFromCamera(
+          new T.Vector2(
+            ((clientX - rect.left) / rect.width) * 2 - 1,
+            -((clientY - rect.top) / rect.height) * 2 + 1,
+          ),
+          camera,
+        );
+        const found = markCaster
+          .intersectObject(v.marks, true)
+          .find((hit) => hit.object.userData.markId);
+        return found ? String(found.object.userData.markId) : null;
       }
       function pointerUp(event: PointerEvent) {
         if (dragged) {
@@ -1671,6 +2075,15 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         if (event.button !== 0 || onGizmo || transform.dragging) return;
         if (Math.hypot(event.clientX - downX, event.clientY - downY) > 4) return;
         if (event.shiftKey || !live.current.spec || !v.model) return;
+        // A mark is drawn over the part it is about, so it has to be asked
+        // first — otherwise clicking a ring would select whatever it rings,
+        // which is nearly the right answer and never the one that opens the
+        // note that says why the ring is there.
+        const mark = markAt(event.clientX, event.clientY);
+        if (mark) {
+          live.current.onMarkPick?.(mark);
+          return;
+        }
         const pick = live.current.onSelect;
         if (!pick) return;
         pick(pickAt(event.clientX, event.clientY));
@@ -1893,7 +2306,7 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         // A turntable turning under a drag drags the gizmo plane with it.
         controls.autoRotate = live.current.rotate && !transform.dragging;
         controls.update();
-        renderer.render(scene, camera);
+        v.draw();
         drawn++;
         if (!second) second = now;
         else if (now - second >= 1000) {
@@ -1933,6 +2346,8 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         scene.remove(transform.getHelper());
         transform.dispose();
         v.mixer?.stopAllAction();
+        v.chain?.dispose();
+        v.chain = null;
         if (v.ghost) skeletonOf(v.ghost)?.dispose();
         if (v.model) skeletonOf(v.model)?.dispose();
         v.helper?.dispose();
@@ -2067,6 +2482,9 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
         // Last, so whoever audits this is reading a model that is fully wired
         // up — skinned, posed and measured.
         live.current.onModel?.(model);
+        // And only then the texture, which tears the index the audit just
+        // read. See `dressPreview`.
+        dressPreview(model, v.renderer);
         // The isolate and gizmo effects below watch the same spec, but React
         // ran them when the spec changed rather than when the model landed.
         // Asking for one more pass is how they get to see what arrived.
@@ -2210,6 +2628,28 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           (material as T.MeshStandardMaterial).wireframe = Boolean(props.ghostWire);
       });
     }, [props.ghostWire, ghostSource]);
+
+    /**
+     * The reviewer's marks, rebuilt whenever the list changes.
+     *
+     * Rebuilt whole rather than diffed: there are a handful of these, they are
+     * two dozen points each, and a resolved note leaving the list has to take
+     * its line with it — which a diff would have to be told about anyway.
+     */
+    const marks = props.marks;
+    useEffect(() => {
+      const v = runtime.current;
+      if (!v) return;
+      // Not a `for…of` over the children: removing from the list being walked
+      // is how half of them get left behind.
+      while (v.marks.children.length) {
+        const child = v.marks.children[0];
+        v.marks.remove(child);
+        disposeMark(child);
+      }
+      for (const mark of marks ?? []) v.marks.add(markObject(mark));
+      v.wake();
+    }, [marks]);
     // Declared after the rebuild so it runs after it, and watching the same
     // inputs: the rebuild drops isolation to give the old meshes their
     // materials back, and this puts it on the meshes that replaced them.
@@ -2249,7 +2689,27 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           (o.material as T.MeshStandardMaterial).wireframe = props.wireframe;
       });
       v.resize();
-    }, [props.grid, props.pixel, props.wireframe]);
+    }, [props.grid, props.wireframe]);
+    /**
+     * Push the filter settings into the stack.
+     *
+     * Cheap by construction: the passes are built once and this writes
+     * uniforms and `enabled` flags, so dragging a slider costs one object
+     * compare and a dozen assignments rather than a rebuilt composer. A stack
+     * that has never been switched on is not built at all — `filtersActive`
+     * is what the render loop asks before it reaches for one.
+     */
+    useEffect(() => {
+      const v = runtime.current;
+      if (!v) return;
+      if (!v.chain && !filtersActive(props.filters)) return;
+      const chain = v.chain;
+      if (chain) {
+        chain.apply(props.filters);
+        v.resize();
+      }
+      v.wake();
+    }, [props.filters]);
     // Only the bone-ness of the selection matters here: re-posing on every
     // part click would restart the clip each time one was picked.
     const onBone = props.selected?.kind === 'bone';
@@ -2284,7 +2744,16 @@ export const AssetViewport = forwardRef<ViewHandle, Props>(
           ref={canvas}
           tabIndex={0}
           aria-label="3D asset preview. Click a part to select it. Drag to orbit, right-drag to pan, scroll to zoom."
-          style={{ imageRendering: props.pixel ? 'pixelated' : 'auto' }}
+          // The composer already magnifies with nearest taps, but the drawing
+          // buffer is capped at 1.5× and the browser scales it once more on
+          // the way to a 2× screen. Without this that last step is bilinear,
+          // and the blocks come out with soft edges after all the work.
+          style={{
+            imageRendering:
+              props.filters.on && props.filters.pixelate.on
+                ? 'pixelated'
+                : 'auto',
+          }}
         />
         {editable && (
           <div className="gizmo-modes" role="group" aria-label="Gizmo mode">

@@ -312,3 +312,66 @@ describe('materials survive the export', () => {
     expect((await materialsIn(result.files[0])).size).toBe(1);
   });
 });
+
+describe('the readme describes the skeleton the GLB carries', () => {
+  const readmeOf = async (source: Parameters<typeof writeAsset>[0], dir: string) => {
+    const result = await writeAsset(source, { outDir: join(scratch, dir), formats: ['unity'] });
+    const zip = result.files.find((f) => f.endsWith('-unity.zip'))!;
+    const entries = unzipSync(new Uint8Array(await readFile(zip)));
+    const key = Object.keys(entries).find((p) => p.endsWith('README.txt'))!;
+    return new TextDecoder().decode(entries[key]);
+  };
+
+  test('a creature rig names its bones and clips', async () => {
+    const readme = await readmeOf({ spec: parseSpec(EXAMPLE_SPEC) }, 'readme-rig');
+    expect(readme).toContain('14-bone skinned Generic rig');
+    expect(readme).toContain('Attack');
+    expect(readme).toContain('extras.oddlings');
+  });
+
+  test('a mechanism is described as one, with its own clip names', async () => {
+    const spec = parseSpec({
+      version: 1,
+      name: 'Lever',
+      kind: 'prop',
+      parts: [
+        { name: 'base', shape: 'box', size: [0.4, 0.1, 0.4], position: [0, 0.05, 0] },
+        { name: 'arm', shape: 'box', size: [0.05, 0.5, 0.05], position: [0, 0.35, 0] },
+      ],
+      joints: [
+        { name: 'Pivot', at: [0, 0.1, 0], binds: ['arm'], spin: { axis: 'x', mode: 'swing', degrees: 20, seconds: 2, clip: 'Pull' } },
+      ],
+    });
+    const readme = await readmeOf({ spec }, 'readme-joints');
+    expect(readme).toContain('mechanism of 1 joints');
+    expect(readme).toContain('the clip Pull');
+    expect(readme).not.toContain('14-bone');
+    expect(readme).not.toContain('starter body rig');
+  });
+
+  test('a prop says it has no skeleton', async () => {
+    const spec = parseSpec({
+      version: 1,
+      name: 'Crate',
+      kind: 'prop',
+      parts: [{ name: 'box', shape: 'box', size: [0.5, 0.5, 0.5], position: [0, 0.25, 0] }],
+    });
+    const readme = await readmeOf({ spec }, 'readme-static');
+    expect(readme).toContain('no skeleton');
+    expect(readme).not.toContain('Generic');
+  });
+
+  test('inspect reads a textured GLB back without a browser', async () => {
+    const spec = parseSpec({
+      version: 1,
+      name: 'Painted Post',
+      kind: 'prop',
+      surface: { blend: 0.02, detail: 48, budget: 2000 },
+      parts: [{ name: 'post', shape: 'box', size: [0.3, 1, 0.3], position: [0, 0.5, 0], paint: "s.stripes(y * 10, 1, 0.5) > 0.5 ? s.rgb('#c03028') : base" }],
+    });
+    const result = await writeAsset({ spec }, { outDir: join(scratch, 'inspect-painted'), formats: ['glb'] });
+    const loaded = await inspectGLB(result.files.find((f) => f.endsWith('.glb'))!);
+    expect(loaded.stats.triangles).toBeGreaterThan(0);
+    expect(loaded.extras).toBeNull();
+  });
+});
