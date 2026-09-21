@@ -32,7 +32,7 @@
 import * as T from 'three';
 import { sampleMesh, type Audit, type Finding } from './asset-audit';
 import { boneLayout, jointBinder, specClips } from './asset-joints';
-import { JOINTS } from './asset-rig';
+import { JOINTS, QUAD_JOINTS } from './asset-rig';
 import { distanceTo, type Prim } from './asset-sdf';
 import { buildSpec, type AssetSpec } from './asset-spec';
 import { primsOf } from './asset-surface';
@@ -128,7 +128,11 @@ type Worst = {
  */
 function boneFor(rigPart: string | undefined) {
   if (!rigPart) return null;
-  return JOINTS.find((bone) => bone.toLowerCase() === rigPart) ?? null;
+  return (
+    [...JOINTS, ...QUAD_JOINTS].find(
+      (bone) => bone.toLowerCase() === rigPart,
+    ) ?? null
+  );
 }
 
 /** Authored names by path key, for messages an author can act on. */
@@ -191,13 +195,23 @@ function movingParts(model: T.Object3D, spec: AssetSpec) {
 
   const joints = spec.joints ?? [];
   const binder = joints.length ? jointBinder(spec) : null;
+  // Joint bones are appended after the rig's own, so a bone index has to be
+  // read off the skeleton rather than off the joint list: with a rig in front
+  // of them the first joint is bone 14, not bone 1.
+  const layout = boneLayout(spec);
   const parts: Moving[] = [];
   let skipped = 0;
   meshes.forEach((mesh, index) => {
     const path = mesh.userData.specPath as number[] | undefined;
-    const bone = binder
-      ? ((b) => (b === 0 ? 'Root' : joints[b - 1].name))(binder(path))
-      : boneFor(mesh.userData.rigPart as string | undefined);
+    const bound = binder ? binder(path) : 0;
+    // Nothing claimed it: on a rig it follows whatever `rigPart` says, and on
+    // a bare mechanism it sits on the static root.
+    const bone =
+      bound > 0
+        ? layout[bound].name
+        : spec.rig
+          ? boneFor(mesh.userData.rigPart as string | undefined)
+          : 'Root';
     if (!bone) return void skipped++;
     const { points } = sampleMesh(mesh);
     if (!points.length) return;
@@ -283,8 +297,10 @@ export function auditClips(
     // A joint rig binds a whole part to one bone and a faceted build ships
     // those parts as the solids they were authored as, so a depth measured
     // here is a depth somebody sees. Neither is true of a fused surface or a
-    // character; see the header.
-    rigid: Boolean(spec.joints?.length) && !spec.surface,
+    // character; see the header. A creature rig blends each vertex between two
+    // bones even where its joints pin whole parts, so joints riding on a rig
+    // are not rigid either.
+    rigid: Boolean(spec.joints?.length) && !spec.surface && !spec.rig,
   };
   const worst = new Map<string, Worst>();
   try {

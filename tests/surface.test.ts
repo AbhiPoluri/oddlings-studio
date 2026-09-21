@@ -25,6 +25,7 @@ import { toGLB } from '../lib/asset-bundle';
 import { auditModel } from '../lib/asset-audit';
 import { rigClips } from '../lib/asset-rig';
 import { weldByPosition } from '../lib/asset-smooth';
+import { humanoidRigged } from '../lib/asset-joints';
 
 beforeAll(async () => {
   await readySurface();
@@ -350,7 +351,7 @@ describe('the worked specs', () => {
         part.shape === 'limb' ? 2 * (part.radius ?? 0.1) : Math.min(...(part.size ?? [1, 1, 1])),
       ),
     );
-    const passes: (typeof base.surface | undefined)[] = [undefined];
+    const passes: Array<Record<string, unknown> | undefined> = [undefined];
     if (base.surface) passes.push(base.surface);
     else if (thinnest >= 2.5 * voxel)
       passes.push({ blend: 0.03, detail, budget: 4000, shading: 'flat' as const });
@@ -358,7 +359,7 @@ describe('the worked specs', () => {
       const spec = parseSpec({ ...base, surface });
       const model = buildSpec(spec);
       const audit = auditModel(model, {
-        rigged: Boolean(spec.rig),
+        rigged: humanoidRigged(spec),
         scale: spec.scale,
         labels: new Map(
           flatten(spec).map((row) => [

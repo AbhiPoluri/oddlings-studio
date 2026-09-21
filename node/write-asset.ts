@@ -14,7 +14,7 @@ import { bakeSurface } from '../lib/asset-bake';
 import { encodePng } from '../lib/asset-png';
 import { markActive } from './active-spec';
 import { flatten } from '../lib/spec-edit';
-import { specClips } from '../lib/asset-joints';
+import { humanoidRigged, specClips } from '../lib/asset-joints';
 import { disposeScene } from '../lib/three-world';
 import { fileName, type Recipe } from '../lib/asset-recipe';
 
@@ -74,7 +74,7 @@ export async function writeAsset(
     // Only a character rig should face the rig checks. A joint rig has two
     // bones and no legs, so asking whether anything binds to a thigh would
     // report a swinging tire as broken.
-    rigged: isRecipe ? clips.length > 0 : Boolean(source.spec.rig),
+    rigged: isRecipe ? clips.length > 0 : humanoidRigged(source.spec),
     scale: isRecipe ? source.recipe.scale : source.spec.scale,
     labels: isRecipe
       ? undefined

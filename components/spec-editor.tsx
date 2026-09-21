@@ -36,7 +36,6 @@ import {
   type Vec3,
 } from '@/lib/spec-edit';
 import { boneLayout } from '@/lib/asset-joints';
-import type { BoneName } from '@/lib/asset-rig';
 import { Outliner } from '@/components/outliner';
 
 
@@ -345,10 +344,6 @@ function stashKey(spec: AssetSpec): string {
   return `${spec.name} ${spec.parts.length}`;
 }
 
-function rememberedRig(spec: AssetSpec): RememberedRig | undefined {
-  return STASH.get(stashKey(spec));
-}
-
 /**
  * Put aside whichever block the switch away from `kind` is about to drop.
  *
@@ -531,36 +526,45 @@ function RigPanel({
 
       {kind === 'rig' && spec.rig && (
         <>
-          <Scalar
-            label="Hip height"
-            min={0.05}
-            max={4}
-            step={0.01}
-            value={spec.rig.hipHeight}
-            onChange={(hipHeight, record) =>
-              edit(() => setRigSettings(spec, { hipHeight }), record)
-            }
-          />
-          <Scalar
-            label="Head pivot"
-            min={0.05}
-            max={6}
-            step={0.01}
-            value={spec.rig.headPivot}
-            onChange={(headPivot, record) =>
-              edit(() => setRigSettings(spec, { headPivot }), record)
-            }
-          />
-          <Scalar
-            label="Shoulder width"
-            min={0.02}
-            max={3}
-            step={0.01}
-            value={spec.rig.shoulderWidth}
-            onChange={(shoulderWidth, record) =>
-              edit(() => setRigSettings(spec, { shoulderWidth }), record)
-            }
-          />
+          {spec.rig.kind === 'quadruped' ? (
+            <p className="help">
+              A quadruped rig has no body measurements: four legs have no three
+              numbers that describe them. Place its bones below instead.
+            </p>
+          ) : (
+            <>
+              <Scalar
+                label="Hip height"
+                min={0.05}
+                max={4}
+                step={0.01}
+                value={spec.rig.hipHeight}
+                onChange={(hipHeight, record) =>
+                  edit(() => setRigSettings(spec, { hipHeight }), record)
+                }
+              />
+              <Scalar
+                label="Head pivot"
+                min={0.05}
+                max={6}
+                step={0.01}
+                value={spec.rig.headPivot}
+                onChange={(headPivot, record) =>
+                  edit(() => setRigSettings(spec, { headPivot }), record)
+                }
+              />
+              <Scalar
+                label="Shoulder width"
+                min={0.02}
+                max={3}
+                step={0.01}
+                value={spec.rig.shoulderWidth}
+                onChange={(shoulderWidth, record) =>
+                  edit(() => setRigSettings(spec, { shoulderWidth }), record)
+                }
+              />
+            </>
+          )}
           <p className="help">
             Below is where each bone actually ended up, in model space. Typing a
             position, or dragging its handle in the viewport, pins that bone and
@@ -575,7 +579,11 @@ function RigPanel({
                 key={bone.name}
                 name={bone.name}
                 at={bone.at}
-                pinned={Boolean(spec.rig?.bones?.[bone.name as BoneName])}
+                pinned={Boolean(
+                  (spec.rig?.bones as Record<string, unknown> | undefined)?.[
+                    bone.name
+                  ],
+                )}
                 chosen={chosen === bone.name}
                 innerRef={chosen === bone.name ? chosenRow : undefined}
                 onSelect={() =>
@@ -586,11 +594,11 @@ function RigPanel({
                   )
                 }
                 onCommit={(at) =>
-                  edit(() => setBoneOverride(spec, bone.name as BoneName, at))
+                  edit(() => setBoneOverride(spec, bone.name, at))
                 }
                 onReset={() =>
                   edit(
-                    () => setBoneOverride(spec, bone.name as BoneName, undefined),
+                    () => setBoneOverride(spec, bone.name, undefined),
                     true,
                     `${bone.name} is measured again rather than pinned.`,
                   )

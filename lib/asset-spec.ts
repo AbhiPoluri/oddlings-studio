@@ -8,8 +8,8 @@ import { finishModel } from './asset-build';
 import { surfaceModel, type SurfaceOptions } from './asset-surface';
 import { mark, measure } from './perf';
 import { disposeScene } from './three-world';
-import { JOINTS, rigCreature } from './asset-rig';
-import { jointBinder, rigJoints } from './asset-joints';
+import { JOINTS, QUAD_JOINTS, pinsFor, rigCreature } from './asset-rig';
+import { jointBinder, jointSkin, rigJoints } from './asset-joints';
 import { trimHidden } from './asset-trim';
 import {
   canonicalExtent,
@@ -70,7 +70,13 @@ export const SHAPES = [
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
-/** Bones a part can be pinned to. Unpinned parts are weighted by position. */
+/**
+ * Bones a part can be pinned to. Unpinned parts are weighted by position.
+ *
+ * Both rigs' bones, in one list, because `rigPart` is one field. A pin that
+ * names the other rig's bone is refused at parse time by `checkSkeleton`,
+ * which is the only place that knows which rig the spec declared.
+ */
 export const RIG_PARTS = [
   'head',
   'spine',
@@ -85,6 +91,19 @@ export const RIG_PARTS = [
   'thigh_r',
   'shin_r',
   'foot_r',
+  'body',
+  'hip_fl',
+  'knee_fl',
+  'ankle_fl',
+  'hip_fr',
+  'knee_fr',
+  'ankle_fr',
+  'hip_bl',
+  'knee_bl',
+  'ankle_bl',
+  'hip_br',
+  'knee_br',
+  'ankle_br',
 ] as const;
 
 const repeatSchema = z
@@ -161,7 +180,15 @@ const basePart = {
   color: hex.optional(),
   /** Radial or subdivision detail. Low numbers keep the faceted look. */
   detail: z.number().int().min(3).max(24).optional(),
-  /** Top-to-bottom radius ratio for cylinder, cone and prism. */
+  /**
+   * The far end's width as a fraction of the near one, for the shapes that
+   * taper natively: `cylinder`, `cone` and `prism` (top over bottom),
+   * `extrude` (the +Z face over the -Z one) and `limb` (`to` over `from`).
+   *
+   * 1 leaves a shape untapered and is the default everywhere but `cone`,
+   * whose default of 0 is the point that makes it a cone. Giving a cone a
+   * taper builds the frustum in between, exactly as it would on a cylinder.
+   */
   taper: z.number().min(0).max(4).optional(),
   /** Seeded vertex displacement, 0 = smooth, 1 = heavily eroded. */
   jitter: z.number().min(0).max(1).optional(),
@@ -602,15 +629,10 @@ function checkJointChain(joints: JointChain[], ctx: z.RefinementCtx) {
         path: [at, 'parent'],
         message: `Joint "${joint.name}" is its own parent. Omit "parent" to hang a joint off the root bone.`,
       });
-    if (!index.has(parent))
-      return ctx.addIssue({
-        code: 'custom',
-        path: [at, 'parent'],
-        message:
-          parent === 'Root'
-            ? `Joint "${joint.name}" has parent "Root". Omit "parent" instead — everything with no parent already hangs off the root bone.`
-            : `Joint "${joint.name}" has parent "${parent}", but no joint is called that.`,
-      });
+    // A parent that is not another joint may still be a bone of the spec's
+    // rig, and only `checkSkeleton` knows whether there is one. Anything it
+    // refuses is reported there; here the walk simply stops.
+    if (!index.has(parent)) return;
     // Walk up to the root. A cycle has no root, so the walk is bounded by the
     // names it has already seen rather than by reaching the top.
     const trail = [joint.name];
@@ -668,24 +690,55 @@ const specShape = {
     trim: z.boolean().optional(),
     /** Fallback color for parts that do not set one. */
     color: hex.default('#93cec8'),
-    /** Omit for a static mesh; supply to skin the result to the 14-bone rig. */
+    /**
+     * Omit for a static mesh; supply to skin the result to a creature rig.
+     *
+     * Two kinds, told apart by `kind`. The humanoid is the default and the one
+     * that came first: 14 bones placed from three body measurements. The
+     * quadruped is a body and four hip/knee/ankle chains, for everything that
+     * walks on four legs and has no expression as a biped.
+     */
     rig: z
-      .object({
-        hipHeight: z.number().min(0.05).max(4).default(0.48),
-        headPivot: z.number().min(0.05).max(6).default(0.9),
-        shoulderWidth: z.number().min(0.02).max(3).default(0.28),
-        /**
-         * Move individual bones, in absolute model space, after the three
-         * measurements above have placed them.
-         *
-         * Use it when a body is not the shape those three numbers can
-         * describe: a head carried forward, a shoulder dropped, arms longer
-         * than a person's. Moving a bone carries its children with it, and the
-         * two sides are independent — set `Arm_L` and `Arm_R` yourself.
-         */
-        bones: z.partialRecord(z.enum(JOINTS), vec3).optional(),
-      })
-      .strict()
+      .union([
+        z
+          .object({
+            kind: z.literal('humanoid').default('humanoid'),
+            hipHeight: z.number().min(0.05).max(4).default(0.48),
+            headPivot: z.number().min(0.05).max(6).default(0.9),
+            shoulderWidth: z.number().min(0.02).max(3).default(0.28),
+            /**
+             * Move individual bones, in absolute model space, after the three
+             * measurements above have placed them.
+             *
+             * Use it when a body is not the shape those three numbers can
+             * describe: a head carried forward, a shoulder dropped, arms
+             * longer than a person's. Moving a bone carries its children with
+             * it, and the two sides are independent — set `Arm_L` and `Arm_R`
+             * yourself.
+             */
+            bones: z.partialRecord(z.enum(JOINTS), vec3).optional(),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal('quadruped'),
+            /** Where the body pivot sits above the ground, in metres. */
+            bodyHeight: z.number().min(0.05).max(6).default(0.9),
+            /**
+             * Absolute model-space positions per bone: `Body`, and `Hip_FL`,
+             * `Knee_FL`, `Ankle_FL` and their FR / BL / BR twins.
+             *
+             * Four legs have no three numbers that describe them — a horse, a
+             * spider and a walking gun platform put their knees in completely
+             * different places — so placing the bones yourself is the normal
+             * way to author one, not the escape hatch it is on the humanoid.
+             * What `bodyHeight` alone derives is a plain standing pose to
+             * start from. Moving a bone carries its children with it.
+             */
+            bones: z.partialRecord(z.enum(QUAD_JOINTS), vec3).optional(),
+          })
+          .strict(),
+      ])
       .optional(),
     /**
      * Emit one continuous polygon mesh instead of stacked primitives.
@@ -724,12 +777,17 @@ const specShape = {
     /**
      * Moving parts: a pivot, what hangs off it, and how it turns.
      *
-     * `rig` describes a character and only a character — its bones are hips
-     * and shoulders placed from body measurements. A joint is the general
-     * form for everything else a mechanism does: a swinging tire, a creaking
-     * sign, a turning wheel. Each one becomes a bone at `at`, carrying every
-     * part named in `binds` (and their children), and `spin` gives it a
-     * looping clip named after the joint.
+     * `rig` describes a creature body and only that — hips and shoulders, or
+     * a body and four legs, placed from measurements. A joint is the general
+     * form for everything else that moves: a swinging tire, a creaking sign,
+     * a turning wheel. Each one becomes a bone at `at`, carrying every part
+     * named in `binds` (and their children), and `spin` gives it a looping
+     * clip named after the joint.
+     *
+     * Joints are a whole skeleton on their own, and they also ride on a rig: a
+     * joint whose `parent` names one of the rig's bones hangs off it in the
+     * exported skeleton, which is how a character carries a cape, a tail or a
+     * hair chain without being split into two assets.
      */
     joints: z
       .array(
@@ -799,16 +857,97 @@ const specShape = {
       .optional(),
 };
 
-// A mesh binds to one skeleton. Merging a character rig with a mechanism is
-// a real thing to want — a rider on a swing — but it is a different feature,
-// and silently ignoring one of the two would be worse than refusing both.
-const oneSkeleton = (spec: { rig?: unknown; joints?: unknown[] }) =>
-  !(spec.rig && spec.joints?.length);
-const ONE_SKELETON = {
-  message:
-    'A spec has one skeleton: use `rig` for a character or `joints` for a mechanism, not both.',
-  path: ['joints'],
+/**
+ * The checks that need the whole spec, not one field of it.
+ *
+ * `joints` may now hang off a `rig` — a cape off a spine, a tail off a hip —
+ * so a joint's parent is legal if it names another joint OR a bone of
+ * whichever rig the spec declared, and only the spec knows which that is. The
+ * same goes for `rigPart`, which lists both rigs' bones because it is one
+ * field, and for a joint clip that would collide with one the rig exports.
+ */
+type SkeletonSpec = {
+  rig?: { kind?: 'humanoid' | 'quadruped' };
+  joints?: JointChain[];
+  parts?: unknown;
+  defs?: unknown;
 };
+
+function checkSkeleton(spec: SkeletonSpec, ctx: z.RefinementCtx) {
+  const kind = spec.rig?.kind ?? (spec.rig ? 'humanoid' : undefined);
+  const rigBones: readonly string[] = !spec.rig
+    ? []
+    : kind === 'quadruped'
+      ? QUAD_JOINTS
+      : JOINTS;
+  const joints = spec.joints ?? [];
+  const named = new Set(joints.map((joint) => joint.name));
+
+  joints.forEach((joint, at) => {
+    const parent = joint.parent;
+    if (parent === undefined || parent === joint.name) return;
+    if (named.has(parent) || rigBones.includes(parent)) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['joints', at, 'parent'],
+      message:
+        parent === 'Root'
+          ? `Joint "${joint.name}" has parent "Root". Omit "parent" instead — everything with no parent already hangs off the root bone.`
+          : `Joint "${joint.name}" has parent "${parent}", but no joint is called that${
+              spec.rig
+                ? ` and it is not a bone of this ${kind} rig (${rigBones.join(', ')})`
+                : ''
+            }.`,
+    });
+  });
+
+  // Two clips of one name in a GLB is two clips an engine cannot tell apart.
+  if (spec.rig) {
+    const taken = new Set(
+      kind === 'quadruped'
+        ? ['Idle', 'Walk']
+        : ['Idle', 'Walk', 'Jump', 'Wave', 'Attack'],
+    );
+    joints.forEach((joint, at) => {
+      const clip = joint.spin?.clip ?? (joint.spin ? joint.name : undefined);
+      if (clip === undefined || !taken.has(clip)) return;
+      ctx.addIssue({
+        code: 'custom',
+        path: ['joints', at, 'spin', 'clip'],
+        message: `Clip "${clip}" is one this ${kind} rig already exports. Name the joint's clip something else, or the file carries two clips an engine cannot tell apart.`,
+      });
+    });
+  }
+
+  // And a pin that names the other rig's bone, which would otherwise be
+  // auto-weighted and look like the pin simply did nothing.
+  if (spec.rig) {
+    const legal = new Set(
+      pinsFor(kind === 'quadruped' ? 'quadruped' : 'humanoid'),
+    );
+    const check = (part: unknown, where: (string | number)[]) => {
+      if (!part || typeof part !== 'object') return;
+      const row = part as { rigPart?: string; children?: unknown };
+      if (row.rigPart && !legal.has(row.rigPart))
+        ctx.addIssue({
+          code: 'custom',
+          path: [...where, 'rigPart'],
+          message: `rigPart "${row.rigPart}" is not a bone of this ${kind} rig. Use one of: ${[...legal].join(', ')}.`,
+        });
+      if (Array.isArray(row.children))
+        row.children.forEach((child, at) =>
+          check(child, [...where, 'children', at]),
+        );
+    };
+    if (Array.isArray(spec.parts))
+      spec.parts.forEach((part, at) => check(part, ['parts', at]));
+    // A def is one part rather than a list of them.
+    for (const [name, def] of Object.entries(
+      (spec.defs ?? {}) as Record<string, unknown>,
+    ))
+      check(def, ['defs', name]);
+  }
+}
 
 /**
  * `defs` sits after `parts` in both schemas on purpose.
@@ -825,7 +964,7 @@ export const specSchema = z
     defs: defsSchema,
   })
   .strict()
-  .refine(oneSkeleton, ONE_SKELETON);
+  .superRefine(checkSkeleton);
 
 /**
  * The spec as it is written, before prefabs are expanded.
@@ -841,7 +980,7 @@ const authoringSchema = z
     defs: defsSchema,
   })
   .strict()
-  .refine(oneSkeleton, ONE_SKELETON);
+  .superRefine(checkSkeleton);
 
 export type AssetSpec = z.infer<typeof specSchema>;
 /** A spec as authored, with prefab use sites allowed wherever a part can go. */
@@ -1285,7 +1424,12 @@ function geometryFor(
       return part.bevel
         ? chamferedBoxGeometry(size, part.bevel)
         : new T.BoxGeometry(1, 1, 1, along(0), along(1), along(2));
+    // A cone is the same frustum as a cylinder, drawn from the same call: its
+    // `taper` is the top radius over the bottom one, and `defaultTaper` makes
+    // that 0 when nobody writes one, which is `ConeGeometry` exactly. Sharing
+    // the call is what stops the two shapes reading a `taper` differently.
     case 'cylinder':
+    case 'cone':
       return new T.CylinderGeometry(0.5 * taper, 0.5, 1, detail, rings);
     case 'prism':
       return new T.CylinderGeometry(
@@ -1295,8 +1439,6 @@ function geometryFor(
         Math.max(3, detail),
         rings,
       );
-    case 'cone':
-      return new T.ConeGeometry(0.5, 1, detail, rings);
     case 'capsule':
       return new T.CapsuleGeometry(
         0.5,
@@ -2217,10 +2359,27 @@ function flipPart(part: PlacedPart, index: number): PlacedPart {
   return flipped;
 }
 
+/**
+ * The side suffixes a mirror swaps, longest first.
+ *
+ * The quadruped's corners end in the same letter its sides do — `hip_fl` ends
+ * `_l` — so testing `_l` before `_fl` would turn a front-left hip into
+ * `hip_f_r`, a bone no rig has. Order is the whole of the rule.
+ */
+const MIRRORED_SIDES: readonly [string, string][] = [
+  ['_fl', '_fr'],
+  ['_fr', '_fl'],
+  ['_bl', '_br'],
+  ['_br', '_bl'],
+  ['_l', '_r'],
+  ['_r', '_l'],
+];
+
 function mirrorRig(rigPart: Part['rigPart']) {
   if (!rigPart) return rigPart;
-  if (rigPart.endsWith('_l')) return `${rigPart.slice(0, -2)}_r` as typeof rigPart;
-  if (rigPart.endsWith('_r')) return `${rigPart.slice(0, -2)}_l` as typeof rigPart;
+  for (const [from, to] of MIRRORED_SIDES)
+    if (rigPart.endsWith(from))
+      return `${rigPart.slice(0, -from.length)}${to}` as typeof rigPart;
   return rigPart;
 }
 
@@ -2292,9 +2451,15 @@ export function buildSpec(input: unknown, options: SurfaceOptions = {}) {
       const binder = spec.joints?.length ? jointBinder(spec) : null;
       trimHidden(model, {
         group: (mesh) => {
-          if (binder) return String(binder(mesh.userData.specPath as number[] | undefined));
+          const path = mesh.userData.specPath as number[] | undefined;
+          // A joint binding is the strongest statement about what moves with
+          // what, so it decides the group whenever there is one. A part on a
+          // rig that no joint claims falls back to its rig bone, which is what
+          // a rig-only spec has always done.
+          const bone = binder ? binder(path) : 0;
+          if (bone > 0) return `bone_${bone}`;
           if (spec.rig) return (mesh.userData.rigPart as string | undefined) ?? null;
-          return 'all';
+          return binder ? 'bone_0' : 'all';
         },
       });
       measure('build.trim', t);
@@ -2303,7 +2468,9 @@ export function buildSpec(input: unknown, options: SurfaceOptions = {}) {
   }
   if (spec.rig || spec.joints?.length) options.onPhase?.('skinning');
   const skin = mark();
-  if (spec.rig) model = rigCreature(model, spec.rig);
+  // A rig carries its joints as extra bones on the end of its own skeleton; a
+  // spec with joints and no rig is the whole skeleton and builds itself.
+  if (spec.rig) model = rigCreature(model, spec.rig, jointSkin(spec));
   else if (spec.joints?.length)
     model = rigJoints(model, spec.joints, jointBinder(spec));
   measure('build.rig', skin);

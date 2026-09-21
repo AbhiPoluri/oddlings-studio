@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "name": "Caped Mannequin",
+  "kind": "person",
+  "seed": 4,
+  "scale": 1,
+  "color": "#5c6b8a",
+  "rig": {
+    "kind": "humanoid",
+    "hipHeight": 0.5,
+    "headPivot": 0.88,
+    "shoulderWidth": 0.18
+  },
+  "joints": [
+    {
+      "name": "Cape0",
+      "parent": "Spine",
+      "at": [0, 0.88, 0],
+      "binds": ["collar", "ring-1"]
+    },
+    {
+      "name": "Cape1",
+      "parent": "Cape0",
+      "at": [0, 0.67, 0],
+      "binds": ["ring-2"],
+      "spin": {
+        "axis": "x",
+        "degrees": 7,
+        "seconds": 3.2,
+        "drift": 0.3,
+        "clip": "Cape"
+      }
+    },
+    {
+      "name": "Cape2",
+      "parent": "Cape1",
+      "at": [0, 0.46, 0],
+      "binds": ["ring-3"],
+      "spin": {
+        "axis": "x",
+        "degrees": 5,
+        "seconds": 3.2,
+        "drift": 0.3,
+        "clip": "Cape",
+        "phase": 90
+      }
+    }
+  ],
+  "surface": { "blend": 0.025, "detail": 112, "budget": 4000, "shading": "flat" },
+  "parts": [
+    {
+      "name": "torso",
+      "shape": "capsule",
+      "size": [0.34, 0.44, 0.24],
+      "position": [0, 0.68, 0],
+      "rigPart": "spine"
+    },
+    {
+      "name": "head",
+      "shape": "sphere",
+      "size": [0.26, 0.3, 0.26],
+      "position": [0, 1.02, 0],
+      "rigPart": "head"
+    },
+    {
+      "name": "nose",
+      "shape": "cone",
+      "size": [0.07, 0.09, 0.07],
+      "position": [0, 1.0, 0.15],
+      "rotation": [90, 0, 0],
+      "rigPart": "head"
+    },
+    {
+      "name": "arm",
+      "shape": "limb",
+      "from": [0.16, 0.86, 0],
+      "to": [0.24, 0.52, 0.05],
+      "radius": 0.06,
+      "taper": 0.8,
+      "rigPart": "arm_l",
+      "mirror": "x"
+    },
+    {
+      "name": "leg",
+      "shape": "limb",
+      "from": [0.09, 0.46, 0],
+      "to": [0.1, 0.03, 0.01],
+      "radius": 0.072,
+      "taper": 0.85,
+      "rigPart": "thigh_l",
+      "mirror": "x"
+    },
+    {
+      "name": "collar",
+      "shape": "cylinder",
+      "size": [0.24, 0.07, 0.22],
+      "position": [0, 0.89, 0],
+      "color": "#4a4230"
+    },
+    {
+      "name": "ring-1",
+      "shape": "cone",
+      "size": [0.44, 0.22, 0.34],
+      "position": [0, 0.77, -0.01],
+      "taper": 0.55,
+      "color": "#5e5a3c"
+    },
+    {
+      "name": "ring-2",
+      "shape": "cone",
+      "size": [0.5, 0.22, 0.38],
+      "position": [0, 0.56, -0.01],
+      "taper": 0.88,
+      "color": "#5e5a3c"
+    },
+    {
+      "name": "ring-3",
+      "shape": "cone",
+      "size": [0.56, 0.2, 0.42],
+      "position": [0, 0.35, -0.01],
+      "taper": 0.9,
+      "color": "#5e5a3c"
+    }
+  ]
+}

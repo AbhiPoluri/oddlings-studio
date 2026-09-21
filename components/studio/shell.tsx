@@ -72,6 +72,7 @@ import { PerfOverlay, usePerf } from './perf-overlay';
 import { useStudio } from './store';
 import { useDocument } from './use-document';
 import { useFollow } from './use-follow';
+import { humanoidRigged } from '@/lib/asset-joints';
 
 /** A new document, so "New → Empty spec" lands on something you can edit. */
 const EMPTY_SPEC = {
@@ -176,7 +177,7 @@ export function StudioShell() {
       try {
         setAudit(
           auditModel(model, {
-            rigged: Boolean(built.rig),
+            rigged: humanoidRigged(built),
             scale: built.scale,
             labels: new Map(
               flatten(built).map((row) => [
@@ -445,6 +446,7 @@ export function StudioShell() {
       // Two spellings for one prompt: Chrome honours the cancelled event,
       // Safari still wants the legacy return value set.
       event.preventDefault();
+      // oxlint-disable-next-line typescript/no-deprecated -- Safari still reads the legacy field
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warn);

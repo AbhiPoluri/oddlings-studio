@@ -1,18 +1,23 @@
 import * as T from 'three';
-import { rigBoneLayout, rigClips } from './asset-rig';
+import { quadClips, rigClips, rigLayout, type JointSkin } from './asset-rig';
 import type { AssetSpec, Joint } from './asset-spec';
 import type { Recipe } from './asset-recipe';
 
 /**
  * Mechanisms: a pivot, the parts that hang off it, and the motion it makes.
  *
- * The 14-bone rig in `asset-rig` is a character skeleton and nothing else — it
- * cannot describe a swinging tire, a creaking sign or a turning wheel, because
- * those are not made of hips and shoulders. A joint is the general form: one
- * bone, placed where the author says, carrying whichever parts they name.
+ * The rigs in `asset-rig` are creature skeletons and nothing else — neither
+ * can describe a swinging tire, a creaking sign or a turning wheel, because
+ * those are not made of hips and shoulders or of hips and four knees. A joint
+ * is the general form: one bone, placed where the author says, carrying
+ * whichever parts they name.
  *
- * Everything not bound to a joint follows a static root bone, so an asset is
- * still a single skinned mesh an engine can play a clip on.
+ * Joints are a whole skeleton on their own, and they also ride on a rig: a
+ * joint whose `parent` names a rig bone hangs off it, which is how a character
+ * wears a cape or a tail without shipping it as a second asset. Either way,
+ * everything not bound to a joint follows the rig's own weighting, or a static
+ * root bone when there is no rig, so an asset is still a single skinned mesh
+ * an engine can play a clip on.
  */
 
 /** A part is bound to a joint when its path is, or sits under, a bound one. */
@@ -20,6 +25,17 @@ function under(path: number[], bound: number[]) {
   if (path.length < bound.length) return false;
   for (let i = 0; i < bound.length; i++) if (path[i] !== bound[i]) return false;
   return true;
+}
+
+/**
+ * The skeleton index the first joint takes.
+ *
+ * With no rig that is 1: the static `Root` bone and then the joints. With a
+ * rig it is however many bones the rig itself has, because the joints are
+ * appended after it — a cape hanging off a spine must not renumber the spine.
+ */
+export function jointBoneBase(spec: Pick<AssetSpec, 'rig'>) {
+  return spec.rig ? rigLayout(spec.rig).length : 1;
 }
 
 /**
@@ -31,6 +47,7 @@ function under(path: number[], bound: number[]) {
  */
 export function jointBinder(spec: AssetSpec) {
   const joints = spec.joints ?? [];
+  const base = jointBoneBase(spec);
   const byName = new Map<string, number[][]>();
   const walk = (parts: AssetSpec['parts'], prefix: number[]) => {
     parts.forEach((part, index) => {
@@ -53,7 +70,7 @@ export function jointBinder(spec: AssetSpec) {
         throw Error(
           `Joint "${joint.name}" binds to "${name}", but ${found.length} parts share that name. Give them distinct names.`,
         );
-      bound.push({ path: found[0], bone: index + 1 });
+      bound.push({ path: found[0], bone: base + index });
     }
   });
 
@@ -71,7 +88,9 @@ export function jointBinder(spec: AssetSpec) {
  * Skin a built model to a root bone plus one bone per joint.
  *
  * Mirrors `rigCreature`'s shape so the export path does not have to care which
- * kind of rig produced the mesh.
+ * kind of rig produced the mesh. Only for a spec with joints and NO rig: when
+ * there is a rig it owns the skeleton and the joints are appended to it by
+ * `rigCreature`, which is what keeps a caped character one skinned mesh.
  */
 export function rigJoints(
   source: T.Group,
@@ -85,7 +104,8 @@ export function rigJoints(
   const root = new T.Bone();
   root.name = 'Root';
   // Every bone exists before any is parented, so a joint may name a parent
-  // authored after it and `jointBinder`'s `index + 1` still finds the right
+  // authored after it and the `Root` plus `index` numbering — which is what
+  // `jointBoneBase` reports for a spec with no rig — still finds the right
   // bone whatever shape the chain is.
   const bones: T.Bone[] = [root];
   const byName = new Map<string, number>();
@@ -331,29 +351,75 @@ export function jointClips(joints: Joint[]): T.AnimationClip[] {
 export function boneLayout(
   spec: AssetSpec,
 ): { name: string; parent: string | null; at: [number, number, number] }[] {
-  if (spec.rig)
-    return rigBoneLayout(spec.rig).map((place) => ({
-      name: place.name,
-      parent: place.parent,
-      at: [place.at[0], place.at[1], place.at[2]] as [number, number, number],
-    }));
   const joints = spec.joints ?? [];
-  if (!joints.length) return [];
+  if (!spec.rig && !joints.length) return [];
+  // The rig's own bones first, keeping their indices, then the joints. A spec
+  // with no rig still starts at the static `Root`, which is what a joints
+  // mechanism has always hung off.
+  const own = spec.rig
+    ? rigLayout(spec.rig).map((place) => ({
+        name: place.name,
+        parent: place.parent,
+        at: [place.at[0], place.at[1], place.at[2]] as [number, number, number],
+      }))
+    : [
+        {
+          name: 'Root',
+          parent: null as string | null,
+          at: [0, 0, 0] as [number, number, number],
+        },
+      ];
   return [
-    { name: 'Root', parent: null, at: [0, 0, 0] as [number, number, number] },
+    ...own,
     ...joints.map((joint) => ({
       name: joint.name,
-      parent: joint.parent ?? 'Root',
+      parent: joint.parent ?? own[0].name,
       at: [joint.at[0], joint.at[1], joint.at[2]] as [number, number, number],
     })),
   ];
 }
 
-/** The clips an authored spec exports, whichever kind of rig it declares. */
+/**
+ * The joints of a spec as extra bones on its rig, or nothing when it has no
+ * rig — in which case `rigJoints` builds the whole skeleton itself.
+ */
+export function jointSkin(spec: AssetSpec): JointSkin | undefined {
+  if (!spec.rig || !spec.joints?.length) return undefined;
+  const root = rigLayout(spec.rig)[0].name;
+  return {
+    places: spec.joints.map((joint) => ({
+      name: joint.name,
+      parent: joint.parent ?? root,
+      at: [joint.at[0], joint.at[1], joint.at[2]] as [number, number, number],
+    })),
+    boneFor: jointBinder(spec),
+  };
+}
+
+/**
+ * Does this spec face the audit's humanoid weighting checks?
+ *
+ * Only a humanoid rig does. Those checks are fixed height bands — head above
+ * 0.82 m, legs below 0.36 m — and a quadruped has no head bone, may carry its
+ * knees above its hips, and is weighted by distance to its own leg chains
+ * rather than by height at all. Asking whether a walker binds anything to a
+ * thigh would report every correct one as broken.
+ */
+export function humanoidRigged(spec: Pick<AssetSpec, 'rig'>) {
+  return Boolean(spec.rig) && spec.rig?.kind !== 'quadruped';
+}
+
+/** The clips an authored spec exports, whichever kinds of rig it declares. */
 export function specClips(spec: AssetSpec): T.AnimationClip[] {
-  if (spec.rig) return rigClips();
-  if (spec.joints?.length) return jointClips(spec.joints);
-  return [];
+  // Both, when a spec has both: a caped mannequin plays Walk on its rig and
+  // its cape's own clip beside it, and the schema has already refused a joint
+  // clip that would collide with one of the rig's.
+  const body = spec.rig
+    ? spec.rig.kind === 'quadruped'
+      ? quadClips()
+      : rigClips()
+    : [];
+  return spec.joints?.length ? [...body, ...jointClips(spec.joints)] : body;
 }
 
 /**

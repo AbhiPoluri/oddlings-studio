@@ -19,6 +19,7 @@ import { readySurface } from '../lib/asset-surface';
 import { markActive } from '../node/active-spec';
 import { flatten } from '../lib/spec-edit';
 import { measureSpec, type SpecMeasure } from '../lib/asset-measure';
+import { humanoidRigged } from '../lib/asset-joints';
 import {
   describeMark,
   loadNotes,
@@ -38,7 +39,7 @@ const USAGE = `oddlings — procedural game assets from code
   blueprints                        List built-in generators
   generate <blueprint> [options]    Build an asset from a blueprint + seed
   mutate <recipe.json> [options]    Vary an existing recipe
-  new <${TEMPLATE_KINDS.join('|')}>
+  new <${TEMPLATE_KINDS.join('|')}> [--rig quadruped]
                                     Print a starter spec that already audits clean
   build <spec.json> [options]       Build an asset authored from scratch
   render <spec.json> [options]      Write PNGs of the model, no browser needed
@@ -54,6 +55,7 @@ Options
   --out <dir>         Output directory (default: ./assets)
   --format <list>     Comma-separated: ${FORMATS.join(', ')} (default: glb,json)
   --name <text>       Override the asset name
+  --rig <kind>        new creature: humanoid (default) or quadruped
   --parts <list>      measure: comma-separated part names (default: all)
   --resolve <id>      notes: close this note
   --reply <text>      notes: what you did about it
@@ -65,6 +67,7 @@ Options
 
 Examples
   oddlings new creature --name Bogwright > ./specs/bogwright.spec.json
+  oddlings new creature --rig quadruped > ./specs/beast.spec.json   # four legs
   oddlings generate guardian --seed 7 --out ./Assets/Creatures --format glb,unity
   oddlings build ./specs/lantern-keeper.json --out ./Assets --format glb,obj
   oddlings build ./specs/kaiju-surface.spec.json --out ./Assets   # one fused mesh
@@ -80,6 +83,7 @@ type Options = {
   out: string;
   formats: Format[];
   name?: string;
+  rig: 'humanoid' | 'quadruped';
   parts?: string[];
   resolve?: string;
   reply?: string;
@@ -95,6 +99,7 @@ function parseOptions(argv: string[]): Options {
     strength: 0.45,
     out: './assets',
     formats: ['glb', 'json'],
+    rig: 'humanoid',
     size: 512,
     visual: false,
     json: false,
@@ -114,6 +119,12 @@ function parseOptions(argv: string[]): Options {
         options.strength = Number(value);
         if (!(options.strength >= 0.05 && options.strength <= 1))
           fail('--strength must be between 0.05 and 1.');
+        i++;
+        break;
+      case '--rig':
+        if (value !== 'humanoid' && value !== 'quadruped')
+          fail('--rig takes humanoid or quadruped.');
+        options.rig = value;
         i++;
         break;
       case '--out':
@@ -426,7 +437,7 @@ async function main() {
       if (!kind || !TEMPLATE_KINDS.includes(kind))
         fail(`Pass one of: ${TEMPLATE_KINDS.join(', ')}.`);
       return console.log(
-        JSON.stringify(specTemplate(kind, options.name), null, 2),
+        JSON.stringify(specTemplate(kind, options.name, options.rig), null, 2),
       );
     }
     case 'build': {
@@ -492,7 +503,7 @@ async function main() {
       const spec = parseSpec(await readJSON(positional[0]));
       const model = buildSpec(spec);
       const audit = withClipFindings(auditModel(model, {
-        rigged: Boolean(spec.rig),
+        rigged: humanoidRigged(spec),
         scale: spec.scale,
         visual: options.visual,
         labels: new Map(

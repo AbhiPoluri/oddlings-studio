@@ -16,7 +16,6 @@ import {
   stripBakeData,
 } from './asset-bake';
 import { encodePng } from './asset-png';
-import { rigClips } from './asset-rig';
 import { clipsOf, specClips } from './asset-joints';
 import { rigExtras } from './asset-rig-extras';
 import { disposeScene } from './three-world';
@@ -70,14 +69,59 @@ export async function toGLB(
     model.userData.spec as AssetSpec | undefined,
     model,
   );
-  const output = await new GLTFExporter().parseAsync(scene, {
-    binary: true,
-    trs: true,
-    animations,
-  });
-  scene.remove(model);
+  const restoreNotes = holdBuildNotes(model);
+  let output: ArrayBuffer | { [key: string]: unknown };
+  try {
+    output = await new GLTFExporter().parseAsync(scene, {
+      binary: true,
+      trs: true,
+      animations,
+    });
+  } finally {
+    restoreNotes();
+    scene.remove(model);
+  }
   if (!(output instanceof ArrayBuffer)) throw Error('GLB export failed.');
   return output;
+}
+
+/**
+ * Hold every geometry's working notes aside while the file is written.
+ *
+ * `GLTFExporter` copies `geometry.userData` into the primitive's `extras`, and
+ * surface mode leaves a great deal there: the paint frames each part was
+ * evaluated from, the per-vertex owner and bone arrays, the crease and uv maps
+ * the seam splitter kept. Every one of those is bookkeeping between build
+ * passes inside this studio. Nothing reads them back out of a GLB — the paint
+ * is already in the vertex colours and the baked atlas, the bones are already
+ * in the skin weights, and `inspectGLB` and the studio's importer read the
+ * scene's `oddlings` block and the spec on the root node, neither of which
+ * lives on a geometry.
+ *
+ * Left in, they were most of the file. A fused shell is split into one
+ * primitive per material and the exporter writes the whole block again for
+ * each one, so a surface-mode walker shipped the same 330 KB eleven times:
+ * 3.4 MB of GLB for 0.9 MB of model.
+ *
+ * Held rather than deleted because `writeAsset` exports the same model twice
+ * when it is asked for a GLB and a Unity zip, and the second pass still needs
+ * the notes the first one would otherwise have thrown away. Node `userData` is
+ * untouched: `specPath`, `prim` and the spec on the root are small, and they
+ * are what lets a part node be traced back to the line that authored it.
+ */
+function holdBuildNotes(model: T.Object3D) {
+  const held: { geometry: T.BufferGeometry; notes: Record<string, unknown> }[] =
+    [];
+  model.traverse((object) => {
+    if (!(object instanceof T.Mesh)) return;
+    const notes = object.geometry.userData;
+    if (!notes || !Object.keys(notes).length) return;
+    held.push({ geometry: object.geometry, notes });
+    object.geometry.userData = {};
+  });
+  return () => {
+    for (const { geometry, notes } of held) geometry.userData = notes;
+  };
 }
 
 export function clipsFor(recipe: Recipe) {
@@ -101,6 +145,16 @@ export type SkeletonNotes = {
   bones: number;
   joints: number;
   clips: string[];
+  /** Surface mode: one fused mesh, so no per-part nodes survive. */
+  fused: boolean;
+  /**
+   * Authored from a spec rather than generated from a blueprint.
+   *
+   * Only an authored spec's parts become named nodes: a blueprint's geometry
+   * comes out of the generators in `three-world`, which build meshes directly
+   * with no holder to name after a part that does not exist.
+   */
+  authored: boolean;
 };
 
 export function skeletonNotes(
@@ -112,11 +166,38 @@ export function skeletonNotes(
     if (o instanceof T.Bone) bones++;
   });
   const spec = model.userData.spec as
-    | { rig?: unknown; joints?: unknown[] }
+    | { rig?: unknown; joints?: unknown[]; surface?: unknown }
     | undefined;
   const joints = Array.isArray(spec?.joints) ? spec.joints.length : 0;
   const kind = bones === 0 ? 'static' : joints > 0 && !spec?.rig ? 'joints' : 'rig';
-  return { kind, bones, joints, clips: clips.map((clip) => clip.name) };
+  return {
+    kind,
+    bones,
+    joints,
+    clips: clips.map((clip) => clip.name),
+    fused: Boolean(spec?.surface),
+    authored: Boolean(spec),
+  };
+}
+
+/**
+ * What the GLB's node tree is good for, when it still has one.
+ *
+ * Only a faceted, unrigged, spec-authored asset keeps a node per part: surface
+ * mode fuses them into one mesh, either skeleton flattens the hierarchy into
+ * skinned meshes, and a blueprint never had named parts to begin with. That
+ * first case is exactly the asset whose moving pieces have no bones to drive
+ * them, so it is the one whose README has to say the nodes are there.
+ */
+function partNodeSentence(skeleton?: SkeletonNotes) {
+  // A blueprint has no authored parts to name a node after, so it has nothing
+  // to promise here either way.
+  if (!skeleton || !skeleton.authored) return '';
+  if (skeleton.fused)
+    return ' The GLB is one fused mesh, so it carries no per-part nodes; anything on it that moves, moves on a bone.';
+  if (skeleton.kind !== 'static')
+    return ' Skinning flattens the part hierarchy, so drive this model through its bones and clips rather than through its nodes.';
+  return " Each part is also its own node in the GLB, named after the part, standing at the part's position and rotation with its geometry centred on it — so a part node's axes are the axes the part was authored in, and turning one about its own local Y turns a wheel, a revolver cylinder or a cap about the axis it was drawn on. Children nest under their parent's node, so hinging a group of parts is one rotation on the node they hang from.";
 }
 
 function skeletonSentence(skeleton?: SkeletonNotes) {
@@ -159,7 +240,7 @@ UNITY IMPORT
 4. Drag the imported model into your scene. Save as a prefab if desired.
 
 Scale: numeric coordinates are meters; Y is up. The model faces +Z before any importer axis conversion.
-The OBJ is a static mesh with flat normals and solid-color materials. ${skeletonSentence(skeleton)} Every mesh carries a UV0 channel.${
+The OBJ is a static mesh with flat normals and solid-color materials. ${skeletonSentence(skeleton)}${partNodeSentence(skeleton)} Every mesh carries a UV0 channel.${
     textured
       ? ` A baked color atlas ships beside the model as ${fileName(name)}.png, wired to the OBJ through map_Kd. An asset that paints its surface carries the same atlas inside the GLB as a real texture, in place of vertex colors — glTF multiplies the two, so a model with both would show every pattern twice over. An asset of flat parts keeps its vertex colors and embeds nothing.`
       : ''

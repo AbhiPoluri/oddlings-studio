@@ -129,8 +129,10 @@ describe('moveBone on a body rig', () => {
     );
   });
 
-  test('refuses a name that is not one of the 14 bones', () => {
-    expect(() => moveBone(godzilla, 'Tail', [0, 0, 0])).toThrow(/not one of the 14 bones/);
+  test('refuses a name that is not one of the rig own bones', () => {
+    expect(() => moveBone(godzilla, 'Tail', [0, 0, 0])).toThrow(
+      /not a bone of this humanoid rig/,
+    );
   });
 });
 

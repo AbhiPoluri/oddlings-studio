@@ -96,6 +96,29 @@ describe('oddlings new', () => {
     }
   });
 
+  test('the quadruped starter audits clean through the real CLI', async () => {
+    const made = await oddlings(['new', 'creature', '--rig', 'quadruped']);
+    expect(made.code).toBe(0);
+    const spec = parseSpec(JSON.parse(made.stdout));
+    expect(spec.rig?.kind).toBe('quadruped');
+    // Every part pinned, like the humanoid templates: a starter is also the
+    // worked example of how to pin the bones this rig has.
+    for (const row of flatten(spec)) expect(row.part.rigPart).toBeTruthy();
+
+    const path = join(scratch, 'beast.spec.json');
+    await writeFile(path, made.stdout);
+    const audited = await oddlings(['audit', path]);
+    expect(audited.stderr).toBe('');
+    expect(audited.code).toBe(0);
+    expect(audited.stdout).toContain('passes');
+  }, 120000);
+
+  test('--rig quadruped is a creature rig, and says so elsewhere', async () => {
+    const made = await oddlings(['new', 'prop', '--rig', 'quadruped']);
+    expect(made.code).toBe(1);
+    expect(made.stderr).toContain('creature rig');
+  }, 60000);
+
   test('the mechanism is a prop with a real joint chain', () => {
     const spec = parseSpec(specTemplate('mechanism'));
     expect(spec.kind).toBe('prop');

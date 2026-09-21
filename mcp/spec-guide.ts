@@ -111,6 +111,17 @@ not a right-hand one. Write the mirrored profile out as its own part.
     { "shape": "field", "size": [0.6, 1.2, 0.6], "lipschitz": 3,
       "field": "s.cyl(x, y, z, 0.42, 0.5) + 0.03 * M.sin(M.atan2(z, x) * 18) + 0.04 * s.fbm(x * 6, y * 6, z * 6)" }
 
+TAPER
+"taper" is the far end's width as a fraction of the near end's, on every shape
+that tapers natively: "cylinder", "cone" and "prism" (the +y face over the -y
+one), "extrude" (+z over -z) and "limb" ("to" over "from"). It defaults to 1 -
+no taper - everywhere but "cone", whose default of 0 is the point that makes it
+a cone. So { "shape": "cone", "size": [0.7, 0.24, 0.52], "taper": 0.86 } is a
+frustum whose top is 86% of its bottom, the same solid the same numbers would
+give a cylinder, and the same in the faceted and the fused backend. Reach for a
+tapered cone rather than a tapered cylinder when you want the author's intent
+on the page: a horn, a spike, a hat.
+
 COMPOSITION
 - children inherit their parent's transform, so build a head once and hang
   eyes, horns and ears off it. A child's "position" is RELATIVE to its parent,
@@ -349,6 +360,13 @@ cut deep enough to break the surface: one sunk entirely inside a solid hollows
 out a sealed cavity, which the audit reports as a detached shell.
 
 RIGGING
+"rig" comes in two kinds, told apart by "kind". The humanoid is the default
+and the one described next. The quadruped, below it, is a body and four legs,
+for everything that walks on four and has no sensible expression as a biped.
+Either kind can carry "joints" alongside it for the parts a creature rig has no
+bones for - a cape, a tail, a hair chain, a lid on a pack. See JOINTS.
+
+HUMANOID RIG
 Add a "rig" block to skin the asset to the 14-bone skeleton and export Idle,
 Walk, Jump, Wave and Attack. hipHeight is where the legs meet the body,
 headPivot is the base of the neck, and shoulderWidth is half the distance
@@ -390,11 +408,47 @@ where the body actually hinges, not to re-weight a part. Root is the exception
 worth knowing: Walk, Jump and Attack key its position, so an override there
 sets the rest pose and Idle, and is driven over by the clips that move it.
 
+QUADRUPED RIG
+Set "kind": "quadruped" for a four-legged creature. The skeleton is a "Body"
+bone with a hip, knee and ankle down each corner - Hip_FL, Knee_FL, Ankle_FL
+and their FR, BL and BR twins, 14 bones counting Root - and it exports Idle and
+Walk, the diagonal gait a four-legged animal actually uses. Wave and Attack are
+gestures of a body with arms, so it does not have them.
+
+  "rig": { "kind": "quadruped", "bodyHeight": 0.55,
+           "bones": { "Body": [0, 0.55, 0],
+                      "Hip_FL": [0.15, 0.44, 0.28],
+                      "Knee_FL": [0.16, 0.26, 0.3],
+                      "Ankle_FL": [0.16, 0.08, 0.3],
+                      ... the FR, BL and BR chains ... } }
+
+Placing the bones yourself is the NORMAL way to author one, not the escape
+hatch it is on the humanoid: a horse, a spider and a walking gun platform put
+their knees in completely different places, and no three numbers describe all
+three. "bodyHeight" alone derives a plain standing pose - legs straight down at
+the four corners - which is somewhere to start, not somewhere to stop. FL is
+front-left, and left is +x, because +z is the front.
+
+Pin parts with "rigPart": "body", "hip_fl", "knee_fl", "ankle_fl" and so on,
+lowercase. Mirroring swaps _fl with _fr and _bl with _br, so author one side.
+Unpinned parts are weighted by DISTANCE to the nearest leg chain rather than by
+height: a bone drives the limb from its own pivot to the next pivot down, and
+anything within a fifth of a leg's length of one of those segments rides it,
+with everything else on Body. That is why the quadruped has no equivalent of
+the humanoid's fixed height bands - a spider's knees are above its hips, so
+there is no height that separates body from leg. Pin anything you care about.
+
+  oddlings new creature --rig quadruped
+
+prints a starter that audits clean, with every part pinned; through MCP it is
+spec_template with kind "creature" and rig "quadruped".
+
 JOINTS
-"rig" describes a character and nothing else: its bones are hips and shoulders
-placed from body measurements. For anything else that moves - a swinging tire,
-a creaking sign, a turning wheel, a lid - use "joints" instead. A spec has one
-skeleton, so the two cannot both be set.
+"rig" describes a creature body and nothing else: hips and shoulders, or a body
+and four legs. For anything else that moves - a swinging tire, a creaking sign,
+a turning wheel, a lid - use "joints". A spec may have joints INSTEAD of a rig,
+which is the whole skeleton of a mechanism, or ALONGSIDE one, which is how a
+character carries a cape, a tail, a hair chain or a pack lid.
 
   "joints": [
     { "name": "Swing", "at": [0.47, 0.72, 0.12], "binds": ["rope"],
@@ -431,6 +485,40 @@ you see it and the offset is worked out for you. Joint names must be unique,
 "Root" is taken by the static bone, and a missing parent or a loop is refused
 at parse time. Omit "parent" for a joint that hangs off the root.
 
+JOINTS ON A RIG
+When the spec also has a "rig", a joint's "parent" may name one of the RIG's
+bones - Spine, Head, Hips, Forearm_L on the humanoid, Body or Ankle_BR on the
+quadruped - and the chain hangs off it in the exported skeleton. That is how a
+character wears a cape instead of shipping the cape as its own asset:
+
+  "rig": { "hipHeight": 0.5, "headPivot": 0.88, "shoulderWidth": 0.18 },
+  "joints": [
+    { "name": "Cape0", "parent": "Spine", "at": [0, 0.88, 0],
+      "binds": ["collar", "ring-1"] },
+    { "name": "Cape1", "parent": "Cape0", "at": [0, 0.67, 0],
+      "binds": ["ring-2"],
+      "spin": { "axis": "x", "degrees": 7, "seconds": 3.2, "clip": "Cape" } },
+    { "name": "Cape2", "parent": "Cape1", "at": [0, 0.46, 0],
+      "binds": ["ring-3"],
+      "spin": { "axis": "x", "degrees": 5, "seconds": 3.2, "clip": "Cape",
+                "phase": 90 } }
+  ]
+
+The joints become bones AFTER the rig's own, so the rig keeps the indices it
+always had and a three-bone cape on a humanoid is 17 bones. The rig's clips and
+the joints' clips all ship: the example above exports Idle, Walk, Jump, Wave,
+Attack and Cape. A joint clip may not take a name the rig already exports.
+
+A part named in "binds" is bound to that joint and nothing else - the binding
+beats both "rigPart" and automatic weighting, so a cape ring hanging above the
+head band is never quietly stolen by the head. Everything the joints do not
+claim is weighted by the rig exactly as before. In the GLB's extras the joints
+appear in "bones" like any other bone, with their parent and their pivot, and
+each leaf chain appears in "chains" - the cape above adds
+{ leaf: "Cape2", bones: ["Root", "Hips", "Spine", "Cape0", "Cape1", "Cape2"] }
+beside the humanoid's five. Nothing about the shape of that block changed, so a
+three.js or Godot consumer that already reads it needs no changes.
+
 "clip" puts several joints in ONE clip - without it each joint gets a clip of
 its own, and two clips cannot be relied on to play in step, so a chain comes
 apart. Every joint sharing a clip must repeat the same "seconds"; disagreeing
@@ -455,9 +543,44 @@ at. "end" appears on leaf bones only: how far the geometry bound to that bone
 reaches along the chain - the sole under an ankle, the crown of a head -
 measured from the built mesh, and covering everything bound to the bone, so a
 staff pinned to a forearm puts that forearm's "end" at the staff's tip.
-"chains" is one entry per leaf, root first: a humanoid rig always has five
-(Head, Forearm_L/R, Foot_L/R); a joints mechanism has one per childless joint.
+"chains" is one entry per leaf, root first: a bare humanoid rig has five (Head,
+Forearm_L/R, Foot_L/R), a quadruped four (one per Ankle, whose "end" is the
+sole), and a joints mechanism one per childless joint. Joints riding on a rig
+add their own leaves to that list, and a rig bone a joint hangs off stops being
+a leaf, because it now has a chain running past it.
 Static specs and recipe-built models carry no oddlings block.
+
+PART NODES IN THE GLB
+A faceted build with no skeleton exports every part as its own node, so a game
+can move one part of a prop without a bone, a clip or a second asset. The node
+is named after the part - its "name", or its "shape" when it has none - it sits
+at the part's "position" and carries its "rotation", and the part's triangles
+hang under it as a mesh named <kind>_part_NNN. Children nest under their
+parent's node exactly as the spec nests them.
+
+What makes that useful is that the geometry is CENTRED on the node: the node's
+origin is the part's own origin and its axes are the part's authoring axes,
+before any "rotation" turned it. A cylinder's local Y is its length, an
+extrude's local Z its sweep, a box's axes its own three sides. So turning a
+part node about its local Y turns it about the axis you drew it on, whichever
+way the part ended up pointing in the model.
+
+  const gun = gltf.scene;                          // three.js
+  const cylinder = gun.getObjectByName('cylinder');
+  cylinder.rotation.y += (Math.PI * 2) / 6;        // index one chamber
+  gun.getObjectByName('hammer').rotation.x = -0.6; // cock it
+
+To hinge several parts together, author them as children of one part and turn
+that part's node - the whole subtree follows, because the children are nodes
+under it.
+
+Two limits, both of them the other features doing their job. A "surface" block
+fuses every part into ONE mesh, so a fused asset has no part nodes to turn: use
+"joints" for anything that has to move there. And a skeleton - "rig" or
+"joints" - binds every mesh to bones and flattens the hierarchy, so a rigged
+asset is animated through its bones rather than its nodes. Part nodes are for
+the third case: a prop that is faceted, unrigged, and has one or two things on
+it that turn.
 
 MESH BACKEND
 By default each part is exported as its own closed solid, and the model is a
@@ -1108,8 +1231,153 @@ const TEMPLATES: Record<TemplateKind, AssetSpecInput> = {
 };
 
 /** A starter spec for one kind of asset. Returns a fresh copy every call. */
-export function specTemplate(kind: TemplateKind, name?: string): AssetSpecInput {
-  const template = TEMPLATES[kind];
+/**
+ * The same starter creature on the four-legged rig.
+ *
+ * The humanoid `creature` template is a beast with four legs wearing a biped's
+ * skeleton: its forelegs bind to arm bones and its hindlegs to thighs, which
+ * animates well enough for a walk cycle and not at all like an animal. This is
+ * what the same body looks like when the rig matches it — a `Body` bone with a
+ * hip, knee and ankle down each corner, and every part pinned to the one it
+ * actually hangs from. Each leg is authored once and mirrored, which swaps
+ * `_fl` to `_fr` the same way it swaps `_l` to `_r`.
+ */
+const QUADRUPED_CREATURE: AssetSpecInput = {
+  version: 1,
+  name: 'Starter Beast',
+  kind: 'creature',
+  seed: 11,
+  color: '#7f8f6a',
+  rig: {
+    kind: 'quadruped',
+    bodyHeight: 0.55,
+    bones: {
+      Body: [0, 0.55, 0],
+      Hip_FL: [0.15, 0.44, 0.28],
+      Knee_FL: [0.16, 0.26, 0.3],
+      Ankle_FL: [0.16, 0.08, 0.3],
+      Hip_FR: [-0.15, 0.44, 0.28],
+      Knee_FR: [-0.16, 0.26, 0.3],
+      Ankle_FR: [-0.16, 0.08, 0.3],
+      Hip_BL: [0.15, 0.44, -0.26],
+      Knee_BL: [0.16, 0.26, -0.25],
+      Ankle_BL: [0.16, 0.08, -0.24],
+      Hip_BR: [-0.15, 0.44, -0.26],
+      Knee_BR: [-0.16, 0.26, -0.25],
+      Ankle_BR: [-0.16, 0.08, -0.24],
+    },
+  },
+  surface: { blend: 0.035, detail: 128, budget: 4000, shading: 'flat' },
+  parts: [
+    {
+      name: 'body',
+      shape: 'capsule',
+      size: [0.42, 0.42, 0.8],
+      position: [0, 0.55, 0],
+      jitter: 0.12,
+      rigPart: 'body',
+    },
+    {
+      name: 'head',
+      shape: 'icosahedron',
+      size: [0.34, 0.32, 0.34],
+      position: [0, 0.72, 0.46],
+      jitter: 0.2,
+      rigPart: 'body',
+    },
+    {
+      // Points down +z, which is the way the creature faces.
+      name: 'snout',
+      shape: 'cone',
+      size: [0.16, 0.22, 0.16],
+      position: [0, 0.68, 0.6],
+      rotation: [90, 0, 0],
+      rigPart: 'body',
+    },
+    {
+      name: 'foreleg-upper',
+      shape: 'limb',
+      from: [0.15, 0.44, 0.28],
+      to: [0.16, 0.26, 0.3],
+      radius: 0.078,
+      taper: 0.85,
+      rigPart: 'hip_fl',
+      mirror: 'x',
+    },
+    {
+      name: 'foreleg-lower',
+      shape: 'limb',
+      from: [0.16, 0.26, 0.3],
+      to: [0.16, 0.08, 0.3],
+      radius: 0.066,
+      taper: 0.85,
+      rigPart: 'knee_fl',
+      mirror: 'x',
+    },
+    {
+      // The sole. `Ankle_FL.end` in the GLB's extras is measured off this, so
+      // a game can plant the foot without guessing where the leg stops.
+      name: 'forepaw',
+      shape: 'box',
+      size: [0.14, 0.07, 0.18],
+      position: [0.16, 0.035, 0.33],
+      bevel: 0.02,
+      rigPart: 'ankle_fl',
+      mirror: 'x',
+    },
+    {
+      name: 'hindleg-upper',
+      shape: 'limb',
+      from: [0.15, 0.44, -0.26],
+      to: [0.16, 0.26, -0.25],
+      radius: 0.088,
+      taper: 0.85,
+      rigPart: 'hip_bl',
+      mirror: 'x',
+    },
+    {
+      name: 'hindleg-lower',
+      shape: 'limb',
+      from: [0.16, 0.26, -0.25],
+      to: [0.16, 0.08, -0.24],
+      radius: 0.07,
+      taper: 0.85,
+      rigPart: 'knee_bl',
+      mirror: 'x',
+    },
+    {
+      name: 'hindpaw',
+      shape: 'box',
+      size: [0.14, 0.07, 0.18],
+      position: [0.16, 0.035, -0.21],
+      bevel: 0.02,
+      rigPart: 'ankle_bl',
+      mirror: 'x',
+    },
+    {
+      name: 'tail',
+      shape: 'limb',
+      from: [0, 0.62, -0.36],
+      to: [0, 0.8, -0.72],
+      via: [0, 0.64, -0.58],
+      radius: 0.07,
+      taper: 0.3,
+      rigPart: 'body',
+    },
+  ],
+};
+
+export function specTemplate(
+  kind: TemplateKind,
+  name?: string,
+  /** `creature` only: which creature rig the starter should carry. */
+  rig: 'humanoid' | 'quadruped' = 'humanoid',
+): AssetSpecInput {
+  if (rig === 'quadruped' && kind !== 'creature')
+    throw Error(
+      'The quadruped rig is a creature rig: only "new creature" has a four-legged starter.',
+    );
+  const template = rig === 'quadruped' ? QUADRUPED_CREATURE : TEMPLATES[kind];
   if (!template) throw Error(`No template for "${kind}".`);
   const copy = structuredClone(template);
   if (name) copy.name = name;

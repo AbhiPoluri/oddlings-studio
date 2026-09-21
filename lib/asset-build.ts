@@ -34,7 +34,14 @@ export function buildAsset(recipe: Recipe) {
   model.userData = { generator: 'Oddlings Studio', recipe };
   finishModel(model, recipe.kind);
   if ((recipe.kind === 'creature' || recipe.kind === 'person') && recipe.rigged)
-    model = rigCreature(model, recipe);
+    // Only the three body measurements, spelled out: a recipe is not a rig
+    // block, and it carries a `kind` of its own that means something else.
+    model = rigCreature(model, {
+      kind: 'humanoid',
+      hipHeight: recipe.hipHeight,
+      headPivot: recipe.headPivot,
+      shoulderWidth: recipe.shoulderWidth,
+    });
   model.scale.setScalar(recipe.scale);
   model.updateMatrixWorld(true);
   return model;

@@ -76,6 +76,34 @@ function weld(geometry: T.BufferGeometry) {
   return map;
 }
 
+/**
+ * Half the width in x of the vertices at one end of a shape drawn along y.
+ *
+ * A frustum has a ring of vertices at each cap and nothing in between, so the
+ * two ends are exactly what the mesh has to say about its taper, and the ratio
+ * between them is free of whatever `fitToSize` scaled the whole thing by.
+ */
+function endHalfWidth(geometry: T.BufferGeometry, side: 1 | -1) {
+  const position = geometry.attributes.position as T.BufferAttribute;
+  let half = 0;
+  for (let i = 0; i < position.count; i++)
+    if (Math.sign(position.getY(i)) === side)
+      half = Math.max(half, Math.abs(position.getX(i)));
+  return half;
+}
+
+/** The same measurement of the field: bisect +x at this height for the wall. */
+function fieldHalfWidth(prim: Prim, y: number) {
+  let inside = 0;
+  let outside = 8;
+  for (let i = 0; i < 64; i++) {
+    const mid = (inside + outside) / 2;
+    if (distanceTo(prim, mid, y, 0) < 0) inside = mid;
+    else outside = mid;
+  }
+  return inside;
+}
+
 /** Edges used by exactly one triangle: the rim of a hole. */
 function boundaryEdges(geometry: T.BufferGeometry) {
   const map = weld(geometry);
@@ -831,6 +859,45 @@ describe('deform', () => {
     }).geometry;
     expect(boundaryEdges(bent)).toBe(0);
     expect(signedVolume(bent)).toBeGreaterThan(0);
+  });
+
+  test('a cone is a frustum: its taper is the top width over the bottom', () => {
+    const size: [number, number, number] = [0.7, 0.24, 0.52];
+    const h = size[1] / 2;
+    for (const taper of [0, 0.4, 0.86, 1]) {
+      const part: Part = { shape: 'cone', size, taper, detail: 24 };
+      // Faceted: the two rings of the frustum, measured off the vertices.
+      const mesh = meshOf(part).geometry;
+      const bottom = endHalfWidth(mesh, -1);
+      expect(bottom).toBeCloseTo(size[0] / 2, 5);
+      expect(endHalfWidth(mesh, 1)).toBeCloseTo(taper * bottom, 5);
+      // And the field, bisected just inside each cap so the answer is the
+      // slanted wall rather than the flat end.
+      const prim = primOf(part);
+      const inside = h - 1e-4;
+      expect(fieldHalfWidth(prim, -inside)).toBeCloseTo(bottom, 3);
+      expect(fieldHalfWidth(prim, inside)).toBeCloseTo(taper * bottom, 3);
+      // The same solid a cylinder of those numbers would be: one `taper`,
+      // one meaning, whichever of the two shapes an author reached for.
+      expect(primArgs('cone', part)).toStrictEqual(
+        primArgs('cylinder', { ...part, shape: 'cylinder' }),
+      );
+    }
+  });
+
+  test('a cone with no taper is still the point it always was', () => {
+    const size: [number, number, number] = [0.7, 0.24, 0.52];
+    const bare: Part = { shape: 'cone', size, detail: 24 };
+    expect(primArgs('cone', bare)).toStrictEqual([0.5, 0, 0.5]);
+    expect(endHalfWidth(meshOf(bare).geometry, 1)).toBe(0);
+    // A `deform` that only bends fills `taper` in at its neutral 1, and that
+    // must not blunt a point the author never touched.
+    expect(
+      primArgs('cone', {
+        ...bare,
+        deform: { axis: 'y', bend: 20, twist: 0, taper: 1 },
+      }),
+    ).toStrictEqual([0.5, 0, 0.5]);
   });
 
   test('deform.taper is the shape own taper, to the last vertex', () => {

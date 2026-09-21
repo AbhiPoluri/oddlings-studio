@@ -46,6 +46,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileName } from '../lib/asset-recipe';
 import { renderPngs, VIEWS, type ViewName } from '../lib/asset-render';
+import { humanoidRigged } from '../lib/asset-joints';
 
 /**
  * Oddlings Studio as an MCP server.
@@ -100,7 +101,7 @@ const server = new McpServer(
   { name: 'oddlings-studio', version: '1.0.0' },
   {
     instructions:
-      'Procedural 3D game assets generated entirely from local code. Use list_blueprints + generate_from_blueprint for fast variations on built-in creature, person, prop and environment generators. Use get_spec_guide + build_from_spec to author an asset from scratch out of primitives, transforms, repeats and rig bindings. Add a `surface` block to a spec and those primitives are blended into one continuous manifold polygon mesh instead of being exported as separate stacked solids — use it for creatures, characters and anything that has to deform. Rigged characters export with a 14-bone skeleton and Idle, Walk, Jump, Wave and Attack clips. Every build returns an `audit` of the geometry it produced: when `audit.ok` is false the model has a real defect — parts hanging in mid-air, a model in separate pieces, a body bound to the head bone. Read the findings, fix the spec and build again rather than shipping it. Use audit_spec to iterate without writing files, and audit_spec with visual: true — or render_spec, which writes PNGs of the model in a few hundred milliseconds — instead of opening a browser to look at it. Findings carry a `hint` with the fix as numbers — a translation to add to the position of the part, and the part it should move toward — so apply that rather than guessing a direction. Start from spec_template rather than a blank page. Use measure_spec instead of writing a script to find a bounding box, a gap between two parts, or which bone owns what. And read review_notes for the comments a human reviewer left before calling an asset finished, then close each one with resolve_note and a reply.',
+      'Procedural 3D game assets generated entirely from local code. Use list_blueprints + generate_from_blueprint for fast variations on built-in creature, person, prop and environment generators. Use get_spec_guide + build_from_spec to author an asset from scratch out of primitives, transforms, repeats and rig bindings. Add a `surface` block to a spec and those primitives are blended into one continuous manifold polygon mesh instead of being exported as separate stacked solids — use it for creatures, characters and anything that has to deform. Rigged characters export with a 14-bone humanoid skeleton and Idle, Walk, Jump, Wave and Attack clips; a four-legged creature takes `rig: { kind: "quadruped" }` instead, and either can carry a `joints` chain — a cape, a tail — hanging off one of its bones. Every build returns an `audit` of the geometry it produced: when `audit.ok` is false the model has a real defect — parts hanging in mid-air, a model in separate pieces, a body bound to the head bone. Read the findings, fix the spec and build again rather than shipping it. Use audit_spec to iterate without writing files, and audit_spec with visual: true — or render_spec, which writes PNGs of the model in a few hundred milliseconds — instead of opening a browser to look at it. Findings carry a `hint` with the fix as numbers — a translation to add to the position of the part, and the part it should move toward — so apply that rather than guessing a direction. Start from spec_template rather than a blank page. Use measure_spec instead of writing a script to find a bounding box, a gap between two parts, or which bone owns what. And read review_notes for the comments a human reviewer left before calling an asset finished, then close each one with resolve_note and a reply.',
   },
 );
 
@@ -220,18 +221,24 @@ server.registerTool(
   {
     title: 'Starter spec',
     description:
-      'Return a complete, working starter spec for one kind of asset: creature, person, prop, mechanism or environment. Each one already follows the conventions that are easy to get wrong from a blank page — it faces +z, it stands on the ground with every part touching, parts are named, characters pin their own bones and carry a surface block, and the mechanism shows a two-joint chain sharing one clip with a phase lag. Every template passes audit_spec as returned, so it is a safe base to edit rather than a sketch to correct. Edit the geometry, keep the structure, and audit after each change. "mechanism" is a prop with a joints block; the spec itself has four kinds, not five.',
+      'Return a complete, working starter spec for one kind of asset: creature, person, prop, mechanism or environment. Each one already follows the conventions that are easy to get wrong from a blank page — it faces +z, it stands on the ground with every part touching, parts are named, characters pin their own bones and carry a surface block, and the mechanism shows a two-joint chain sharing one clip with a phase lag. Every template passes audit_spec as returned, so it is a safe base to edit rather than a sketch to correct. Edit the geometry, keep the structure, and audit after each change. "mechanism" is a prop with a joints block; the spec itself has four kinds, not five. Pass rig: "quadruped" with kind "creature" for a four-legged starter.',
     inputSchema: {
       kind: z
         .enum(TEMPLATE_KINDS as unknown as [TemplateKind, ...TemplateKind[]])
         .describe('Which starter to return.'),
       name: z.string().max(60).optional().describe('Name the asset.'),
+      rig: z
+        .enum(['humanoid', 'quadruped'])
+        .optional()
+        .describe(
+          'creature only: which creature rig the starter carries. "quadruped" returns the same beast on a Body + four hip/knee/ankle chains instead of a biped skeleton.',
+        ),
     },
     annotations: { readOnlyHint: true },
   },
-  ({ kind, name }) => {
+  ({ kind, name, rig }) => {
     try {
-      return ok(specTemplate(kind, name));
+      return ok(specTemplate(kind, name, rig));
     } catch (error) {
       return problem(error);
     }
@@ -335,7 +342,7 @@ server.registerTool(
   {
     title: 'Build from spec',
     description:
-      'Build an asset the blueprints do not cover, from a spec you author: a tree of primitives with transforms, colors, seeded jitter, mirrors, repeats and optional rig bindings. Supply a rig block to get a skinned 14-bone character with the standard clips; omit it for a static mesh. Supply a `surface` block to fuse the primitives into one continuous polygon mesh with vertex colours and per-vertex skin weights, which is what a creature or character should ship as. Call get_spec_guide first. The result carries an `audit`; if `audit.ok` is false, correct the spec and build again.',
+      'Build an asset the blueprints do not cover, from a spec you author: a tree of primitives with transforms, colors, seeded jitter, mirrors, repeats and optional rig bindings. Supply a rig block to get a skinned character with the standard clips — the 14-bone humanoid by default, or `kind: "quadruped"` for a body and four hip/knee/ankle chains; omit it for a static mesh. Add `joints` beside it for anything the rig has no bone for, such as a cape or a tail. Supply a `surface` block to fuse the primitives into one continuous polygon mesh with vertex colours and per-vertex skin weights, which is what a creature or character should ship as. Call get_spec_guide first. The result carries an `audit`; if `audit.ok` is false, correct the spec and build again.',
     inputSchema: {
       spec: z
         .record(z.string(), z.unknown())
@@ -451,7 +458,7 @@ server.registerTool(
       const parsed = parseSpec(spec);
       return ok(
         withClipFindings(auditModel(buildSpec(parsed), {
-          rigged: Boolean(parsed.rig),
+          rigged: humanoidRigged(parsed),
           scale: parsed.scale,
           visual: Boolean(visual),
           labels: new Map(

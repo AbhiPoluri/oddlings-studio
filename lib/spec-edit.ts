@@ -1,6 +1,6 @@
 import * as T from 'three';
 import { parseSpec, type AssetSpec, type Joint, type Part } from './asset-spec';
-import { JOINTS, defaultRig, type BoneName } from './asset-rig';
+import { defaultRig, rigLayout, type RigSettings } from './asset-rig';
 
 /**
  * Immutable edits on a spec's part tree, addressed by path.
@@ -381,15 +381,21 @@ export function applyTransform(
 /* ------------------------------------------------------------------------ *
  * Rigs: the skeleton a spec declares, made hand-editable.
  *
- * A spec carries at most one skeleton — `rig` for the 14-bone humanoid or
- * `joints` for hand-placed pivots — and the schema refuses both at once. Every
+ * A spec's skeleton is `rig` — the humanoid or the quadruped — or `joints`,
+ * hand-placed pivots, or both: joints may hang off a rig's bones. Every
  * helper below re-validates through `parseSpec`, so an editor wired to them
  * cannot produce a spec the builder would reject: a cycle, a parent that is a
  * typo, or two halves of one clip disagreeing about its length all come back
  * as a thrown message the panel can show beside the joint that caused it.
  * ------------------------------------------------------------------------ */
 
-/** Which of the two mutually exclusive skeletons a spec declares, if either. */
+/**
+ * Which skeleton a spec is edited as.
+ *
+ * `rig` wins when a spec has both, because the rig is the body and the joints
+ * are what it carries. The joints are still there and still build; what this
+ * chooses is which panel the editor puts in front of the author.
+ */
 export type RigKind = 'none' | 'rig' | 'joints';
 
 export function rigKindOf(spec: AssetSpec): RigKind {
@@ -753,27 +759,52 @@ export function setClipSeconds(
  */
 export function setRigSettings(
   spec: AssetSpec,
-  patch: Partial<Pick<NonNullable<AssetSpec['rig']>, 'hipHeight' | 'headPivot' | 'shoulderWidth'>>,
+  patch: Partial<Pick<RigSettings, 'hipHeight' | 'headPivot' | 'shoulderWidth'>>,
 ): AssetSpec {
-  if (!spec.rig) throw Error('This spec has no body rig to measure.');
-  return parseSpec({ ...spec, rig: { ...spec.rig, ...patch } });
+  const rig = humanoidRig(spec, 'measure');
+  return parseSpec({ ...spec, rig: { ...rig, ...patch } });
 }
 
 /**
- * Pin one humanoid bone to an absolute model-space position, or let the three
+ * The spec's rig, when it is the humanoid one.
+ *
+ * The three measurements and the fourteen named overrides are the humanoid's
+ * and nobody else's; a quadruped is authored by placing its bones. Saying so
+ * once, here, keeps every editor helper below to one line of guard.
+ */
+function humanoidRig(spec: AssetSpec, doing: string): RigSettings {
+  if (!spec.rig) throw Error(`This spec has no body rig to ${doing}.`);
+  if (spec.rig.kind === 'quadruped')
+    throw Error(
+      `This spec has a quadruped rig, which has no body measurements to ${doing}. Move its bones instead.`,
+    );
+  return spec.rig;
+}
+
+/**
+ * Pin one rig bone to an absolute model-space position, or let the rig's own
  * measurements place it again.
  *
- * Clearing the last override drops the `bones` block entirely, so a rig the
- * author has reset reads back as the three numbers it started as.
+ * Works on either kind of rig — the name is checked against whichever one the
+ * spec declared, so a quadruped's `Knee_BL` is as pinnable as a humanoid's
+ * `Arm_L`, and a name from the other rig comes back as a message rather than
+ * as a `bones` block the schema would refuse. Clearing the last override drops
+ * the block entirely, so a rig the author has reset reads back as the numbers
+ * it started as.
  */
 export function setBoneOverride(
   spec: AssetSpec,
-  name: BoneName,
+  name: string,
   at: Vec3 | undefined,
 ): AssetSpec {
   if (!spec.rig)
     throw Error('This spec has no body rig, so it has no bones to override.');
-  const bones: Partial<Record<BoneName, Vec3>> = { ...spec.rig.bones };
+  const legal = rigLayout(spec.rig).map((place) => place.name);
+  if (!legal.includes(name))
+    throw Error(
+      `"${name}" is not a bone of this ${spec.rig.kind ?? 'humanoid'} rig. Its bones are: ${legal.join(', ')}.`,
+    );
+  const bones: Record<string, Vec3> = { ...spec.rig.bones };
   if (at) bones[name] = tidyVec(new T.Vector3(...at));
   else delete bones[name];
   return parseSpec({
@@ -793,18 +824,16 @@ export function setBoneOverride(
  * viewport should not have to know which kind it just grabbed.
  */
 export function moveBone(spec: AssetSpec, name: string, at: Vec3): AssetSpec {
-  if (spec.rig) {
-    if (!(JOINTS as readonly string[]).includes(name))
-      throw Error(`"${name}" is not one of the 14 bones a body rig has.`);
-    return setBoneOverride(spec, name as BoneName, at);
-  }
+  // Joints first, because a spec may carry both now: a cape bone hanging off a
+  // spine is a joint's `at`, and only the joint list knows that.
+  const joint = jointList(spec).findIndex((one) => one.name === name);
+  if (joint >= 0) return updateJoint(spec, joint, { at });
+  if (spec.rig) return setBoneOverride(spec, name, at);
   if (name === 'Root')
     throw Error(
       'Root is the static bone a joints rig hangs off. It always sits at the origin.',
     );
-  const index = jointList(spec).findIndex((joint) => joint.name === name);
-  if (index < 0) throw Error(`No joint is called "${name}".`);
-  return updateJoint(spec, index, { at });
+  throw Error(`No joint is called "${name}".`);
 }
 
 /**

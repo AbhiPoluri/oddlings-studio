@@ -16,6 +16,22 @@ import { fileName } from '../lib/asset-recipe';
 const scratch = await mkdtemp(join(tmpdir(), 'oddlings-'));
 afterAll(() => rm(scratch, { recursive: true, force: true }));
 
+/**
+ * A GLB's JSON chunk, both parsed and raw.
+ *
+ * The raw text matters as much as the tree: a claim that some block is not in
+ * the file is only worth making against the bytes, wherever they happened to
+ * be attached.
+ */
+function glbChunks(bytes: Uint8Array) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(0, true) !== 0x46546c67) throw Error('not a GLB');
+  const length = view.getUint32(12, true);
+  const text = new TextDecoder().decode(bytes.subarray(20, 20 + length));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { json: JSON.parse(text) as any, text };
+}
+
 describe('unity pack', () => {
   test('contains the glb, obj, mtl, recipe and notes', async () => {
     const recipe = generateBlueprint('villager', 12);
@@ -72,6 +88,205 @@ describe('writeAsset', () => {
       'Wave',
     ]);
     expect(loaded.stats.triangles).toBe(result.stats.triangles);
+  });
+
+  /**
+   * A fused body in two finishes, so the shell is split into more than one
+   * primitive. That split is what used to multiply the authoring data: the
+   * exporter writes `geometry.userData` into every primitive it emits.
+   */
+  const fused = {
+    version: 1 as const,
+    name: 'Fused',
+    kind: 'creature' as const,
+    surface: { blend: 0.03, detail: 48, budget: 1200 },
+    rig: { hipHeight: 0.48, headPivot: 0.9, shoulderWidth: 0.28 },
+    parts: [
+      {
+        name: 'torso',
+        shape: 'capsule' as const,
+        size: [0.34, 0.52, 0.28] as [number, number, number],
+        position: [0, 0.68, 0] as [number, number, number],
+        color: '#7a8b6e',
+      },
+      {
+        name: 'head',
+        shape: 'sphere' as const,
+        size: [0.26, 0.26, 0.26] as [number, number, number],
+        position: [0, 1.02, 0] as [number, number, number],
+        color: '#cbb894',
+        material: { roughness: 0.2, metalness: 0.85 },
+      },
+      {
+        name: 'leg',
+        shape: 'cylinder' as const,
+        size: [0.13, 0.42, 0.13] as [number, number, number],
+        position: [0.1, 0.22, 0] as [number, number, number],
+        color: '#7a8b6e',
+        mirror: 'x' as const,
+      },
+    ],
+  };
+
+  test('a surface GLB carries its skeleton, not the studio build notes', async () => {
+    const result = await writeAsset(
+      { spec: parseSpec(fused) },
+      { outDir: join(scratch, 'notes'), formats: ['glb'] },
+    );
+    const path = result.files.find((f) => f.endsWith('.glb'))!;
+    const bytes = new Uint8Array(await readFile(path));
+    const { json, text } = glbChunks(bytes);
+
+    // The split that used to do the damage: more than one primitive, each of
+    // which the exporter would have handed its own copy of the block.
+    const primitives = (json.meshes as { primitives: { extras?: unknown }[] }[])
+      .flatMap((mesh) => mesh.primitives);
+    expect(primitives.length).toBeGreaterThan(1);
+    for (const primitive of primitives) expect(primitive.extras).toBeUndefined();
+    // Not once, not once per primitive: the notes are not in the file at all.
+    for (const note of [
+      'surfacePaint',
+      'surfaceOwners',
+      'rigParts',
+      'creaseSource',
+      'uvSource',
+      'uvAtlas',
+      'uvLayout',
+      'surfaceMaterials',
+      'bakedMaps',
+    ])
+      expect(text, note).not.toContain(note);
+
+    // And the one block that is documented to be there still is, whole.
+    const handOff = json.scenes[0].extras.oddlings;
+    expect(handOff.version).toBe(1);
+    expect(handOff.units).toBe('m');
+    expect(handOff.bones).toHaveLength(14);
+    expect(handOff.chains.map((c: { leaf: string }) => c.leaf).sort()).toEqual([
+      'Foot_L',
+      'Foot_R',
+      'Forearm_L',
+      'Forearm_R',
+      'Head',
+    ]);
+
+    // Loading it back still works, and still answers the same questions.
+    const loaded = await inspectGLB(path);
+    expect(loaded.bones).toHaveLength(14);
+    expect(loaded.stats.triangles).toBe(result.stats.triangles);
+    expect(loaded.extras.bones).toHaveLength(14);
+  });
+
+  test('exporting twice in a row leaves the second file whole', async () => {
+    // `writeAsset` builds one model and exports it for the zip and again for
+    // the loose GLB, so the notes have to come back between the two passes.
+    const result = await writeAsset(
+      { spec: parseSpec(fused) },
+      { outDir: join(scratch, 'twice'), formats: ['unity', 'glb'] },
+    );
+    const loose = new Uint8Array(
+      await readFile(result.files.find((f) => f.endsWith('.glb'))!),
+    );
+    const zipped = unzipSync(
+      await readFile(result.files.find((f) => f.endsWith('.zip'))!),
+    );
+    const inZip = zipped[Object.keys(zipped).find((p) => p.endsWith('.glb'))!];
+    for (const bytes of [loose, inZip]) {
+      const { json, text } = glbChunks(bytes);
+      expect(text).not.toContain('surfacePaint');
+      expect(json.scenes[0].extras.oddlings.bones).toHaveLength(14);
+    }
+  });
+
+  /**
+   * The part nodes the spec guide and the pack README promise.
+   *
+   * A game hinges a hatch or indexes a revolver cylinder by turning one of
+   * these, so their names, their transforms and the fact that the geometry is
+   * centred on them are a contract, not an implementation detail.
+   */
+  test('a faceted prop exports one node per part, at the part', async () => {
+    const prop = {
+      version: 1 as const,
+      name: 'Revolver',
+      kind: 'prop' as const,
+      parts: [
+        {
+          name: 'frame',
+          shape: 'box' as const,
+          size: [0.04, 0.09, 0.2] as [number, number, number],
+          color: '#404448',
+          children: [
+            {
+              name: 'hammer',
+              shape: 'box' as const,
+              size: [0.012, 0.03, 0.02] as [number, number, number],
+              position: [0, 0.055, -0.08] as [number, number, number],
+              color: '#8a8f94',
+            },
+          ],
+        },
+        {
+          name: 'cylinder',
+          shape: 'cylinder' as const,
+          size: [0.05, 0.06, 0.05] as [number, number, number],
+          position: [0, 0.02, 0.01] as [number, number, number],
+          rotation: [90, 0, 0] as [number, number, number],
+          color: '#6b7076',
+        },
+      ],
+    };
+    const result = await writeAsset(
+      { spec: parseSpec(prop) },
+      { outDir: join(scratch, 'nodes'), formats: ['glb'] },
+    );
+    const { json } = glbChunks(
+      new Uint8Array(await readFile(result.files[0])),
+    );
+    const nodes = json.nodes as {
+      name: string;
+      mesh?: number;
+      translation?: number[];
+      children?: number[];
+    }[];
+    const byName = new Map(nodes.map((node, at) => [node.name, at]));
+    expect([...byName.keys()]).toEqual(
+      expect.arrayContaining(['frame', 'hammer', 'cylinder']),
+    );
+
+    // The node stands where the part does, and its mesh is the part's.
+    const cylinder = nodes[byName.get('cylinder')!];
+    expect(cylinder.translation).toEqual([0, 0.02, 0.01]);
+    const under = (cylinder.children ?? []).map((at) => nodes[at]);
+    expect(under).toHaveLength(1);
+    expect(under[0].name).toMatch(/^prop_part_\d{3}$/);
+    // Centred on the node: no offset between the node and its geometry, which
+    // is what makes turning the node turn the part about its own axis.
+    expect(under[0].translation).toBeUndefined();
+    expect(under[0].mesh).toBeTypeOf('number');
+
+    // And a child part is a node under its parent's node, so one rotation on
+    // the parent carries the whole group.
+    expect(cylinder.children).not.toContain(byName.get('hammer'));
+    expect(nodes[byName.get('frame')!].children).toContain(
+      byName.get('hammer'),
+    );
+  });
+
+  test('a skeleton or a fused surface leaves no part nodes behind', async () => {
+    // Both are documented as the limits of the feature above, so both are
+    // worth a check: a rigged or fused asset moves on bones instead.
+    const result = await writeAsset(
+      { spec: parseSpec(fused) },
+      { outDir: join(scratch, 'no-nodes'), formats: ['glb'] },
+    );
+    const { json } = glbChunks(
+      new Uint8Array(await readFile(result.files[0])),
+    );
+    const names = (json.nodes as { name: string }[]).map((node) => node.name);
+    expect(names).not.toContain('torso');
+    expect(names).not.toContain('head');
+    expect(names).toContain('Hips');
   });
 
   test('the static OBJ carries no skinning and names its materials', async () => {

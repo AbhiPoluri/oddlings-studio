@@ -214,6 +214,13 @@ function rigSamples(model: T.Object3D, scale: number) {
     const bound = o.geometry.userData.rigParts as
       | (string | undefined)[]
       | undefined;
+    // Geometry a `joints` chain claimed is bound as surely as a `rigPart` pin
+    // is — more so, since the author named the part — so it counts as pinned
+    // here. Otherwise a cape hanging above the head band would be reported as
+    // a torso about to swing with the head.
+    const jointed = o.geometry.userData.jointParts as
+      | (string | undefined)[]
+      | undefined;
     if (bound) {
       perVertex = true;
       const position = o.geometry.attributes.position as T.BufferAttribute;
@@ -225,7 +232,7 @@ function rigSamples(model: T.Object3D, scale: number) {
           y,
           minY: y,
           maxY: y,
-          rigPart: bound[i],
+          rigPart: bound[i] ?? jointed?.[i],
         });
       }
       return;
@@ -237,7 +244,9 @@ function rigSamples(model: T.Object3D, scale: number) {
       y: centre.y / scale,
       minY: box.min.y / scale,
       maxY: box.max.y / scale,
-      rigPart: o.userData.rigPart as string | undefined,
+      // A faceted mesh is one part on one bone, so its first vertex answers
+      // for all of them.
+      rigPart: (o.userData.rigPart as string | undefined) ?? jointed?.[0],
     });
   });
   return { samples, unit: perVertex ? 'vertex' : 'mesh' };

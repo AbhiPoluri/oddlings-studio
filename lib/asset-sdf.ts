@@ -621,6 +621,7 @@ export function compileField(field: string): FieldFn {
   const body = /\breturn\b/.test(field) ? field : `return (${field});`;
   let fn: FieldFn;
   try {
+    // oxlint-disable-next-line typescript/no-implied-eval -- a field's math is compiled from the spec's own expression grammar, validated before it gets here
     fn = new Function('x', 'y', 'z', 's', 'M', body) as FieldFn;
   } catch (error) {
     throw Error(`"field" does not compile: ${(error as Error).message}`);
@@ -922,7 +923,8 @@ export function primArgs(
   // the marcher can survive, not the right silhouette. Pass the whole part to
   // get that.
   const part = typeof source === 'number' ? undefined : source;
-  const taper = typeof source === 'number' ? source : effectiveTaper(source);
+  const taper =
+    typeof source === 'number' ? source : effectiveTaper(source, shape);
   switch (shape) {
     case 'lathe':
       return part ? latheArgs(part) : BOXLIKE;
@@ -945,11 +947,13 @@ export function primArgs(
       return [0.5];
     case 'tetrahedron':
       return [0.5];
+    // A cone is a frustum like the other two, and its `taper` means what it
+    // means there: the top radius as a fraction of the bottom. Only the
+    // default differs, and `defaultTaper` has already supplied it.
     case 'cylinder':
     case 'prism':
-      return [0.5, 0.5 * taper, 0.5];
     case 'cone':
-      return [0.5, 0, 0.5];
+      return [0.5, 0.5 * taper, 0.5];
     case 'capsule':
       // CapsuleGeometry(0.5, 0.5): radius 0.5, straight segment 0.5 long, so
       // a quarter either side of centre. Its canonical extent carries the
@@ -1019,16 +1023,37 @@ function hash3(x: number, y: number, z: number, seed: number) {
 const NATIVE_TAPER = new Set<Shape>(['cylinder', 'prism', 'cone', 'extrude', 'limb']);
 
 /**
+ * What a shape's far end measures when nobody writes a `taper`.
+ *
+ * Every native-taper shape is a prism until told otherwise — both ends the
+ * same width, so 1 — except the cone, whose far end being a point is the
+ * whole of what makes it a cone rather than a cylinder. Saying that here, once,
+ * is what lets `cone` share the cylinder's frustum in both backends: a cone is
+ * a frustum whose top radius is `taper` times its bottom, and 0 is the default
+ * that draws the point.
+ */
+export function defaultTaper(shape: Shape) {
+  return shape === 'cone' ? 0 : 1;
+}
+
+/**
  * The taper a part is actually built with.
  *
  * `deform.taper` wins, because a `deform` block is the more specific statement
  * — except at its neutral value of 1, which is what the schema fills in when
  * an author writes a `deform` that only bends. Treating that as an override
- * would silently un-taper a tapered mast the moment someone bent it.
+ * would silently un-taper a tapered mast the moment someone bent it — or, on a
+ * cone, blunt a point the author never touched.
  */
-export function effectiveTaper(source: Pick<Part, 'taper' | 'deform'>) {
+export function effectiveTaper(
+  source: Pick<Part, 'shape' | 'taper' | 'deform'>,
+  /** The shape being built, when the caller knows it better than `source` does. */
+  shape: Shape = source.shape,
+) {
   const shaped = source.deform?.taper;
-  return shaped !== undefined && shaped !== 1 ? shaped : (source.taper ?? 1);
+  return shaped !== undefined && shaped !== 1
+    ? shaped
+    : (source.taper ?? defaultTaper(shape));
 }
 
 /**

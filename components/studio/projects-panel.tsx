@@ -51,11 +51,11 @@ import {
   relativeTime,
   RIG_LABEL,
   type SortKey,
-  type SpecRow,
 } from './projects';
 import { useStudio } from './store';
 import { RowSkeleton } from './loading';
 import type { SpecStats } from './thumbs';
+import { humanoidRigged } from '@/lib/asset-joints';
 
 const SPEC_ROUTE = '/__oddlings/spec';
 /** Relative times only ever change by the minute. */
@@ -128,7 +128,7 @@ function measureModel(spec: AssetSpec, model: T.Object3D): SpecStats {
   try {
     const counted = stats(model);
     const audit = auditModel(model, {
-      rigged: Boolean(spec.rig),
+      rigged: humanoidRigged(spec),
       scale: spec.scale,
       labels: new Map(
         flatten(spec).map((row) => [
